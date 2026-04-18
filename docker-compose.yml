@@ -1,0 +1,14 @@
+services:
+  monitor:
+    build: .
+    network_mode: host          # Required: share host network so DDS discovery works
+    environment:
+      - ROS_DOMAIN_ID=0         # Must match the robot nodes' domain ID
+      - ROS_DISTRO=kilted
+      - MONITOR_CONFIG=/monitor/config.yaml
+      - MONITOR_OUTPUT_DIR=/output
+    volumes:
+      - ./monitor:/monitor      # Mount code so changes don't require rebuild
+      - ./output:/output        # Data output directory
+    stdin_open: true
+    tty: true

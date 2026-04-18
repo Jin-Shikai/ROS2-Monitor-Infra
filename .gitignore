@@ -8,3 +8,11 @@ wheels/
 
 # Virtual environments
 .venv
+
+.claude/
+.vscode/
+.python-version
+demo*
+CLAUDE*
+
+output/

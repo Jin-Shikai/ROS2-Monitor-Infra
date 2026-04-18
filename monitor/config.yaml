@@ -1,0 +1,7 @@
+monitor:
+  output_dir: ./output
+  output_format: jsonl
+
+topics:
+  - name: /chatter
+    sample_rate_hz: 1.0 # Sampling frequency in Hz
