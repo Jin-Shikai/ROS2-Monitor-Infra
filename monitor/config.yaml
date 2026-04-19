@@ -1,7 +1,32 @@
 monitor:
   output_dir: ./output
-  output_format: jsonl
+  session_id_prefix: ""
 
 topics:
-  - name: /chatter
-    sample_rate_hz: 1.0 # Sampling frequency in Hz
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - twist.twist.linear.x
+          - twist.twist.angular.z
+      - type: RateThrottler
+        max_rate_hz: 5.0
+
+services:
+  - name: /set_bool
+    type: std_srvs/srv/SetBool
+
+actions:
+  - name: /fibonacci
+    type: example_interfaces/action/Fibonacci
+    phases: [feedback, status]
+
+exporters:
+  - type: file
+  - type: mqtt
+    broker: localhost
+    port: 1883
+    topic_prefix: monitor/

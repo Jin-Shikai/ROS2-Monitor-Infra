@@ -5,12 +5,6 @@ Every message captured by a Collector is wrapped into a DataRecord before
 entering the TransformerPipeline.  After transformation the same DataRecord
 (possibly with trimmed/flattened `data`) is handed to the ExportDispatcher.
 
-Design decisions (2026-04-15):
-- `_type` is a JSONL-level discriminator ("session_start", "data", "session_end")
-  kept separate from `source_type` which describes the ROS2 communication primitive.
-- `data` uses dot-notation keys after FieldExtractor (e.g. "pose.position.x").
-- `session_id` is present on every record for robust multi-run correlation.
-- `ros_timestamp` is extracted from msg.header.stamp when available.
 """
 
 from __future__ import annotations
