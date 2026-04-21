@@ -30,14 +30,15 @@ class TransformerPipeline:
 
     def process(self, record: DataRecord) -> DataRecord | None:
         applied: list[str] = []
+        current: DataRecord | None = record
         for t in self.chain:
-            record = t.transform(record)
-            if record is None:
+            current = t.transform(current)
+            if current is None:
                 return None
             applied.append(t.name)
         if applied:
-            record.metadata.setdefault("transformers_applied", []).extend(applied)
-        return record
+            current.metadata.setdefault("transformers_applied", []).extend(applied)
+        return current
 
 
 def _flatten(value: Any, prefix: str) -> dict[str, Any]:

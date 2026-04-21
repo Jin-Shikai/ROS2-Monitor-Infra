@@ -81,6 +81,9 @@ def _build_pipeline(specs: list[dict] | None, logger) -> TransformerPipeline:
     chain: list[Transformer] = []
     for spec in specs or []:
         t_type = spec.get("type")
+        if not t_type:
+            logger.warn(f"Transformer spec missing 'type'; skipping: {spec}")
+            continue
         cls = TRANSFORMER_REGISTRY.get(t_type)
         if cls is None:
             logger.warn(f"Unknown transformer type: {t_type}; skipping.")
@@ -109,6 +112,9 @@ def _build_dispatcher(
 
     for spec in specs:
         name = spec.get("type")
+        if not name:
+            logger.warn(f"Exporter spec missing 'type'; skipping: {spec}")
+            continue
         if not dispatcher.has(name):
             logger.warn(f"Unknown exporter type: {name}; skipping.")
             continue
