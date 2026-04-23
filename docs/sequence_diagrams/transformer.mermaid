@@ -1,0 +1,17 @@
+sequenceDiagram
+    autonumber
+    participant DC as DataCollector
+    participant TP as TransformerPipeline
+    participant T1 as Transformer #1
+    participant T2 as Transformer #2
+    participant Tn as Transformer #N
+
+    DC->>TP: process(record0)
+    TP->>T1: transform(record0)
+    T1-->>TP: record1
+    TP->>T2: transform(record1)
+    T2-->>TP: record2
+    Note over TP,Tn: ... chain continues ...
+    TP->>Tn: transform(record_{N-1})
+    Tn-->>TP: record_N
+    TP-->>DC: record_N
