@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant MN as MonitorNode
+    participant Cfg as MonitorConfig
+    participant ED as ExportDispatcher
+    participant EXP as Exporter Layer
+    participant CM as CollectorManager
+    participant DC as DataCollector
+    participant TP as TransformerPipeline
+
+    User->>MN: start(yaml_path)
+    MN->>Cfg: load(yaml_path)
+    Cfg-->>MN: parsed specs
+
+    loop for each ExporterSpec
+        MN->>ED: register(name, cls, params)
+        ED->>EXP: instantiate backend
+    end
+
+    loop for each CollectorSpec
+        MN->>CM: register_collector(spec)
+        CM->>TP: build(transformer_specs)
+        CM->>DC: create(entity, type, pipeline)
+        DC->>DC: attach ROS2 subscription
+    end
+
+    MN-->>User: monitor ready

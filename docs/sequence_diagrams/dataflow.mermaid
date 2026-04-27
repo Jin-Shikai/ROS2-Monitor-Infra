@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    participant ROS as ROS2 Runtime
+    participant DC as DataCollector
+    participant TP as TransformerPipeline
+    participant ED as ExportDispatcher
+    participant EXP as Exporter Layer
+    participant CV as DataConverter
+    participant VS as VerdictService
+
+    Note over ROS,DC: Observation stage
+    ROS-->>DC: raw message (monitored entity)
+    DC->>DC: wrap as DataRecord
+    DC->>TP: process(record)
+    TP-->>DC: filtered DataRecord
+
+    Note over DC,CV: Transport stage 
+    DC->>ED: dispatch(record)
+    ED->>EXP: export(record)
+    EXP->>CV: deliver(record)
+
+    Note over CV,VS: Evaluation stage
+    CV->>CV: convert to DSL-ready record
+    CV->>ED: dispatch(dsl_record)
+    ED->>EXP: export(dsl_record)
+    EXP->>VS: deliver(dsl_record)
+    VS->>VS: evaluate against property
+    VS-->>VS: emit Verdict
