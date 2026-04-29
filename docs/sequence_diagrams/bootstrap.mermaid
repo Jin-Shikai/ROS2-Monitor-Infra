@@ -4,7 +4,7 @@ sequenceDiagram
     participant MN as MonitorNode
     participant Cfg as MonitorConfig
     participant ED1 as Dispatcher[DataRecord]
-    participant EXP as Exporter Layer<br/>(File / MQTT)
+    participant EXP as Exporter Layer
     participant CV as DataConverter
     participant VS as VerdictService
     participant ED2 as Dispatcher[Any] (DSL)
@@ -15,28 +15,28 @@ sequenceDiagram
     MN->>Cfg: load(yaml_path)
     Cfg-->>MN: parsed specs
 
-    MN->>ED1: new Dispatcher (raw)
+    MN->>ED1: new Dispatcher
     loop for each ExporterSpec
-        MN->>ED1: register(name, cls)
-        MN->>EXP: build backend (File / MQTT)
+        MN->>ED1: register
+        MN->>EXP: build backend
         MN->>ED1: add(exporter)
     end
 
     loop for each ConverterSpec
         MN->>CV: build DataConverter
         MN->>VS: build VerdictService
-        MN->>ED2: new Dispatcher + add VerdictExporter(VS)
-        MN->>ED1: add ConverterExporter(CV, ED2)
+        MN->>ED2: new Dispatcher + add VerdictExporter
+        MN->>ED1: add ConverterExporter
     end
 
-    MN->>ED1: dispatch(session_start)
+    MN->>ED1: dispatch
     MN->>CM: new CollectorManager
     MN->>MN: discover active topic types
 
     loop for each CollectorSpec
         MN->>MN: build TransformerPipeline
-        MN->>DC: new DataCollector(pipeline, dispatch=ED1.dispatch)
-        MN->>CM: register(collector)
+        MN->>DC: new DataCollector
+        MN->>CM: register
     end
 
     MN->>CM: start_all()

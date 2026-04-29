@@ -4,14 +4,14 @@ sequenceDiagram
     participant DC as DataCollector
     participant TP as TransformerPipeline
     participant ED1 as Dispatcher[DataRecord]
-    participant EXP as Exporter Layer<br/>(File / MQTT)
+    participant EXP as Exporter Layer
     participant CE as ConverterExporter
     participant CV as DataConverter
     participant ED2 as Dispatcher[Any] (DSL)
-    participant VS as VerdictService<br/>(via VerdictExporter)
+    participant VS as VerdictService
 
     Note over ROS,DC: Observation stage
-    ROS-->>DC: raw message (monitored entity)
+    ROS-->>DC: raw message 
     DC->>DC: wrap as DataRecord
     DC->>TP: process(record)
     TP-->>DC: filtered DataRecord (or None = drop)
