@@ -3,26 +3,28 @@ sequenceDiagram
     participant ROS as ROS2 Runtime
     participant DC as DataCollector
     participant TP as TransformerPipeline
-    participant ED as ExportDispatcher
-    participant EXP as Exporter Layer
+    participant ED1 as Dispatcher[DataRecord]
+    participant EXP as Exporter Layer<br/>(File / MQTT)
+    participant CE as ConverterExporter
     participant CV as DataConverter
-    participant VS as VerdictService
+    participant ED2 as Dispatcher[Any] (DSL)
+    participant VS as VerdictService<br/>(via VerdictExporter)
 
     Note over ROS,DC: Observation stage
     ROS-->>DC: raw message (monitored entity)
     DC->>DC: wrap as DataRecord
     DC->>TP: process(record)
-    TP-->>DC: filtered DataRecord
+    TP-->>DC: filtered DataRecord (or None = drop)
 
-    Note over DC,CV: Transport stage 
-    DC->>ED: dispatch(record)
-    ED->>EXP: export(record)
-    EXP->>CV: deliver(record)
+    Note over DC,EXP: Transport stage
+    DC->>ED1: dispatch(record)
+    ED1->>EXP: export(record)
+    ED1->>CE: export(record)
+    CE->>CV: convert(record)
+    CV-->>CE: dsl_record (or None = drop)
 
-    Note over CV,VS: Evaluation stage
-    CV->>CV: convert to DSL-ready record
-    CV->>ED: dispatch(dsl_record)
-    ED->>EXP: export(dsl_record)
-    EXP->>VS: deliver(dsl_record)
-    VS->>VS: evaluate against property
-    VS-->>VS: emit Verdict
+    Note over CE,VS: Evaluation stage
+    CE->>ED2: dispatch(dsl_record)
+    ED2->>VS: export(dsl_record)
+    VS->>VS: evaluate(dsl_record)
+    VS-->>VS: emit Verdict via sink (or stay silent)
