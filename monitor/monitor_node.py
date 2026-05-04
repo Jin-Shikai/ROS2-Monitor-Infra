@@ -377,14 +377,23 @@ class MonitorNode(Node):
 
 
 def main() -> int:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="ROS2 Monitor Node")
+    parser.add_argument(
+        "--config", "-c",
+        default=os.environ.get("MONITOR_CONFIG", "./monitor/config.yaml"),
+        help="Path to YAML config file (default: $MONITOR_CONFIG or ./monitor/config.yaml)",
+    )
+    args = parser.parse_args()
+    config_path = args.config
+
     # Make user-supplied modules under <project_root>/custom/ importable via
     # 'custom.x:Class' in config. Project root = cwd at launch (the recipe is
     # `cd ~/ROS2-Monitor-Infra && python3 monitor/monitor_node.py`).
     project_root = os.getcwd()
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
-
-    config_path = os.environ.get("MONITOR_CONFIG", "./monitor/config.yaml")
     try:
         config = MonitorConfig.load(config_path)
     except FileNotFoundError:
