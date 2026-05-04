@@ -1,24 +1,34 @@
-"""Data Exporter layer.
+"""Generic Exporter / Dispatcher transport layer.
 
-ExportDispatcher fans out each DataRecord to every registered Exporter.
-FileExporter is the always-on default (JSONL to disk); other transports
-(MQTT, Socket, ...) plug into the same interface.
+Originally specific to DataRecord. Now parameterized over a record type T so
+that the same infrastructure can carry DataRecords from the Collector side and
+DSL-ready records produced by a DataConverter on the downstream side.
+
+  Collector -> TransformerPipeline -> Dispatcher[DataRecord]
+                                          |--> FileExporter[DataRecord]
+                                          |--> MQTTExporter
+                                          `--> ConverterExporter (adapter)
+                                                   `--> Dispatcher[Any]
+                                                          |--> VerdictExporter
+                                                          `--> FileExporter[Any]
 """
 
 from __future__ import annotations
 
+import json
 import threading
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import Any, Callable, Generic, TypeVar
 
-from data_record import DataRecord
+T = TypeVar("T")
 
 
-class Exporter(ABC):
-    """Every exporter implements this three-method interface."""
+class Exporter(ABC, Generic[T]):
+    """Three-method interface every exporter implements."""
 
     @abstractmethod
-    def export(self, record: DataRecord) -> None: ...
+    def export(self, record: T) -> None: ...
 
     def flush(self) -> None:
         return
@@ -27,24 +37,31 @@ class Exporter(ABC):
         return
 
 
-class FileExporter(Exporter):
-    """Append each record as one JSON line to <output_dir>/<session_id>.jsonl."""
+class FileExporter(Exporter[T], Generic[T]):
+    """Append each record as one JSON line to <output_dir>/<session_id><suffix>.jsonl.
+
+    Generic over T: DataRecord uses its own to_json(); arbitrary dicts fall
+    back to json.dumps. A custom `serialize` overrides both.
+    """
 
     def __init__(
         self,
         output_dir: str,
         session_id: str,
         flush_every: int = 1,
+        filename_suffix: str = "",
+        serialize: Callable[[T], str] | None = None,
     ):
-        self.path = Path(output_dir) / f"{session_id}.jsonl"
+        self.path = Path(output_dir) / f"{session_id}{filename_suffix}.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._f = self.path.open("a", encoding="utf-8")
         self._lock = threading.Lock()
         self._written = 0
         self.flush_every = max(1, int(flush_every))
+        self._serialize = serialize or _default_serialize
 
-    def export(self, record: DataRecord) -> None:
-        line = record.to_json()
+    def export(self, record: T) -> None:
+        line = self._serialize(record)
         with self._lock:
             self._f.write(line + "\n")
             self._written += 1
@@ -63,34 +80,45 @@ class FileExporter(Exporter):
                 self._f.close()
 
 
-class ExportDispatcher:
-    """Owns the active exporter list plus a plugin registry (name -> class)."""
+def _default_serialize(record: Any) -> str:
+    if hasattr(record, "to_json"):
+        return record.to_json()
+    return json.dumps(record, default=str, ensure_ascii=False)
 
-    def __init__(self):
-        self._exporters: list[Exporter] = []
-        self._registry: dict[str, type[Exporter]] = {}
 
-    def register(self, name: str, exporter_cls: type[Exporter]) -> None:
+class Dispatcher(Generic[T]):
+    """Owns an exporter list plus a plugin registry (name -> class).
+
+    Records go in via dispatch(); each registered Exporter gets its own
+    try/except so a single bad exporter cannot take down the rest.
+    """
+
+    def __init__(self, label: str = "Dispatcher"):
+        self._label = label
+        self._exporters: list[Exporter[T]] = []
+        self._registry: dict[str, type[Exporter[T]]] = {}
+
+    def register(self, name: str, exporter_cls: type[Exporter[T]]) -> None:
         self._registry[name] = exporter_cls
 
     def has(self, name: str) -> bool:
         return name in self._registry
 
-    def build(self, name: str, **kwargs) -> Exporter:
+    def build(self, name: str, **kwargs) -> Exporter[T]:
         if name not in self._registry:
             raise KeyError(f"Unknown exporter: {name}")
         return self._registry[name](**kwargs)
 
-    def add(self, exporter: Exporter) -> None:
+    def add(self, exporter: Exporter[T]) -> None:
         self._exporters.append(exporter)
 
-    def dispatch(self, record: DataRecord) -> None:
+    def dispatch(self, record: T) -> None:
         for e in self._exporters:
             try:
                 e.export(record)
             except Exception as ex:
                 print(
-                    f"[ExportDispatcher] exporter {type(e).__name__} export failed: {ex}",
+                    f"[{self._label}] exporter {type(e).__name__} export failed: {ex}",
                     flush=True,
                 )
 
@@ -107,3 +135,7 @@ class ExportDispatcher:
                 e.close()
             except Exception:
                 pass
+
+
+# Backward-compat alias for callers that still use the old name.
+ExportDispatcher = Dispatcher

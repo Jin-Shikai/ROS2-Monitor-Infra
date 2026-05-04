@@ -30,3 +30,21 @@ exporters:
     broker: localhost
     port: 1883
     topic_prefix: monitor/
+
+# DSL evaluation chains. Each entry wires a DataConverter to a VerdictService.
+# Use a builtin name (e.g. RuleBasedConverter / ThresholdVerdict) or a Python
+# import path of the form 'module.path:ClassName' for user-defined classes.
+converters:
+  - type: custom.rule_based_converter:RuleBasedConverter
+    source_match: "^/odom$"
+    field_map:
+      velocity: twist.twist.linear.x
+    property_id: odom_speed_limit
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: odom_speed_limit
+      field: velocity
+      op: ">"
+      threshold: 0.5
+      sustain_sec: 0.0
+      output: verdicts_{session_id}.jsonl

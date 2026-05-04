@@ -35,8 +35,14 @@ from transformer import (
     RateThrottler,
     OnChangeFilter,
 )
-from exporter import Exporter, ExportDispatcher, FileExporter
+from exporter import Dispatcher, Exporter, FileExporter
 from exporter_mqtt import MQTTExporter
+from converter import ConverterExporter, resolve_converter_class
+from verdict import (
+    FileVerdictSink,
+    VerdictExporter,
+    resolve_verdict_class,
+)
 
 
 TRANSFORMER_REGISTRY: dict[str, type[Transformer]] = {
@@ -60,6 +66,7 @@ class MonitorConfig:
     services: list[dict] = field(default_factory=list)
     actions: list[dict] = field(default_factory=list)
     exporters: list[dict] = field(default_factory=list)
+    converters: list[dict] = field(default_factory=list)
 
     @classmethod
     def load(cls, yaml_path: str) -> "MonitorConfig":
@@ -74,6 +81,7 @@ class MonitorConfig:
             services=list(data.get("services") or []),
             actions=list(data.get("actions") or []),
             exporters=list(data.get("exporters") or []),
+            converters=list(data.get("converters") or []),
         )
 
 
@@ -101,8 +109,8 @@ def _build_dispatcher(
     output_dir: str,
     session_id: str,
     logger,
-) -> ExportDispatcher:
-    dispatcher = ExportDispatcher()
+) -> Dispatcher:
+    dispatcher: Dispatcher = Dispatcher(label="ExportDispatcher")
     for name, cls in EXPORTER_REGISTRY.items():
         dispatcher.register(name, cls)
 
@@ -130,6 +138,97 @@ def _build_dispatcher(
     return dispatcher
 
 
+def _build_converter_chain(
+    spec: dict,
+    output_dir: str,
+    session_id: str,
+    logger,
+) -> tuple[ConverterExporter, list[FileVerdictSink]] | None:
+    """Build one DSL chain: DataConverter -> Dispatcher[Any] -> [VerdictExporter, ...].
+
+    Returns the ConverterExporter (to be registered on the raw dispatcher) plus
+    any FileVerdictSinks that need closing on shutdown. Returns None on error.
+    """
+    converter_type = spec.get("type")
+    if not converter_type:
+        logger.error(f"Converter spec missing 'type'; skipping: {spec}")
+        return None
+
+    verdict_spec = spec.get("verdict")
+    if not verdict_spec or not verdict_spec.get("type"):
+        logger.error(
+            f"Converter '{converter_type}' must include a 'verdict' "
+            f"section with a 'type'; skipping."
+        )
+        return None
+
+    try:
+        conv_cls = resolve_converter_class(converter_type)
+    except (KeyError, ImportError, AttributeError, TypeError) as ex:
+        logger.error(f"Cannot resolve converter '{converter_type}': {ex}")
+        return None
+    conv_kwargs = {
+        k: v for k, v in spec.items() if k not in ("type", "verdict", "output")
+    }
+    try:
+        converter = conv_cls(**conv_kwargs)
+    except Exception as ex:
+        logger.error(f"Failed to build converter '{converter_type}': {ex}")
+        return None
+
+    try:
+        v_cls = resolve_verdict_class(verdict_spec["type"])
+    except (KeyError, ImportError, AttributeError, TypeError) as ex:
+        logger.error(f"Cannot resolve verdict service '{verdict_spec['type']}': {ex}")
+        return None
+    v_kwargs = {
+        k: v for k, v in verdict_spec.items() if k not in ("type", "output")
+    }
+    try:
+        verdict_service = v_cls(**v_kwargs)
+    except Exception as ex:
+        logger.error(f"Failed to build verdict service: {ex}")
+        return None
+
+    sinks: list[FileVerdictSink] = []
+    sink = None
+    verdict_output = verdict_spec.get("output")
+    if verdict_output:
+        from pathlib import Path
+        out_path = Path(verdict_output)
+        if not out_path.is_absolute():
+            out_path = Path(output_dir) / verdict_output
+        # Stamp session_id into the filename if a placeholder is present.
+        out_path = Path(str(out_path).replace("{session_id}", session_id))
+        sink_obj = FileVerdictSink(str(out_path))
+        sinks.append(sink_obj)
+        sink = sink_obj
+
+    dsl_dispatcher: Dispatcher = Dispatcher(label=f"DSL[{converter_type}]")
+    dsl_dispatcher.add(VerdictExporter(verdict_service, sink=sink))
+
+    # Optional: also archive dsl records to a file for offline replay.
+    dsl_record_output = spec.get("output")
+    if dsl_record_output:
+        from pathlib import Path
+        out_path = Path(dsl_record_output)
+        if not out_path.is_absolute():
+            out_path = Path(output_dir) / dsl_record_output
+        out_path = Path(str(out_path).replace("{session_id}", session_id))
+        dsl_dispatcher.add(
+            FileExporter(
+                output_dir=str(out_path.parent),
+                session_id=out_path.stem,
+                filename_suffix="",
+            )
+        )
+
+    logger.info(
+        f"Converter chain enabled: {converter_type} -> {verdict_spec['type']}"
+    )
+    return ConverterExporter(converter, dsl_dispatcher), sinks
+
+
 class MonitorNode(Node):
     def __init__(self, config: MonitorConfig):
         super().__init__("ros2_monitor_node")
@@ -146,6 +245,18 @@ class MonitorNode(Node):
         self.dispatcher = _build_dispatcher(
             config.exporters, config.output_dir, self.session_id, log
         )
+
+        # Track verdict sinks so we can close their file handles on shutdown.
+        self._verdict_sinks: list[FileVerdictSink] = []
+        for spec in config.converters:
+            built = _build_converter_chain(
+                spec, config.output_dir, self.session_id, log
+            )
+            if built is None:
+                continue
+            converter_exporter, sinks = built
+            self.dispatcher.add(converter_exporter)
+            self._verdict_sinks.extend(sinks)
 
         # session_start bypasses any pipeline
         self.dispatcher.dispatch(
@@ -261,10 +372,28 @@ class MonitorNode(Node):
                 })
             )
             self.dispatcher.close_all()
+            for sink in self._verdict_sinks:
+                sink.close()
 
 
 def main() -> int:
-    config_path = os.environ.get("MONITOR_CONFIG", "./monitor/config.yaml")
+    import argparse
+
+    parser = argparse.ArgumentParser(description="ROS2 Monitor Node")
+    parser.add_argument(
+        "--config", "-c",
+        default=os.environ.get("MONITOR_CONFIG", "./monitor/config.yaml"),
+        help="Path to YAML config file (default: $MONITOR_CONFIG or ./monitor/config.yaml)",
+    )
+    args = parser.parse_args()
+    config_path = args.config
+
+    # Make user-supplied modules under <project_root>/custom/ importable via
+    # 'custom.x:Class' in config. Project root = cwd at launch (the recipe is
+    # `cd ~/ROS2-Monitor-Infra && python3 monitor/monitor_node.py`).
+    project_root = os.getcwd()
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
     try:
         config = MonitorConfig.load(config_path)
     except FileNotFoundError:
