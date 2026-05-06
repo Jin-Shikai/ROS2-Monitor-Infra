@@ -267,8 +267,8 @@ class MonitorNode(Node):
             self, self.session_id, self.dispatcher.dispatch
         )
 
-        # Topic types can be auto-discovered from the network if not set
-        self._active_topic_types = self._discover_topic_types()
+        # Types can be auto-discovered from the network if not set in config
+        self._active_topic_types, self._active_service_types = self._discover_network_types()
 
         for spec in config.topics:
             self._register_topic(spec)
@@ -282,14 +282,20 @@ class MonitorNode(Node):
             f"Registered {len(self.manager.collectors)} collector(s); spinning."
         )
 
-    def _discover_topic_types(self) -> dict[str, str]:
+    def _discover_network_types(self) -> tuple[dict[str, str], dict[str, str]]:
         import time
         time.sleep(1.0)  # allow DDS discovery
-        return {
+        topic_types = {
             name: types[0]
             for name, types in self.get_topic_names_and_types()
             if types
         }
+        service_types = {
+            name: types[0]
+            for name, types in self.get_service_names_and_types()
+            if types
+        }
+        return topic_types, service_types
 
     def _register_topic(self, spec: dict) -> None:
         log = self.get_logger()
@@ -320,11 +326,14 @@ class MonitorNode(Node):
     def _register_service(self, spec: dict) -> None:
         log = self.get_logger()
         name = spec.get("name")
-        srv_type = spec.get("type")
-        if not name or not srv_type:
+        if not name:
+            log.error(f"Service spec missing 'name'; skipping.")
+            return
+        srv_type = spec.get("type") or self._active_service_types.get(name)
+        if not srv_type:
             log.error(
-                f"Service spec requires 'name' and 'type' (e.g. "
-                f"'std_srvs/srv/SetBool'); got {spec}; skipping."
+                f"Cannot determine type for service {name}: not active at startup "
+                f"and no 'type' in config; skipping."
             )
             return
         pipeline = _build_pipeline(spec.get("transformers"), log)
