@@ -72,11 +72,17 @@ class RuleBasedConverter(DataConverter):
             return None
         out: dict[str, Any] = {}
         for out_key, path in self.field_map.items():
-            found, value = _get_path(record.data, path)
-            if found:
-                out[out_key] = value
-            elif self.require_all:
-                return None
+            # FieldExtractor flattens to dot-notation keys (e.g. "twist.twist.linear.x"
+            # is a literal key in record.data). Try a flat lookup first, fall back to
+            # nested traversal for raw records that haven't been through FieldExtractor.
+            if path in record.data:
+                out[out_key] = record.data[path]
+            else:
+                found, value = _get_path(record.data, path)
+                if found:
+                    out[out_key] = value
+                elif self.require_all:
+                    return None
         if not out:
             return None
         out["_source_name"] = record.source_name

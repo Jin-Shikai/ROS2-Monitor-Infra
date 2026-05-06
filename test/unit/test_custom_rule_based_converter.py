@@ -65,6 +65,20 @@ def test_drops_when_no_field_extracted():
     assert c.convert(_data_record()) is None
 
 
+def test_projects_flat_key_from_field_extractor_output():
+    """RuleBasedConverter must read records that already passed through
+    FieldExtractor, where dot-paths are literal flat keys, not nested dicts."""
+    flat_data = {"twist.twist.linear.x": 0.4, "pose.pose.position.x": 1.2}
+    c = RuleBasedConverter(
+        source_match="^/odom$",
+        field_map={"velocity": "twist.twist.linear.x"},
+        property_id="speed_limit",
+    )
+    out = c.convert(_data_record(data=flat_data))
+    assert out is not None
+    assert out["velocity"] == 0.4
+
+
 def test_omits_property_id_when_not_configured():
     c = RuleBasedConverter(
         source_match="^/odom$",
