@@ -30,6 +30,19 @@ exporters:
     broker: localhost
     port: 1883
     topic_prefix: monitor/
+    qos: 1
+    max_queued_messages: 1000
+    publish_bookends: true
+
+# Verdict-runner config (consumed by monitor/verdict_runner.py only).
+# Only this block and `converters:` are read on the verdict box; rclpy is NOT
+# required there. Run with:
+#   python3 monitor/verdict_runner.py --config monitor/config.yaml
+verdict_runner:
+  broker: localhost
+  port: 1883
+  topic_filter: monitor/#
+  qos: 1
 
 # DSL evaluation chains. Each entry wires a DataConverter to a VerdictService.
 # Use a builtin name (e.g. RuleBasedConverter / ThresholdVerdict) or a Python

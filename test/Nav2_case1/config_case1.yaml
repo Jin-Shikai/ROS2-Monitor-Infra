@@ -1,0 +1,74 @@
+monitor:
+  output_dir: ./output/nav2
+
+topics:
+  - name: /odom
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - twist.twist.linear.x
+          - twist.twist.angular.z
+      - type: RateThrottler
+        max_rate_hz: 5.0
+
+  - name: /amcl_pose
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - pose.covariance 
+
+  - name: /cmd_vel
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - twist.linear.x
+          - twist.linear.y
+          - twist.angular.z
+      - type: RateThrottler
+        max_rate_hz: 5.0
+
+  - name: /plan
+    transformers:
+      - type: OnChangeFilter
+        watch_fields:
+          - header.stamp.sec
+          - header.stamp.nanosec
+
+actions:
+  - name: /navigate_to_pose
+    type: nav2_msgs/action/NavigateToPose
+    phases: [feedback, status]
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - feedback.distance_remaining
+          - feedback.number_of_recoveries
+          - feedback.navigation_time.sec
+          - feedback.estimated_time_remaining.sec
+          - feedback.current_pose.pose.position.x
+          - feedback.current_pose.pose.position.y
+          - status_list 
+      - type: RateThrottler
+        max_rate_hz: 2.0
+
+exporters:
+  - type: file
+
+converters:
+  - type: custom.rule_based_converter:RuleBasedConverter
+    source_match: "^/cmd_vel$"
+    field_map:
+      speed: twist.linear.x 
+    property_id: cmd_vel_speed_limit
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: cmd_vel_speed_limit
+      field: speed
+      op: ">"
+      threshold: 0.30
+      sustain_sec: 0.0
+      output: verdicts_{session_id}.jsonl

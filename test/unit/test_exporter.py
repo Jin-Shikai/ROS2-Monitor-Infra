@@ -1,4 +1,7 @@
-"""Unit tests for monitor/exporter.py and monitor/exporter_mqtt.py."""
+"""Unit tests for monitor/exporter.py.
+
+MQTTExporter tests live in test_exporter_mqtt.py.
+"""
 
 import json
 from pathlib import Path
@@ -7,7 +10,6 @@ import pytest
 
 from data_record import DataRecord
 from exporter import Exporter, ExportDispatcher, FileExporter
-from exporter_mqtt import MQTTExporter
 
 
 def _rec(seq=1):
@@ -119,11 +121,3 @@ def test_dispatcher_flush_and_close_all_tolerate_errors():
     d.close_all()  # must not raise
 
 
-def test_mqtt_exporter_stub_is_noop(caplog):
-    # Stub should accept any record without raising and without publishing.
-    exp = MQTTExporter(broker="localhost", port=1883, topic_prefix="monitor/")
-    assert exp.broker == "localhost"
-    assert exp.port == 1883
-    assert exp.topic_prefix == "monitor/"
-    # export returns None, does nothing
-    assert exp.export(_rec()) is None
