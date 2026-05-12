@@ -86,6 +86,25 @@ def _default_serialize(record: Any) -> str:
     return json.dumps(record, default=str, ensure_ascii=False)
 
 
+class StdoutExporter(Exporter[T], Generic[T]):
+    """Print each record to stdout, prefixed by `label`.
+
+    Generic over T: uses the same duck-typed serializer as FileExporter,
+    so DataRecords, Verdicts, and plain dicts all work.
+    """
+
+    def __init__(
+        self,
+        label: str = "Record",
+        serialize: Callable[[T], str] | None = None,
+    ):
+        self.label = label
+        self._serialize = serialize or _default_serialize
+
+    def export(self, record: T) -> None:
+        print(f"[{self.label}] {self._serialize(record)}", flush=True)
+
+
 class Dispatcher(Generic[T]):
     """Owns an exporter list plus a plugin registry (name -> class).
 

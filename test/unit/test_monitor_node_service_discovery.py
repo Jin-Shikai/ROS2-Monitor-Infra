@@ -30,7 +30,11 @@ def _make_node(active_service_types: dict[str, str]) -> MonitorNode:
     """Build a MonitorNode without invoking rclpy / Node.__init__."""
     node = MonitorNode.__new__(MonitorNode)
     node.session_id = "sid"
+    node.config = MagicMock()
+    node.config.output_dir = "."
     node.dispatcher = MagicMock()
+    node._converter_dispatcher = MagicMock()
+    node._source_dispatchers = []
     node.manager = MagicMock()
     node._active_service_types = active_service_types
     node._logger = _FakeLogger()

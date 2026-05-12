@@ -30,6 +30,8 @@ topics:
           - twist.angular.z
       - type: RateThrottler
         max_rate_hz: 5.0
+    exporters:
+      - type: file
 
   - name: /plan
     transformers:
@@ -59,16 +61,10 @@ exporters:
   - type: file
 
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
-    source_match: "^/cmd_vel$"
-    field_map:
-      speed: twist.linear.x 
-    property_id: cmd_vel_speed_limit
+  - type: custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter
+    inputs: ["/cmd_vel"]
     verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
-      property_id: cmd_vel_speed_limit
-      field: speed
-      op: ">"
-      threshold: 0.30
-      sustain_sec: 0.0
-      output: verdicts_{session_id}.jsonl
+      type: custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict
+      exporters:
+        - type: file
+          path: verdicts_{session_id}.jsonl

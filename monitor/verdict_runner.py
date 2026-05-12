@@ -19,7 +19,9 @@ Topology:
     verdict_runner (verdict box)
       MQTTSource -> Dispatcher[DataRecord] -> ConverterExporter -> ...
                                                           -> VerdictService
-                                                          -> FileVerdictSink
+                                                          -> Dispatcher[Verdict]
+                                                                |--> VerdictFileExporter
+                                                                `--> ... (mqtt / user)
 """
 
 from __future__ import annotations
@@ -38,7 +40,6 @@ from data_record import generate_session_id
 from exporter import Dispatcher
 from pipeline import build_converter_chain
 from source_mqtt import MQTTSource
-from verdict import FileVerdictSink
 
 logger = logging.getLogger("verdict_runner")
 
@@ -103,7 +104,7 @@ def main() -> int:
     logger.info("Verdict runner session_id=%s", runner_session_id)
 
     raw_dispatcher: Dispatcher = Dispatcher(label="VerdictRunnerDispatcher")
-    sinks: list[FileVerdictSink] = []
+    verdict_dispatchers: list[Dispatcher] = []
     chains_built = 0
     for spec in cfg.converters:
         built = build_converter_chain(
@@ -111,9 +112,9 @@ def main() -> int:
         )
         if built is None:
             continue
-        ce, ss = built
+        ce, vd = built
         raw_dispatcher.add(ce)
-        sinks.extend(ss)
+        verdict_dispatchers.append(vd)
         chains_built += 1
 
     if chains_built == 0:
@@ -146,8 +147,8 @@ def main() -> int:
     finally:
         source.stop()
         raw_dispatcher.close_all()
-        for s in sinks:
-            s.close()
+        for vd in verdict_dispatchers:
+            vd.close_all()
     return 0
 
 

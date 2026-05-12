@@ -41,6 +41,8 @@ def test_unresolvable_converter_returns_none(logger, tmp_path):
 
 
 def test_session_id_substituted_in_verdict_output_path(logger, tmp_path):
+    """Legacy `verdict.output: <path>` sugar still works and resolves
+    `{session_id}` against the chain's session id."""
     spec = {
         "type": "custom.rule_based_converter:RuleBasedConverter",
         "source_match": "^/odom$",
@@ -57,15 +59,43 @@ def test_session_id_substituted_in_verdict_output_path(logger, tmp_path):
     }
     built = build_converter_chain(spec, str(tmp_path), "abc123", logger)
     assert built is not None
-    _, sinks = built
-    assert len(sinks) == 1
-    assert sinks[0].path == Path(tmp_path) / "verdicts_abc123.jsonl"
-    sinks[0].close()
+    _, verdict_dispatcher = built
+    exporters = verdict_dispatcher._exporters
+    assert len(exporters) == 1
+    assert exporters[0].path == Path(tmp_path) / "verdicts_abc123.jsonl"
+    verdict_dispatcher.close_all()
+
+
+def test_new_exporters_schema_with_file_and_stdout(logger, tmp_path):
+    """The new `verdict.exporters: [...]` schema builds one Exporter per
+    entry, fanning out via the Dispatcher[Verdict]."""
+    spec = {
+        "type": "custom.rule_based_converter:RuleBasedConverter",
+        "source_match": "^/odom$",
+        "field_map": {"velocity": "twist.twist.linear.x"},
+        "property_id": "p1",
+        "verdict": {
+            "type": "custom.threshold_verdict:ThresholdVerdict",
+            "property_id": "p1",
+            "field": "velocity",
+            "op": ">",
+            "threshold": 0.2,
+            "exporters": [
+                {"type": "file", "path": "v_{session_id}.jsonl"},
+                {"type": "stdout"},
+            ],
+        },
+    }
+    built = build_converter_chain(spec, str(tmp_path), "S", logger)
+    assert built is not None
+    _, verdict_dispatcher = built
+    assert len(verdict_dispatcher._exporters) == 2
+    verdict_dispatcher.close_all()
 
 
 def test_end_to_end_chain_writes_verdict_on_breach(logger, tmp_path):
-    """Drive a record through the chain returned by build_converter_chain
-    and confirm a violation Verdict reaches the FileVerdictSink."""
+    """Drive a record through the chain and confirm a violation Verdict
+    reaches the VerdictFileExporter."""
     spec = {
         "type": "custom.rule_based_converter:RuleBasedConverter",
         "source_match": "^/odom$",
@@ -83,7 +113,7 @@ def test_end_to_end_chain_writes_verdict_on_breach(logger, tmp_path):
     }
     built = build_converter_chain(spec, str(tmp_path), "S", logger)
     assert built is not None
-    converter_exporter, sinks = built
+    converter_exporter, verdict_dispatcher = built
 
     raw: Dispatcher = Dispatcher(label="raw")
     raw.add(converter_exporter)
@@ -97,10 +127,88 @@ def test_end_to_end_chain_writes_verdict_on_breach(logger, tmp_path):
         seq=1,
     )
     raw.dispatch(rec)
-    for s in sinks:
-        s.close()
+    verdict_dispatcher.close_all()
 
     out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
     assert len(out) == 1
     assert '"property_id": "speed"' in out[0]
     assert '"result": false' in out[0]
+
+
+def test_inputs_filter_drops_other_sources(logger, tmp_path):
+    """A converter with `inputs: ["/cmd_vel"]` must not see /odom records."""
+    spec = {
+        "type": "custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter",
+        "inputs": ["/cmd_vel"],
+        "verdict": {
+            "type": "custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict",
+            "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
+        },
+    }
+    built = build_converter_chain(spec, str(tmp_path), "S", logger)
+    assert built is not None
+    outer, verdict_dispatcher = built
+
+    raw: Dispatcher = Dispatcher(label="raw")
+    raw.add(outer)
+
+    # /odom should be filtered out by inputs even though its data shape would
+    # otherwise match (twist.linear.x present).
+    raw.dispatch(DataRecord.from_topic_msg(
+        session_id="S", topic_name="/odom",
+        msg_type="nav_msgs/msg/Odometry",
+        data={"twist.linear.x": 0.99}, seq=1,
+    ))
+    # /cmd_vel with a breach should fire.
+    raw.dispatch(DataRecord.from_topic_msg(
+        session_id="S", topic_name="/cmd_vel",
+        msg_type="geometry_msgs/msg/Twist",
+        data={"twist.linear.x": 0.5}, seq=2,
+    ))
+    verdict_dispatcher.close_all()
+
+    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
+    assert len(out) == 1, f"expected exactly one verdict (from /cmd_vel), got {len(out)}"
+    assert '"value": 0.5' in out[0]
+
+
+def test_inputs_empty_list_rejected(logger, tmp_path):
+    spec = {
+        "type": "custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter",
+        "inputs": [],
+        "verdict": {
+            "type": "custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict",
+            "exporters": [{"type": "stdout"}],
+        },
+    }
+    assert build_converter_chain(spec, str(tmp_path), "S", logger) is None
+
+
+def test_inputs_wrong_type_rejected(logger, tmp_path):
+    spec = {
+        "type": "custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter",
+        "inputs": "/cmd_vel",  # must be a list, not a bare string
+        "verdict": {
+            "type": "custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict",
+            "exporters": [{"type": "stdout"}],
+        },
+    }
+    assert build_converter_chain(spec, str(tmp_path), "S", logger) is None
+
+
+def test_unknown_verdict_exporter_type_returns_none(logger, tmp_path):
+    spec = {
+        "type": "custom.rule_based_converter:RuleBasedConverter",
+        "source_match": "^/odom$",
+        "field_map": {"velocity": "twist.twist.linear.x"},
+        "property_id": "p1",
+        "verdict": {
+            "type": "custom.threshold_verdict:ThresholdVerdict",
+            "property_id": "p1",
+            "field": "velocity",
+            "op": ">",
+            "threshold": 0.2,
+            "exporters": [{"type": "nope"}],
+        },
+    }
+    assert build_converter_chain(spec, str(tmp_path), "S", logger) is None

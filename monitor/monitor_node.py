@@ -38,7 +38,6 @@ from transformer import (
 from exporter import Dispatcher, Exporter, FileExporter
 from exporter_mqtt import MQTTExporter
 from pipeline import build_converter_chain
-from verdict import FileVerdictSink
 
 
 TRANSFORMER_REGISTRY: dict[str, type[Transformer]] = {
@@ -100,20 +99,39 @@ def _build_pipeline(specs: list[dict] | None, logger) -> TransformerPipeline:
     return TransformerPipeline(chain)
 
 
+def _sanitize_source_name(source_name: str) -> str:
+    """Turn an ROS source name (e.g. '/navigate_to_pose') into a safe
+    filename suffix (e.g. '_navigate_to_pose')."""
+    return source_name.replace("/", "_") or "_root"
+
+
 def _build_dispatcher(
     specs: list[dict],
     output_dir: str,
     session_id: str,
     logger,
+    label: str = "ExportDispatcher",
+    source_name: str | None = None,
 ) -> Dispatcher:
-    dispatcher: Dispatcher = Dispatcher(label="ExportDispatcher")
+    """Build a Dispatcher[DataRecord] from a list of exporter specs.
+
+    When `source_name` is given (per-source dispatcher), file exporters
+    that don't explicitly set `filename_suffix` get one derived from
+    the source name, so each topic writes to its own JSONL file.
+    """
+    dispatcher: Dispatcher = Dispatcher(label=label)
     for name, cls in EXPORTER_REGISTRY.items():
         dispatcher.register(name, cls)
 
-    # Default to file exporter if none configured
+    # Default to file exporter if none configured (only at global scope)
     if not specs:
+        if source_name is not None:
+            return dispatcher  # per-source: no exporters means "use global only"
         specs = [{"type": "file"}]
 
+    suffix_default = (
+        _sanitize_source_name(source_name) if source_name is not None else ""
+    )
     for spec in specs:
         name = spec.get("type")
         if not name:
@@ -126,9 +144,14 @@ def _build_dispatcher(
         if name == "file":
             kwargs.setdefault("output_dir", output_dir)
             kwargs.setdefault("session_id", session_id)
+            if suffix_default:
+                kwargs.setdefault("filename_suffix", suffix_default)
         try:
             dispatcher.add(dispatcher.build(name, **kwargs))
-            logger.info(f"Exporter enabled: {name}")
+            logger.info(
+                f"Exporter enabled: {name}"
+                + (f" (source={source_name})" if source_name else "")
+            )
         except Exception as ex:
             logger.error(f"Failed to build exporter {name}: {ex}")
     return dispatcher
@@ -151,19 +174,33 @@ class MonitorNode(Node):
             config.exporters, config.output_dir, self.session_id, log
         )
 
-        # Track verdict sinks so we can close their file handles on shutdown.
-        self._verdict_sinks: list[FileVerdictSink] = []
+        # Converter chains live on a dedicated tap, *not* on the global
+        # exporters dispatcher. This way a record routed to a per-source
+        # dispatcher (bypassing global exporters) still reaches the
+        # converter / verdict pipeline.
+        self._converter_dispatcher: Dispatcher = Dispatcher(label="Converters")
+
+        # Track per-source dispatchers (one per topic/service/action
+        # whose spec has its own `exporters:` block). Records on those
+        # sources go *only* to the per-source dispatcher, not to the
+        # global exporters — but they are still tee'd to converters.
+        self._source_dispatchers: list[Dispatcher] = []
+
+        # Track per-chain verdict dispatchers so we can close their
+        # transports (file handles, MQTT clients, ...) on shutdown.
+        self._verdict_dispatchers: list[Dispatcher] = []
         for spec in config.converters:
             built = build_converter_chain(
                 spec, config.output_dir, self.session_id, log
             )
             if built is None:
                 continue
-            converter_exporter, sinks = built
-            self.dispatcher.add(converter_exporter)
-            self._verdict_sinks.extend(sinks)
+            converter_exporter, verdict_dispatcher = built
+            self._converter_dispatcher.add(converter_exporter)
+            self._verdict_dispatchers.append(verdict_dispatcher)
 
-        # session_start bypasses any pipeline
+        # session_start bypasses any pipeline (converters skip non-data
+        # records anyway, so no tee needed here)
         self.dispatcher.dispatch(
             DataRecord.make_session_start(self.session_id, config.raw)
         )
@@ -186,6 +223,35 @@ class MonitorNode(Node):
         log.info(
             f"Registered {len(self.manager.collectors)} collector(s); spinning."
         )
+
+    def _dispatch_for(self, spec: dict, source_name: str, log) -> Any:
+        """Return a `dispatch` callable for one source.
+
+        If the spec carries its own `exporters:` block, build a per-source
+        Dispatcher (records go *only* there for the exporter side,
+        isolated from the global stream). Either way the record is also
+        tee'd to the converter tap so DSL chains keep working.
+        """
+        per_source_specs = spec.get("exporters")
+        if per_source_specs:
+            sub = _build_dispatcher(
+                per_source_specs,
+                self.config.output_dir,
+                self.session_id,
+                log,
+                label=f"Exporters[{source_name}]",
+                source_name=source_name,
+            )
+            self._source_dispatchers.append(sub)
+            target = sub.dispatch
+        else:
+            target = self.dispatcher.dispatch
+        converter_dispatch = self._converter_dispatcher.dispatch
+
+        def tee(record):
+            target(record)
+            converter_dispatch(record)
+        return tee
 
     def _discover_network_types(self) -> tuple[dict[str, str], dict[str, str]]:
         import time
@@ -222,7 +288,7 @@ class MonitorNode(Node):
             source_name=name,
             msg_type_str=msg_type,
             pipeline=pipeline,
-            dispatch=self.dispatcher.dispatch,
+            dispatch=self._dispatch_for(spec, name, log),
             qos=int(spec.get("qos", 10)),
         )
         self.manager.register(collector)
@@ -248,7 +314,7 @@ class MonitorNode(Node):
             source_name=name,
             service_type_str=srv_type,
             pipeline=pipeline,
-            dispatch=self.dispatcher.dispatch,
+            dispatch=self._dispatch_for(spec, name, log),
         )
         self.manager.register(collector)
         log.info(f"  Service: {name} [{srv_type}]")
@@ -271,7 +337,7 @@ class MonitorNode(Node):
             action_type_str=act_type,
             phases=phases,
             pipeline=pipeline,
-            dispatch=self.dispatcher.dispatch,
+            dispatch=self._dispatch_for(spec, name, log),
         )
         self.manager.register(collector)
         log.info(f"  Action: {name} [{act_type}] phases={phases}")
@@ -286,8 +352,11 @@ class MonitorNode(Node):
                 })
             )
             self.dispatcher.close_all()
-            for sink in self._verdict_sinks:
-                sink.close()
+            self._converter_dispatcher.close_all()
+            for sd in self._source_dispatchers:
+                sd.close_all()
+            for vd in self._verdict_dispatchers:
+                vd.close_all()
 
 
 def main() -> int:

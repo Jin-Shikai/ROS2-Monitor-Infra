@@ -1,9 +1,10 @@
 # DSL Layer — Extension Notes & TODOs
 
 Scope: design notes for evolving the DataConverter / VerdictService /
-verdict-sink layer. Captures what already works today, the open
+verdict-output layer. Captures what already works today, the open
 extensibility gaps, and a reproducible playbook for adding new DSL
-backends. Updated 2026-05-07 (post-Phase 4).
+backends. Updated 2026-05-12 (TODO 1 design revised to unify around the
+existing `Exporter[T]` hierarchy — see Section 2).
 
 ---
 
@@ -21,36 +22,49 @@ backends. Updated 2026-05-07 (post-Phase 4).
 
 ---
 
-## 2. TODO 1: Pluggable verdict sinks (parity with Exporters)
+## 2. TODO 1: Pluggable verdict outputs (unified with `Exporter[T]`)
 
 ### Problem statement
 
 Today the verdict output target is hardcoded to "either stdout or one
 file". The YAML key `verdict.output:` is interpreted only as a file
-path. To send verdicts to MQTT / Prometheus / Slack / a dashboard, you
-must edit `pipeline.build_converter_chain` and `verdict.py`. This is
-asymmetric with the exporter layer, which already supports a registry of
-transports (`file`, `mqtt`, …).
+path. To send verdicts to MQTT / Prometheus / Slack / a ROS2 topic / a
+socket, you must edit `pipeline.build_converter_chain` and `verdict.py`.
+This is asymmetric with the upstream exporter layer, which already
+supports a registry of transports (`file`, `mqtt`, …).
 
-### Proposed design
+### Design decision: do **not** invent a second "Sink" hierarchy
 
-Mirror the `Exporter` / `Dispatcher` pattern at the verdict-sink layer.
+An earlier draft of this TODO proposed mirroring the exporter layer
+with a parallel `VerdictSink` / `SinkDispatcher` stack. That is
+duplication — `Exporter[T]` in [monitor/exporter.py](../monitor/exporter.py)
+is already a generic transport interface and `Dispatcher[T]` already
+provides fan-out + per-exporter try/except isolation + a registry.
+`VerdictExporter` in [monitor/verdict.py](../monitor/verdict.py) is
+itself an `Exporter[Any]`. The orphan `FileVerdictSink` (also in
+`verdict.py`) is the only thing that doesn't fit the pattern — it
+should be replaced by an `Exporter[Verdict]`, not propagated.
+
+So the chosen direction is **one term, one hierarchy**:
 
 ```
-              VerdictService.evaluate(dsl_record) → Verdict
-                                  ↓
-                            VerdictExporter
-                                  ↓
-                          SinkDispatcher (new) ── fan-out:
-                            ├── FileSink      → verdicts_*.jsonl
-                            ├── MQTTSink      → broker topic
-                            ├── StdoutSink    → print
-                            └── ...           (user-pluggable)
+Exporter[T]                       # already exists, generic over payload type
+   ├── FileExporter[T]            # already exists, works for any T (uses to_json or json.dumps)
+   ├── StdoutExporter[T]          # new, ~5 LOC, generic
+   ├── MQTTExporter               # already exists, DataRecord-specific topic naming
+   ├── VerdictMQTTExporter        # new, Verdict-specific (single topic)
+   ├── ROS2TopicExporter[Verdict] # future, user-pluggable
+   └── any user-defined exporter  # loaded via `module.path:ClassName`
 ```
 
-### YAML schema (proposed)
+Anything a user might want to send a Verdict to — ROS2 topic, Unix
+socket, gRPC stream, Slack webhook, Kafka — is just an `Exporter[Verdict]`
+subclass. No new base class, no parallel registry, no extra terminology.
 
-Replace single `output:` string with a list of sink specs:
+### YAML schema
+
+Replace the single `output:` string with a list under `exporters:`,
+matching the spelling used at the top level for DataRecord exporters:
 
 ```yaml
 verdict:
@@ -59,7 +73,7 @@ verdict:
   field: speed
   op: ">"
   threshold: 0.30
-  sinks:
+  exporters:
     - type: file
       path: verdicts_{session_id}.jsonl
     - type: mqtt
@@ -68,111 +82,99 @@ verdict:
       topic: verdicts/robot1/cmd_vel_speed_limit
       qos: 1
     - type: stdout
+    - type: my_pkg.custom_exporter:SlackVerdictExporter
+      webhook: https://hooks.slack.com/...
 ```
 
-Backward compatibility: keep `output: <path>` as syntactic sugar for
-`sinks: [{type: file, path: <path>}]`.
+**Backward compatibility**: keep `output: <path>` as syntactic sugar
+for `exporters: [{type: file, path: <path>}]`. Existing configs and
+the Nav2 case study continue to work unchanged.
 
 ### Implementation sketch
 
-New file `monitor/verdict_sinks.py`:
+New file `monitor/verdict_exporters.py`:
 
 ```python
-from abc import ABC, abstractmethod
+from exporter import Exporter
 from verdict import Verdict
 
-class VerdictSink(ABC):
-    @abstractmethod
-    def __call__(self, verdict: Verdict) -> None: ...
-    def close(self) -> None: pass
+class VerdictFileExporter(Exporter[Verdict]):
+    """Append each Verdict as one JSON line to `path`."""
+    def __init__(self, path: str): ...
 
+class VerdictStdoutExporter(Exporter[Verdict]):
+    def export(self, v): print(f"[Verdict] {v.to_json()}", flush=True)
 
-class FileSink(VerdictSink):
-    """Migrate FileVerdictSink here verbatim, rename for symmetry."""
-    ...
+class VerdictMQTTExporter(Exporter[Verdict]):
+    """Paho v2 client publishing each verdict to a single topic.
+    Mirrors exporter_mqtt.MQTTExporter's connection lifecycle and
+    no-paho fallback. (Future: extract a shared MQTTClientHandle if a
+    third caller appears.)"""
+    def __init__(self, broker, port, topic, qos=1, ...): ...
 
-
-class StdoutSink(VerdictSink):
-    def __call__(self, verdict): print(f"[Verdict] {verdict.to_json()}", flush=True)
-
-
-class MQTTSink(VerdictSink):
-    """Reuse the same paho v2 client pattern as MQTTExporter; publish
-    verdict.to_json() to the configured topic. Connection management,
-    bookkeeping, and no-paho fallback identical to MQTTExporter."""
-    ...
-
-
-VERDICT_SINK_REGISTRY: dict[str, type[VerdictSink]] = {
-    "file": FileSink,
-    "stdout": StdoutSink,
-    "mqtt": MQTTSink,
+VERDICT_EXPORTER_REGISTRY: dict[str, type[Exporter[Verdict]]] = {
+    "file":   VerdictFileExporter,
+    "stdout": VerdictStdoutExporter,
+    "mqtt":   VerdictMQTTExporter,
 }
 
-
-def resolve_sink_class(spec: str) -> type[VerdictSink]:
-    """Like resolve_converter_class — supports both built-in registry
-    names and 'module.path:ClassName' for user-defined sinks."""
-    if ":" in spec:
-        # user-defined sink class
-        ...
-    return VERDICT_SINK_REGISTRY[spec]
+def resolve_verdict_exporter_class(type_str: str) -> type[Exporter[Verdict]]:
+    if ":" in type_str:
+        cls = _import_class(type_str)
+        if not (isinstance(cls, type) and issubclass(cls, Exporter)):
+            raise TypeError(...)
+        return cls
+    return VERDICT_EXPORTER_REGISTRY[type_str]
 ```
 
-Modified `monitor/pipeline.py`:
+`pipeline.build_converter_chain` is updated to:
 
-```python
-def build_converter_chain(spec, output_dir, session_id, logger):
-    ...
-    sink_specs = verdict_spec.get("sinks") or _legacy_output_to_sinks(verdict_spec)
-    sinks = []
-    for s in sink_specs:
-        sink_cls = resolve_sink_class(s["type"])
-        sink_kwargs = {k: v for k, v in s.items() if k != "type"}
-        # path-template substitution for any {session_id} placeholders
-        sink_kwargs = _substitute_session_id(sink_kwargs, session_id, output_dir)
-        sinks.append(sink_cls(**sink_kwargs))
+1. Read `verdict.exporters: [...]` (or synthesize from legacy
+   `verdict.output:`).
+2. For each spec, resolve the class and instantiate with the spec's
+   kwargs (minus `type:`), substituting `{session_id}` in any string
+   value.
+3. Build a `Dispatcher[Verdict]` and `.add()` each instantiated
+   exporter. Fan-out + per-exporter try/except is inherited from the
+   existing `Dispatcher` implementation — no new code.
+4. Wire `VerdictExporter(service, sink=verdict_dispatcher.dispatch)`.
+5. Return `(ConverterExporter, Dispatcher[Verdict])` so the caller
+   can close all verdict-side exporters on shutdown.
 
-    if len(sinks) == 1:
-        verdict_exporter = VerdictExporter(verdict_service, sink=sinks[0])
-    else:
-        verdict_exporter = VerdictExporter(
-            verdict_service,
-            sink=lambda v: [s(v) for s in sinks],   # fan-out
-        )
-    ...
-```
+### What goes away
 
-(A cleaner alternative: a `MultiSink` callable wrapping a list — keeps
-fan-out logic out of `pipeline.py`.)
+- `FileVerdictSink` (class in `verdict.py`) — replaced by
+  `VerdictFileExporter`.
+- The ad-hoc `list[FileVerdictSink]` tracked in `MonitorNode` and
+  `verdict_runner` — replaced by a `list[Dispatcher[Verdict]]`,
+  which uses the same `close_all()` already used for upstream
+  exporters.
 
-### Edge cases / open questions
+### Edge cases handled by reusing `Dispatcher`
 
-- **Sink failure isolation**: today `FileVerdictSink` swallows nothing
-  (writes are wrapped in lock + flush, exceptions propagate). Should
-  multi-sink fan-out catch per-sink to keep the others alive? Probably
-  yes — mirror `Dispatcher.dispatch`'s try/except.
-- **Path templating**: `{session_id}` is currently substituted in
-  `pipeline.build_converter_chain`. Move that to a sink helper so all
-  sinks (mqtt topic name, file path, slack channel, …) get the same
-  treatment.
-- **Cleanup on SIGINT**: `verdict_runner` and `MonitorNode.shutdown`
-  currently iterate `_verdict_sinks` and call `close()`. Multi-sink
-  fan-out must keep that list complete.
-- **Backpressure**: MQTTSink inherits paho's queue semantics, same as
-  MQTTExporter. Document the same drop-on-overflow caveat.
+- **Per-exporter failure isolation**: already in `Dispatcher.dispatch`
+  (try/except per exporter). No extra code needed.
+- **Shutdown cleanup**: `Dispatcher.close_all()` already iterates and
+  swallows exceptions per-exporter.
+- **Path templating**: a single `_substitute_session_id` helper in
+  `pipeline.py` applies to *all* string kwargs (so MQTT topic names,
+  file paths, Slack channels, etc. all get the same treatment).
+- **Backpressure for MQTT**: `VerdictMQTTExporter` inherits paho's
+  queue semantics (drop-on-overflow), same caveat as `MQTTExporter`.
 
 ---
 
-## 3. TODO 2: User-defined sink classes via `module.path:ClassName`
+## 3. TODO 2: User-defined exporter classes via `module.path:ClassName`
 
-Once the registry pattern lands, the same `module.path:ClassName`
-loader used for converters/verdicts should also work for sinks. So
-users can ship a `custom.my_slack_sink:SlackSink` without touching the
-framework. The registry holds built-ins; anything with `:` in it is
-loaded via `importlib`.
+Already covered by TODO 1's `resolve_verdict_exporter_class`: any spec
+with `:` in the `type:` is loaded via `importlib` and validated as an
+`Exporter` subclass. So a user can ship
+`my_pkg.custom_exporter:SlackVerdictExporter` (or a ROS2-topic
+exporter, or a socket exporter) without touching the framework.
 
-This is a 1-line change in `resolve_sink_class` once TODO 1 is in place.
+This was a 1-line concern in the earlier "parallel Sink hierarchy"
+draft. Under the unified design it costs zero additional code — it
+falls out of the registry resolver.
 
 ---
 
@@ -284,12 +286,228 @@ converters:
 
 ---
 
-## 6. Suggested implementation order
+## 6. Status: TODO 1 + TODO 2 landed (2026-05-12)
 
-1. **TODO 1 — pluggable verdict sinks**: highest leverage, well-scoped
-   (~150 LOC + tests). Unlocks MQTT verdict streaming for live
-   dashboards.
-2. **TODO 2 — user sink classes**: trivial follow-up, ~10 LOC.
-3. Then defer further DSL playbook examples (sliding window, LTL) to
-   when an actual case study demands them — premature implementation
-   risks codifying the wrong abstraction.
+Implemented in this branch. Summary of what changed:
+
+### New code
+
+- [monitor/verdict_exporters.py](../monitor/verdict_exporters.py) — three
+  built-in `Exporter[Verdict]` classes plus the registry + resolver:
+  - `VerdictFileExporter(path, flush_every=1)`
+  - `VerdictStdoutExporter()`
+  - `VerdictMQTTExporter(topic, broker, port, qos, ...)` — paho v2 client,
+    bounded queue, no-paho fallback, externally-injectable `client=` for
+    unit tests, mirrors `exporter_mqtt.MQTTExporter` semantics.
+  - `VERDICT_EXPORTER_REGISTRY` + `resolve_verdict_exporter_class()`
+    (handles both registry names and `module.path:ClassName`).
+- [monitor/exporter.py](../monitor/exporter.py) — added generic
+  `StdoutExporter[T]` so the same primitive is available for any payload
+  type (used by `VerdictStdoutExporter`; future DataRecord stdout exporter
+  can reuse it as-is).
+
+### Refactored
+
+- [monitor/verdict.py](../monitor/verdict.py) — `FileVerdictSink`
+  removed. `VerdictExporter` unchanged in interface; its docstring now
+  describes the new `Dispatcher[Verdict]` wiring.
+- [monitor/pipeline.py](../monitor/pipeline.py) —
+  `build_converter_chain` now returns `(ConverterExporter, Dispatcher[Verdict])`.
+  Parses `verdict.exporters: [...]` (preferred) or legacy
+  `verdict.output: <path>` (sugar for one `file` exporter). Recursive
+  `{session_id}` substitution is applied to every string kwarg, so MQTT
+  topics, file paths, Slack channels, etc. all get the same templating.
+  Relative `path` kwargs resolve against `monitor.output_dir`.
+- [monitor/monitor_node.py](../monitor/monitor_node.py) and
+  [monitor/verdict_runner.py](../monitor/verdict_runner.py) — replaced
+  the `list[FileVerdictSink]` shutdown bookkeeping with
+  `list[Dispatcher[Verdict]]`, calling `close_all()` on each.
+- [monitor/config.yaml](../monitor/config.yaml) — shows the new
+  `exporters:` schema, with `mqtt` and `stdout` examples commented out.
+
+### Tests (now 104 passing, up from 92)
+
+- [test/unit/test_verdict.py](../test/unit/test_verdict.py) —
+  `FileVerdictSink` tests removed.
+- [test/unit/test_verdict_exporters.py](../test/unit/test_verdict_exporters.py) —
+  new file, 12 tests covering all three built-ins, the registry, the
+  `module:Class` loader, and a user-defined `Exporter[Verdict]` subclass.
+- [test/unit/test_pipeline.py](../test/unit/test_pipeline.py) — updated
+  to the new return tuple shape; added coverage for the multi-exporter
+  schema and unknown-type failure.
+
+### What the user-facing change buys you
+
+- **MQTT verdict streaming**: enable by uncommenting the `mqtt` block in
+  `config.yaml`. The exporter publishes each verdict as a JSON line to
+  one topic; a live dashboard can subscribe directly.
+- **Multiple sinks per property**: file + stdout + MQTT simultaneously,
+  with per-exporter try/except so one broken transport doesn't kill the
+  rest (inherited from `Dispatcher`).
+- **User-defined transports**: a `ROS2TopicExporter`, `SocketExporter`,
+  `SlackVerdictExporter`, ... is just an `Exporter[Verdict]` subclass
+  living under `custom/` (or any importable path), referenced in YAML
+  by `type: module.path:ClassName`. Zero framework code touched.
+- **No new term to learn**: everything is an Exporter. The "Sink" word
+  is gone from the codebase.
+
+### Deferred to future work (intentionally)
+
+- **DRY the paho MQTT plumbing**: `VerdictMQTTExporter` duplicates ~30
+  lines of paho client lifecycle from `MQTTExporter`. Worth extracting
+  to a shared `MQTTPublisher` helper once a third caller appears, not
+  before.
+- **Generic `MQTTExporter[T]`**: would let one class serve both record
+  types via a topic-naming strategy callback. Same answer — wait for a
+  third user.
+- **ROS2TopicExporter as a built-in**: keep it as a user-pluggable
+  example in `custom/` for now; promote to built-in only if the Nav2
+  case study uses it persistently.
+
+---
+
+## 7. Status: TODO 3 landed (per-source exporters, 2026-05-12)
+
+Implemented in the same session as TODO 1/2. Every `topics:`,
+`services:`, and `actions:` entry now accepts an optional `exporters:`
+block; when present, records from that source go *only* to that
+dispatcher's exporters (isolated from the global `exporters:` list).
+
+### What changed
+
+- [monitor/monitor_node.py](../monitor/monitor_node.py):
+  - `_build_dispatcher` gained a `source_name` parameter; `file`
+    exporters get a default `filename_suffix` derived from the source
+    name when one isn't given (e.g. `/cmd_vel` → `_cmd_vel`).
+  - New `MonitorNode._dispatch_for(spec, source_name, log)` returns a
+    tee callable: feeds the source's records to either a per-source
+    dispatcher (if the spec has its own `exporters:`) or the global
+    dispatcher, **and** always to a dedicated `_converter_dispatcher`
+    so DSL converter chains keep seeing every data record regardless
+    of where exporters route it.
+  - Converter chains were moved off the global dispatcher onto the new
+    `_converter_dispatcher` tap, decoupling "where data is stored"
+    from "what evaluates the data".
+  - All three `_register_topic/_register_service/_register_action`
+    methods use `_dispatch_for` for the collector's dispatch hook.
+  - `shutdown` closes the new converter and per-source dispatchers.
+- [test/Nav2_case1/config_case1.yaml](../test/Nav2_case1/config_case1.yaml):
+  added a worked example — `/cmd_vel` carries its own per-source
+  `exporters:` block, writing to `<output_dir>/<session>_cmd_vel.jsonl`.
+- [test/unit/test_monitor_node_service_discovery.py](../test/unit/test_monitor_node_service_discovery.py):
+  test fixtures updated for the new attributes.
+
+### YAML shape
+
+```yaml
+exporters:                       # global default (used by sources without
+  - type: file                   #  their own exporters:)
+
+topics:
+  - name: /odom                  # no exporters: here → uses global
+    transformers: [...]
+
+  - name: /cmd_vel
+    transformers: [...]
+    exporters:                   # per-source: REPLACES the global stream
+      - type: file               # filename suffix auto-derived as _cmd_vel
+      - type: mqtt
+        topic_prefix: monitor/cmdvel/
+```
+
+### Semantics chosen (and why)
+
+- **Per-source `exporters:` replaces the global one** for that source
+  — not "in addition". Rationale: the common case is "I want this
+  topic in its own file", and additive semantics force the user to
+  always also delete the global `file` exporter or accept duplicate
+  writes.
+- **Converter chains are unaffected**: a tee dispatch sends every data
+  record to the converter tap on the side, independent of per-source
+  exporter routing. This is why `/cmd_vel` can have its own file
+  exporter *and* its existing DSL verdict chain in case1.
+- **Session bookends bypass per-source dispatch** — only the global
+  dispatcher publishes them. Converters skip bookends anyway
+  (`record._type != "data"` check in `ConverterExporter`).
+
+---
+
+## 8. Status: TODO 4 landed (converter `inputs:` filter, 2026-05-12)
+
+Implemented in the same session. Each converter spec now accepts an
+optional `inputs: [source_name, ...]` list that the framework uses to
+drop records from other sources before the converter sees them — so
+custom converters can stay pure projection logic and skip the
+`if record.source_name != "/cmd_vel": return None` boilerplate.
+
+### What changed
+
+- [monitor/pipeline.py](../monitor/pipeline.py):
+  - New `_SourceFilteredExporter` wrapping a `ConverterExporter` with
+    an allowed-source set; checks `record.source_name` before forwarding.
+  - `build_converter_chain` reads `inputs:` from the spec, validates it
+    (non-empty list of strings), and wraps the ConverterExporter when
+    set. Missing/None `inputs:` preserves the old "see all sources"
+    behaviour.
+  - Return type widened to `tuple[Exporter, Dispatcher]`.
+- [custom/nav2_case1/cmd_vel_speed_converter.py](../custom/nav2_case1/cmd_vel_speed_converter.py):
+  source-name check removed; framework now handles it.
+- [test/Nav2_case1/config_case1.yaml](../test/Nav2_case1/config_case1.yaml):
+  the converter entry now carries `inputs: ["/cmd_vel"]`.
+- [test/unit/test_pipeline.py](../test/unit/test_pipeline.py): added
+  three tests (positive filtering, empty-list rejected,
+  wrong-type rejected).
+
+### YAML shape
+
+```yaml
+converters:
+  - type: custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter
+    inputs: ["/cmd_vel"]              # framework filter (optional)
+    verdict:
+      type: ...
+      exporters: [...]
+```
+
+### Why `inputs:` is by source-name, not by exporter-name
+
+An earlier design idea was to give each Exporter a unique YAML name and
+let each converter declare an "input exporter" name. That doesn't match
+the data flow: Exporters are *sinks* (write file / publish MQTT);
+converters consume records from the same Dispatcher tap that feeds the
+exporters, not from the exporters themselves. The unique identifier
+that already exists at the framework level — and that the user
+naturally writes anyway — is the source name (`/cmd_vel`, `/odom`,
+`/navigate_to_pose`). So `inputs:` matches against those. If a future
+need arises to reference "the same paho client as the global MQTT
+exporter" or similar, a named-Exporter table can be added then.
+
+---
+
+## 9. Suggested next work
+
+1. ~~**TODO 1 — pluggable verdict outputs**~~ ✅ landed 2026-05-12.
+2. ~~**TODO 2 — user exporter classes**~~ ✅ subsumed by TODO 1.
+3. ~~**TODO 3 — per-source exporters**~~ ✅ landed 2026-05-12.
+4. ~~**TODO 4 — converter `inputs:` filter**~~ ✅ landed 2026-05-12.
+5. **TODO 5 — generic `Exporter[T]` MQTT publisher**: today
+   `MQTTExporter` (DataRecord) and `VerdictMQTTExporter` (Verdict)
+   duplicate ~30 lines of paho v2 client lifecycle. Worth extracting
+   a shared `MQTTPublisher` helper once a third caller appears, not
+   before. ~30 LOC + 1 test file.
+6. **TODO 6 — example custom transports** under `custom/`: a
+   `ROS2TopicExporter` (publishes verdicts to a `std_msgs/String`
+   topic on the monitor's own node) and a `SocketExporter` (UDP). Each
+   ~30 LOC, written as user-pluggable demos rather than built-ins.
+   Promote to built-in only if the Nav2 case study consistently uses
+   them.
+7. **Phase 5 — TurtleBot3 / Nav2 case study**: drive a real Nav2 stack
+   into the monitor, validate that a meaningful property fires, decide
+   on the basis of that experience whether sliding-window / LTL /
+   geometric DSL backends are worth implementing. The
+   `custom/nav2_case1/` package (this branch) is the seed.
+8. **Sliding-window / LTL / trajectory DSL examples**: deferred until
+   a case study demands them — premature implementation risks
+   codifying the wrong abstraction. When the time comes, each will be
+   one or two files under `custom/<case>/` following the same one-
+   property-per-package layout as `nav2_case1`.

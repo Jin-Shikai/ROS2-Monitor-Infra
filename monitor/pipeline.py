@@ -1,7 +1,9 @@
 """Helpers for wiring DSL converter chains.
 
 `build_converter_chain` constructs one
-    DataConverter -> Dispatcher[Any] -> VerdictExporter (-> FileVerdictSink)
+
+    DataConverter -> Dispatcher[Any] -> VerdictExporter -> Dispatcher[Verdict] -> Exporter[Verdict]+
+
 chain from a YAML spec. Used by both the ROS2 monitor side (`MonitorNode`)
 and the verdict-side runner (`verdict_runner`). This module is deliberately
 free of rclpy imports so it can run on a verdict box without ROS2 installed.
@@ -13,12 +15,91 @@ from pathlib import Path
 from typing import Any
 
 from converter import ConverterExporter, resolve_converter_class
-from exporter import Dispatcher, FileExporter
-from verdict import (
-    FileVerdictSink,
-    VerdictExporter,
-    resolve_verdict_class,
-)
+from data_record import DataRecord
+from exporter import Dispatcher, Exporter, FileExporter
+from verdict import VerdictExporter, resolve_verdict_class
+from verdict_exporters import resolve_verdict_exporter_class
+
+
+class _SourceFilteredExporter(Exporter):
+    """Wraps an inner Exporter and only forwards records whose
+    `source_name` is in the allowed set. Used to implement the
+    `converters: - inputs: [...]` YAML filter — keeps the source-
+    selection concern out of every custom converter.
+    """
+
+    def __init__(self, inner: Exporter, allowed_sources: set[str]):
+        self._inner = inner
+        self._allowed = set(allowed_sources)
+
+    def export(self, record) -> None:
+        if isinstance(record, DataRecord) and record.source_name not in self._allowed:
+            return
+        self._inner.export(record)
+
+    def flush(self) -> None:
+        self._inner.flush()
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+def _substitute_session_id(value: Any, session_id: str) -> Any:
+    """Replace `{session_id}` in any string kwarg, recursively for dict/list."""
+    if isinstance(value, str):
+        return value.replace("{session_id}", session_id)
+    if isinstance(value, dict):
+        return {k: _substitute_session_id(v, session_id) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_substitute_session_id(v, session_id) for v in value]
+    return value
+
+
+def _legacy_output_to_exporters(verdict_spec: dict) -> list[dict]:
+    """Translate the legacy `verdict.output: <path>` sugar into the new
+    `exporters: [{type: file, path: <path>}]` form."""
+    path = verdict_spec.get("output")
+    if not path:
+        return []
+    return [{"type": "file", "path": path}]
+
+
+def _build_verdict_dispatcher(
+    verdict_spec: dict,
+    output_dir: str,
+    session_id: str,
+    converter_type: str,
+    logger: Any,
+) -> Dispatcher | None:
+    """Build the Dispatcher[Verdict] from `verdict.exporters: [...]` (or
+    the legacy `verdict.output:` sugar). Returns None if any exporter
+    fails to resolve / instantiate — caller logs and skips the chain.
+    """
+    specs = verdict_spec.get("exporters") or _legacy_output_to_exporters(verdict_spec)
+    dispatcher: Dispatcher = Dispatcher(label=f"Verdict[{converter_type}]")
+    for raw in specs:
+        if not isinstance(raw, dict) or "type" not in raw:
+            logger.error(f"Verdict exporter spec missing 'type'; skipping entry: {raw}")
+            return None
+        try:
+            cls = resolve_verdict_exporter_class(raw["type"])
+        except (KeyError, ImportError, AttributeError, TypeError, ValueError) as ex:
+            logger.error(f"Cannot resolve verdict exporter '{raw['type']}': {ex}")
+            return None
+        kwargs = {k: v for k, v in raw.items() if k != "type"}
+        kwargs = _substitute_session_id(kwargs, session_id)
+        # file paths that are relative resolve against output_dir
+        if "path" in kwargs and isinstance(kwargs["path"], str):
+            p = Path(kwargs["path"])
+            if not p.is_absolute():
+                p = Path(output_dir) / p
+            kwargs["path"] = str(p)
+        try:
+            dispatcher.add(cls(**kwargs))
+        except Exception as ex:
+            logger.error(f"Failed to build verdict exporter '{raw['type']}': {ex}")
+            return None
+    return dispatcher
 
 
 def build_converter_chain(
@@ -26,12 +107,13 @@ def build_converter_chain(
     output_dir: str,
     session_id: str,
     logger: Any,
-) -> tuple[ConverterExporter, list[FileVerdictSink]] | None:
+) -> tuple[Exporter, Dispatcher] | None:
     """Build one DSL chain from a YAML spec entry.
 
-    Returns the ConverterExporter (to be registered on the raw dispatcher)
-    plus any FileVerdictSinks that need closing on shutdown. Returns None
-    if the spec is malformed or any class fails to resolve / instantiate.
+    Returns the `ConverterExporter` (to be registered on the raw
+    DataRecord dispatcher) plus the `Dispatcher[Verdict]` carrying the
+    chain's verdict exporters — caller closes it on shutdown. Returns
+    None if the spec is malformed or any class fails to resolve.
 
     The `logger` parameter accepts either an rclpy logger or a stdlib
     `logging.Logger` — only `.info()` and `.error()` are called.
@@ -55,7 +137,8 @@ def build_converter_chain(
         logger.error(f"Cannot resolve converter '{converter_type}': {ex}")
         return None
     conv_kwargs = {
-        k: v for k, v in spec.items() if k not in ("type", "verdict", "output")
+        k: v for k, v in spec.items()
+        if k not in ("type", "verdict", "output", "inputs")
     }
     try:
         converter = conv_cls(**conv_kwargs)
@@ -69,7 +152,7 @@ def build_converter_chain(
         logger.error(f"Cannot resolve verdict service '{verdict_spec['type']}': {ex}")
         return None
     v_kwargs = {
-        k: v for k, v in verdict_spec.items() if k not in ("type", "output")
+        k: v for k, v in verdict_spec.items() if k not in ("type", "output", "exporters")
     }
     try:
         verdict_service = v_cls(**v_kwargs)
@@ -77,17 +160,15 @@ def build_converter_chain(
         logger.error(f"Failed to build verdict service: {ex}")
         return None
 
-    sinks: list[FileVerdictSink] = []
-    sink = None
-    verdict_output = verdict_spec.get("output")
-    if verdict_output:
-        out_path = Path(verdict_output)
-        if not out_path.is_absolute():
-            out_path = Path(output_dir) / verdict_output
-        out_path = Path(str(out_path).replace("{session_id}", session_id))
-        sink_obj = FileVerdictSink(str(out_path))
-        sinks.append(sink_obj)
-        sink = sink_obj
+    verdict_dispatcher = _build_verdict_dispatcher(
+        verdict_spec, output_dir, session_id, converter_type, logger,
+    )
+    if verdict_dispatcher is None:
+        return None
+
+    # When no exporters are configured at all, fall back to the default
+    # stdout sink (preserves prior behaviour).
+    sink = verdict_dispatcher.dispatch if verdict_dispatcher._exporters else None
 
     dsl_dispatcher: Dispatcher = Dispatcher(label=f"DSL[{converter_type}]")
     dsl_dispatcher.add(VerdictExporter(verdict_service, sink=sink))
@@ -107,7 +188,31 @@ def build_converter_chain(
             )
         )
 
+    inputs = spec.get("inputs")
+    if inputs is not None:
+        if not isinstance(inputs, list) or not all(isinstance(s, str) for s in inputs):
+            logger.error(
+                f"Converter '{converter_type}' has invalid 'inputs' "
+                f"(must be a list of source-name strings); skipping."
+            )
+            return None
+        if not inputs:
+            logger.error(
+                f"Converter '{converter_type}' has empty 'inputs' list "
+                f"(would match nothing); skipping."
+            )
+            return None
+        outer: Exporter = _SourceFilteredExporter(
+            ConverterExporter(converter, dsl_dispatcher),
+            allowed_sources=set(inputs),
+        )
+        input_note = f" inputs={inputs}"
+    else:
+        outer = ConverterExporter(converter, dsl_dispatcher)
+        input_note = " inputs=<all>"
+
     logger.info(
         f"Converter chain enabled: {converter_type} -> {verdict_spec['type']}"
+        f"{input_note} ({len(verdict_dispatcher._exporters)} verdict exporter(s))"
     )
-    return ConverterExporter(converter, dsl_dispatcher), sinks
+    return outer, verdict_dispatcher

@@ -60,4 +60,16 @@ converters:
       op: ">"
       threshold: 0.5
       sustain_sec: 0.0
-      output: verdicts_{session_id}.jsonl
+      # New unified schema: one or more Exporter[Verdict] instances.
+      # Built-in types: file, stdout, mqtt. User-defined exporters use
+      # 'module.path:ClassName'. The legacy 'output: <path>' is still
+      # accepted as syntactic sugar for [{type: file, path: <path>}].
+      exporters:
+        - type: file
+          path: verdicts_{session_id}.jsonl
+        # - type: mqtt
+        #   broker: localhost
+        #   port: 1883
+        #   topic: verdicts/robot1/odom_speed_limit
+        #   qos: 1
+        # - type: stdout

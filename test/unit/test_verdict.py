@@ -8,7 +8,6 @@ import json
 import pytest
 
 from verdict import (
-    FileVerdictSink,
     Verdict,
     VerdictExporter,
     VerdictService,
@@ -64,33 +63,6 @@ def test_verdict_exporter_default_sink_prints(capsys):
     exp.export({"x": 1})
     out = capsys.readouterr().out
     assert "[Verdict]" in out
-
-
-def test_file_verdict_sink_appends_jsonl(tmp_path):
-    path = tmp_path / "out.jsonl"
-    sink = FileVerdictSink(str(path))
-    try:
-        sink(Verdict(1.0, "p", False, {"v": 0.7}))
-        sink(Verdict(2.0, "p", True, {}))
-    finally:
-        sink.close()
-    lines = path.read_text().strip().splitlines()
-    assert len(lines) == 2
-    assert json.loads(lines[0])["property_id"] == "p"
-
-
-def test_file_verdict_sink_creates_parent_dir(tmp_path):
-    path = tmp_path / "nested" / "deep" / "v.jsonl"
-    sink = FileVerdictSink(str(path))
-    sink(Verdict(1.0, "p", True, {}))
-    sink.close()
-    assert path.exists()
-
-
-def test_file_verdict_sink_close_idempotent(tmp_path):
-    sink = FileVerdictSink(str(tmp_path / "v.jsonl"))
-    sink.close()
-    sink.close()
 
 
 def test_resolve_requires_module_path():
