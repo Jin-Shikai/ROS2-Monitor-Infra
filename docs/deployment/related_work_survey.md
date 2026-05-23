@@ -4,7 +4,7 @@
 >
 > Scope: 12 papers — the four originally suggested (ROSMonitor / ROSMonitoring 2.0 / RoMuSu / Monitoring ROS2 / ros2_tracing) plus 7 additional works prioritising recent (2023–2025) publications.
 >
-> Honesty note: arXiv / Springer / IEEE PDFs were not directly fetchable in this session. Per-paper figure descriptions are reconstructed from abstracts, project READMEs, author preprints, and conference summaries. Statements about "UML stereotypes used / not used" reflect the strong prior across these venues; for any claim that needs to be defended on a slide, cross-check the PDF.
+> **Verification status (2026-05-23 revision).** The PDFs for entries 1–8 (ROSMonitoring, ROSMonitoring 2.0, ROMoSu, ros2_tracing, Monitoring ROS2, RTAMT, Digital-Twin RV) have been read end-to-end; their entries below have been corrected against the actual papers and cross-referenced with `paper_summaries.md`. Entries 9, 11, 12 (Caldas et al., RMoM, Kirca et al.) are still based on abstracts / public records — flagged inline. ROSRV (entry 1) is also still based on secondary sources.
 
 ---
 
@@ -26,53 +26,57 @@
 - **Feedback.** Limited — the Monitor can suppress violating messages on the renamed topics.
 - **DSL.** Formalism-agnostic via Oracle (default RML).
 
-## 3. ROSMonitoring 2.0 — Ferrando & Cardoso, 2024 (preprint)
+## 3. ROSMonitoring 2.0 — Ghaffari Saadat et al., FMAS 2024
 
-- **Citation.** Ferrando, Cardoso. *ROSMonitoring 2.0: Extending ROS Runtime Verification to Services and Ordered Topics.* arXiv:2411.14367, Nov 2024.
-- **Link.** [arXiv:2411.14367](https://arxiv.org/abs/2411.14367)
-- **Figure type.** Architecture diagram (v1 extended).
-- **Topology.** Same Monitor↔Oracle WebSocket seam plus a *service-interception* block (Monitor sits between client and server) and an *ordering* component that timestamps and buffers messages before forwarding to the Oracle.
-- **Feedback.** Stronger than v1 — RPC interception lets it block unsafe service requests.
-- **DSL.** Same as v1.
+- **Citation (corrected against PDF).** Ghaffari Saadat, Ferrando, Dennis, Fisher. *ROSMonitoring 2.0: Extending ROS Runtime Verification to Services and Ordered Topics.* FMAS 2024, EPTCS 411, pp. 38–55. doi:10.4204/EPTCS.411.3.
+- **Link.** [EPTCS 411.3](https://doi.org/10.4204/EPTCS.411.3)
+- **Figure type.** Architecture diagram (v1 extended); Fig. 3 sequence diagram for service interception; Fig. 4 case-study graph with extra monitoring topics.
+- **Topology.** Same Monitor↔Oracle WebSocket seam plus *service interception* (Monitor as server-to-client and client-to-server) and a *publication-time reordering* component with per-topic timestamp buffers (Lemma 1 + Theorem 1 of correctness, plus an explicit deadlock-risk analysis).
+- **Feedback.** Stronger than v1 — RPC interception **blocks unsafe service requests** and substitutes an error response to the client.
+- **DSL.** Same formalism-agnostic Oracle. Examples are written in **Past MTL via Reelay**; **three-valued verdicts** (⊤, ⊥, ?, with ?⊤ / ?⊥).
+- **Implementation.** ROS 1 Noetic full feature set; **ROS 2 port is partial** (service monitoring only, no reordering). [code](https://github.com/autonomy-and-verification-uol/ROSMonitoring) (`ros2` branch).
 
-## 4. ROMoSu — Stadler et al., RoSE 2023 @ ICSE
+## 4. ROMoSu — Stadler & Vierhauser, RoSE 2023 @ ICSE
 
-- **Citation.** Stadler et al. *ROMoSu: Flexible Runtime Monitoring Support for ROS-based Applications.* RoSE @ ICSE 2023.
-- **Links.** [PDF](https://rose-workshops.github.io/files/rose2023/papers/RoSE2023_paper_3.pdf) · [IEEE](https://ieeexplore.ieee.org/document/10190384/) · [vision (2022)](https://rose-workshops.github.io/files/rose2022/papers/RoSE22_paper_4.pdf) · [code](https://github.com/MStadler-Organization/ROMoSu)
-- **Figure type.** Architecture diagram (multi-component).
-- **Topology.** A `Configurator / Configuration Manager` spawns `Monitor` instances dynamically per scenario; data is bridged from ROS topics onto an **MQTT broker** one-to-one. The MQTT seam is the closest indicator in the related work that they target off-board observers.
-- **Feedback.** Reconfiguration only (frequencies, plans updated at runtime). No actuator-level enforcement.
-- **DSL.** Scenario-driven; not multi-logic pluggable.
+- **Citation (corrected against PDF).** Stadler, Vierhauser (LIT SCS Lab, JKU Linz). *ROMoSu: Flexible Runtime Monitoring Support for ROS-based Applications.* RoSE @ ICSE 2023.
+- **Links.** [PDF](https://rose-workshops.github.io/files/rose2023/papers/RoSE2023_paper_3.pdf) · [IEEE](https://ieeexplore.ieee.org/document/10190384/) · [vision (2022)](https://rose-workshops.github.io/files/rose2022/papers/RoSE22_paper_4.pdf)
+- **Figure type.** Multi-component architecture diagram with four parts (Framework Core, Admin UI, Dashboard, external Services).
+- **Topology.** **Non-invasive instrumentation via `roslibpy` / `rosbridge`** (no source modification, no topic remap). Data are republished onto a **Mosquitto MQTT broker** in JSON. External services attached over MQTT: **InfluxDB** for persistence and **Esper CEP** for constraint checking.
+- **Feedback.** **Purely passive.** Reconfiguration of frequencies / topics happens via the Admin UI; no closed-loop write-back into ROS.
+- **DSL.** **No native property DSL.** Constraint checks delegate to **Esper EPL**; supports static value (S) and temporal/windowed (T) checks (e.g. 10 s average).
+- **Implementation.** Angular + Django + SQLite + InfluxDB + Mosquitto + roslibpy + Esper (Java). InfluxDB in Docker. Tested with **ROS 1** (TurtleBot 3 + Gazebo); no ROS 2 claim. Authors commit to open-sourcing; no URL in the preprint. Reported event-volume reduction up to **95.48 %** vs brute-force monitoring; average EPT 0.27 ms.
 
-## 5. ros2_tracing — Bédard et al., RA-L 2022 (+ RAS 2023 follow-up)
+## 5. ros2_tracing — Bédard, Lütkebohle, Dagenais, RA-L 2022 (+ RAS 2023 follow-up)
 
 - **Citation.** Bédard, Lütkebohle, Dagenais. *ros2_tracing: Multipurpose Low-Overhead Framework for Real-Time Tracing of ROS 2.* IEEE RA-L 7(3):6511–6518, 2022.
 - **Follow-up.** Bédard, Lajoie, Beltrame, Dagenais. *Message Flow Analysis with Complex Causal Links for Distributed ROS 2 Systems.* Robotics and Autonomous Systems 161:104361, 2023.
 - **Links.** [arXiv:2201.00393](https://arxiv.org/abs/2201.00393) · [code](https://github.com/ros2/ros2_tracing) · [design doc](https://github.com/ros2/ros2_tracing/blob/rolling/doc/design_ros_2.md)
 - **Figure type.** Architecture diagram of instrumentation layers.
-- **Topology.** Instrumented ROS 2 core + `tracetools` + LTTng-UST in-process, optional kernel LTTng, *offline* `tracetools_analysis` pipeline reading CTF trace files. Single-host in the original figure; the 2023 follow-up explicitly addresses distributed ROS 2 systems.
-- **Feedback.** None (offline-first observability, not RV).
-- **DSL.** N/A (not a property-language framework).
+- **Topology.** Instrumented ROS 2 core (**rclcpp / rcl / rmw — no rclpy**) + `tracetools` indirection lib + LTTng-UST in-process (~158 ns per userspace tracepoint), optional kernel LTTng, *offline* `tracetools_analysis` Python pipeline reading **CTF** trace files. Single-host in the original figure; the 2023 follow-up addresses distributed ROS 2 systems.
+- **Feedback.** None (offline-first observability, not RV). DDS middleware **not** instrumented.
+- **DSL.** N/A (instrumentation only; user analysis scripts live on top of `tracetools_analysis`).
+- **Performance.** **Mean end-to-end latency overhead 0.0033 ms** (60-min `performance_test` with all tracepoints enabled); 50 % of data between 0.0010 and 0.0056 ms.
 
 ## 6. Monitoring ROS2 (FRET + Ogma + Copilot) — Perez et al., 2022
 
-- **Citation.** Perez, Mavridou, Pressburger, Will, Martin. *Monitoring ROS2: from Requirements to Autonomous Robots.* arXiv:2209.14030, 2022 (NASA / NIA).
-- **Link.** [arXiv:2209.14030](https://arxiv.org/abs/2209.14030)
+- **Citation (corrected against PDF).** Perez, Mavridou, Pressburger, Will, Martin (KBR / NASA Ames + VCU). *Monitoring ROS2: from Requirements to Autonomous Robots.* FMAS+AVoCS 2022, EPTCS 371, pp. 208–216. doi:10.4204/EPTCS.371.15.
+- **Link.** [EPTCS 371.15](https://doi.org/10.4204/EPTCS.371.15)
 - **Figure type.** Tool-chain diagram.
-- **Topology.** FRET (developer machine) → Ogma codegen → Copilot C99 monitor compiled into a `ROS 2 monitor node` colocated with the application. Communication: ROS 2 DDS topics.
-- **Feedback.** Verdicts published as ROS 2 topics; intervention left to user code.
-- **DSL.** FRETish → temporal-logic → C99; a single chain, not pluggable across formalisms.
+- **Topology.** FRET (developer machine) → Ogma codegen → **Copilot C99 monitor** compiled into a *monitoring node* + *logging node* ROS 2 package, colocated with the application. Communication: ROS 2 DDS topics.
+- **Feedback.** **No filtering / enforcement** — explicitly: "In contrast to ROSMonitoring, we do not provide message filtering capabilities." Violations published as **empty messages** on `copilot/handler<propname>`.
+- **DSL.** **FRETish** (structured NL) → past-time MTL → Copilot stream spec → C99; a single chain, not pluggable across formalisms.
+- **Implementation maturity.** Generated C99 + C++ wrapper. Branch of [github.com/nasa/ogma](https://github.com/nasa/ogma). **No quantitative evaluation** in the paper (UAM example is motivating only).
 
-## 7. RTAMT / rtamt4ros — Ničković et al., 2020 / 2023 / 2025
+## 7. RTAMT / rtamt4ros — Yamaguchi, Hoxha, Ničković — STTT 2025 (extends ATVA 2020)
 
-- **Citations.**
+- **Citations (corrected against PDF).**
   - Ničković, Yamaguchi. *RTAMT: Online Robustness Monitors from STL.* ATVA 2020. arXiv:2005.11827.
-  - Ničković et al. *RTAMT — Runtime Robustness Monitors with Application to CPS and Robotics.* STTT 2023. Expanded preprint: arXiv:2501.18608 (2025).
-- **Links.** [arXiv:2005.11827](https://arxiv.org/abs/2005.11827) · [STTT](https://link.springer.com/article/10.1007/s10009-023-00720-3) · [arXiv:2501.18608](https://arxiv.org/abs/2501.18608)
-- **Figure type.** Library-layer architecture diagram.
-- **Topology.** STL monitor node embedded in the ROS graph; subscribes to robot signals, emits robustness as a ROS topic. Discrete and dense-time backends.
-- **Feedback.** Verdict topic only.
-- **DSL.** STL-only.
+  - Yamaguchi, Hoxha, Ničković. *RTAMT — Runtime Robustness Monitors with Application to CPS and Robotics.* STTT accepted; arXiv:2501.18608v1.
+- **Links.** [arXiv:2005.11827](https://arxiv.org/abs/2005.11827) · [arXiv:2501.18608](https://arxiv.org/abs/2501.18608)
+- **Figure type.** Library-layer architecture diagram (Fig. 5 class diagram with `StlAst` / visitors / `TimeInterpreter`).
+- **Topology.** **`rtamt4ros`**: a single Python monitor ROS node using `rospy` **introspection / reflection** to dynamically create subscribers + publishers per variable. Topic mapping via `@topic(...)` annotations in a `.stl` file. Python + **C++ backend via Boost.Python (≈10× faster)**.
+- **Feedback.** Robustness number published on a ROS topic (e.g. `rtamt/rob`). Used externally for **falsification testing** in Simulink, but no built-in enforcement.
+- **DSL.** **STL** (bfSTL, pSTL, **Interface-Aware STL with output robustness μ and input vacuity ν**). Online uses **pastification** automatically; discrete + dense-time supported.
 
 ## 8. TeSSLa-ROS-Bridge — Kallwies, Leucker, Schmitz et al., ICTAC 2023
 
@@ -92,14 +96,14 @@
 - **Feedback.** Treated as an open dimension.
 - **DSL.** Survey.
 
-## 10. Digital-Twin RV — Betzer et al., 2024 / IEEE 2025
+## 10. Digital-Twin RV — Betzer, Boudjadar, Frasheri, Talasila — arXiv 2024
 
-- **Citation.** Betzer, Boudjadar, Frasheri, Talasila. *Digital Twin Enabled Runtime Verification for Autonomous Mobile Robots under Uncertainty.* arXiv:2412.09913, Dec 2024 (IEEE conf. proc. 10937693, 2025).
-- **Links.** [arXiv:2412.09913](https://arxiv.org/abs/2412.09913) · [IEEE](https://ieeexplore.ieee.org/document/10937693/) · [Aarhus PDF](https://pure.au.dk/ws/portalfiles/portal/421738048/2412.09913v1.pdf)
-- **Figure type.** Architecture diagram with explicit role-labelled hosts (closest analogue to a deployment diagram in this corpus).
-- **Topology.** **Multi-host.** Two clearly separated hosts: (a) the *physical robot* running the ROS stack; (b) a **cloud-hosted Digital Twin** running TeSSLa monitors compiled from STL-like properties. Inter-host link: **MQTT**.
-- **Feedback.** Yes — the DT acts as a watch-dog and **overrides actuations** when a property is about to be violated.
-- **DSL.** TeSSLa-only.
+- **Citation (corrected against PDF).** Betzer, Boudjadar, Frasheri, Talasila (Aarhus University). *Digital Twin Enabled Runtime Verification for Autonomous Mobile Robots under Uncertainty.* arXiv:2412.09913v1, Dec 2024.
+- **Links.** [arXiv:2412.09913](https://arxiv.org/abs/2412.09913)
+- **Figure type.** Architecture diagram (Fig. 1) plus a workflow figure (Fig. 2: Sense → Analyze → MQTT → DT monitors → Validate → Execute / re-Sense).
+- **Topology.** **Multi-host.** Physical Twin = Turtlebot 3 Burger + RPi + hector SLAM; Digital Twin (cloud) hosts TeSSLa-synthesized monitors via the **TeSSLa Telegraf Connector** (TeSSLa → Rust over UDP into Telegraf). Inter-host link: **MQTT** (`test.mosquitto.org:1883` in the demo). InfluxDB for persistence / replay.
+- **Feedback.** Yes — the DT acts as a watch-dog: **blocks unapproved actuations** (robot re-senses) and **overrides** by sending an adjusted speed. Reported **41 % MSE reduction** between actual and expected speed on bumpy-terrain T3B experiment.
+- **DSL.** **TeSSLa-only.** Three properties: P1 braking distance, P2 tolerance, P3 Lidar validation (only P2 evaluated end-to-end).
 - **Why relevant.** This paper's topology is the closest match to ROS2-Monitor-Infra's final-form deployment. It still does not use UML deployment notation.
 
 ## 11. RMoM — Hu et al., IEEE TR 2019
