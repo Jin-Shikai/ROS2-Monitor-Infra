@@ -1,251 +1,398 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" contentScriptType="application/ecmascript" contentStyleType="text/css" height="2182px" preserveAspectRatio="none" style="width:1822px;height:2182px;" version="1.1" viewBox="0 0 1822 2182" width="1822px" zoomAndPan="magnify"><defs/><g><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="446" x="693.5" y="11.1387">ROS2-Monitor-Infra — Architecture + UML Deployment (Promotion Slide)</text><!--MD5=[4d6ec354e1aa815df6b94a1eccaa5ed7]
-cluster col1--><path d="M27,38.4688 L204,38.4688 A7.5,7.5 0 0 1 209,43.4688 L216,60.7656 L641,60.7656 A5,5 0 0 1 646,65.7656 L646,236.4688 A5,5 0 0 1 641,241.4688 L27,241.4688 A5,5 0 0 1 22,236.4688 L22,43.4688 A5,5 0 0 1 27,38.4688 " fill="#DCE5EF" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="22" x2="216" y1="60.7656" y2="60.7656"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="181" x="26" y="53.4639">Specification &amp; Plugins</text><!--MD5=[d88efd6c275e479c9bb126533b035915]
-cluster col2--><path d="M266,296.4688 L497,296.4688 A7.5,7.5 0 0 1 502,301.4688 L509,318.7656 L794,318.7656 A5,5 0 0 1 799,323.7656 L799,1285.4688 A5,5 0 0 1 794,1290.4688 L266,1290.4688 A5,5 0 0 1 261,1285.4688 L261,301.4688 A5,5 0 0 1 266,296.4688 " fill="#DCE5EF" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="261" x2="509" y1="318.7656" y2="318.7656"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="235" x="265" y="311.4639">Runtime Verification Pipelines</text><!--MD5=[9d3f66bb247cb849375c1d6202539149]
-cluster verdict_pkg--><path d="M477,355.4688 L594,355.4688 A7.5,7.5 0 0 1 599,360.4688 L606,377.7656 L754,377.7656 A5,5 0 0 1 759,382.7656 L759,470.4688 A5,5 0 0 1 754,475.4688 L477,475.4688 A5,5 0 0 1 472,470.4688 L472,360.4688 A5,5 0 0 1 477,355.4688 " fill="#DCE5EF" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="472" x2="606" y1="377.7656" y2="377.7656"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="121" x="476" y="370.4639">Verdict Service</text><!--MD5=[82d9ba6f7e923060ee5e14973a6dd6c5]
-cluster dc_pkg--><path d="M461,538.4688 L564,538.4688 A7.5,7.5 0 0 1 569,543.4688 L576,560.7656 L754,560.7656 A5,5 0 0 1 759,565.7656 L759,653.4688 A5,5 0 0 1 754,658.4688 L461,658.4688 A5,5 0 0 1 456,653.4688 L456,543.4688 A5,5 0 0 1 461,538.4688 " fill="#DCE5EF" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="456" x2="576" y1="560.7656" y2="560.7656"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="107" x="460" y="553.4639">DSL Adapters</text><!--MD5=[a26441efb8b608fe37b4a0fcabf60e6d]
-cluster dp_pkg--><path d="M329,896.9688 L446,896.9688 A7.5,7.5 0 0 1 451,901.9688 L458,919.2656 L677,919.2656 A5,5 0 0 1 682,924.2656 L682,1011.9688 A5,5 0 0 1 677,1016.9688 L329,1016.9688 A5,5 0 0 1 324,1011.9688 L324,901.9688 A5,5 0 0 1 329,896.9688 " fill="#DCE5EF" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="324" x2="458" y1="919.2656" y2="919.2656"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="121" x="328" y="911.9639">Data Processor</text><!--MD5=[1fecf1d7df97b3967f768c9c8a0b15ed]
-cluster sut_pkg--><path d="M314,1130.4688 L497,1130.4688 A7.5,7.5 0 0 1 502,1135.4688 L509,1152.7656 L754,1152.7656 A5,5 0 0 1 759,1157.7656 L759,1245.4688 A5,5 0 0 1 754,1250.4688 L314,1250.4688 A5,5 0 0 1 309,1245.4688 L309,1135.4688 A5,5 0 0 1 314,1130.4688 " fill="#DCE5EF" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="309" x2="509" y1="1152.7656" y2="1152.7656"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="187" x="313" y="1145.4639">ROS 2 Application (SUT)</text><!--MD5=[5cf218adf22abf12f2c8178f69735d83]
-cluster col3--><path d="M836,699.4688 L976,699.4688 A7.5,7.5 0 0 1 981,704.4688 L988,721.7656 L1794,721.7656 A5,5 0 0 1 1799,726.7656 L1799,2014.9688 A5,5 0 0 1 1794,2019.9688 L836,2019.9688 A5,5 0 0 1 831,2014.9688 L831,704.4688 A5,5 0 0 1 836,699.4688 " fill="#DCE5EF" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="831" x2="988" y1="721.7656" y2="721.7656"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="144" x="835" y="714.4639">Deployment (UML)</text><!--MD5=[319ee75c8f406d79e65d91285d4e6e53]
-cluster edge--><polygon fill="#F7F9FC" points="920,760.4688,930,750.4688,1309,750.4688,1309,1288.9688,1299,1298.9688,920,1298.9688,920,760.4688" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1299" x2="1308" y1="760.4688" y2="751.4688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="920" x2="1299" y1="760.4688" y2="760.4688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1299" x2="1299" y1="760.4688" y2="1298.9688"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="80" x="1070.5" y="776.4639">Edge Host</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="100" x="1060.5" y="792.7607">&lt;&lt;device&gt;&gt;</text><!--MD5=[d7b730d721d382051e965cab7efe07f6]
-cluster mon_ctr--><polygon fill="#F7F9FC" points="968,1089.9688,978,1079.9688,1269,1079.9688,1269,1248.9688,1259,1258.9688,968,1258.9688,968,1089.9688" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1259" x2="1268" y1="1089.9688" y2="1080.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="968" x2="1259" y1="1089.9688" y2="1089.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1259" x2="1259" y1="1089.9688" y2="1258.9688"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="142" x="1043.5" y="1105.9639">Monitor Container</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="225" x="1002" y="1122.2607">&lt;&lt;executionEnvironment&gt;&gt;</text><!--MD5=[074f69203ece5d9bda5647254eb486c1]
-cluster fb_bridge--><polygon fill="#F7F9FC" points="968,832.4688,978,822.4688,1269,822.4688,1269,1007.4688,1259,1017.4688,968,1017.4688,968,832.4688" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1259" x2="1268" y1="832.4688" y2="823.4688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="968" x2="1259" y1="832.4688" y2="832.4688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1259" x2="1259" y1="832.4688" y2="1017.4688"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="132" x="1048.5" y="848.4639">Feedback Bridge</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="225" x="1002" y="864.7607">&lt;&lt;executionEnvironment&gt;&gt;</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="111" x="1059" y="881.0576">&lt;&lt;planned&gt;&gt;</text><!--MD5=[3499b09b0e5578aa47070a7e1c1388cf]
-cluster cloudbox--><path d="M877.5348,1371.5632 C892.7898,1340.5609 915.5331,1334.232 939.624,1362.2713 C957.5638,1330.3194 987.6863,1332.7181 1001.9632,1365.7833 C1024.2152,1333.984 1047.4343,1332.2052 1068.4468,1367.0203 C1080.3679,1336.0397 1110.0145,1334.5592 1129.2633,1358.9757 C1150.4133,1326.6968 1173.8592,1328.3424 1194.423,1359.5771 C1216.8198,1325.5824 1242.6364,1330.7433 1262.028,1362.6596 C1275.6495,1331.4057 1295.798,1333.9232 1317.2749,1354.2451 C1340.3779,1321.0534 1366.8832,1329.2359 1385.5113,1359.0886 C1404.1147,1333.2823 1431.9485,1330.6124 1448.5928,1361.277 C1463.3802,1331.3768 1494.9175,1328.8772 1512.074,1358.7614 C1534.3335,1329.3959 1552.9312,1336.7065 1570.9774,1363.204 C1590.0636,1331.4986 1611.5921,1331.2 1633.7673,1359.9983 C1660.8385,1334.7526 1682.9309,1334.9992 1701.0056,1370.0333 C1718.9401,1336.0251 1748.0054,1337.2595 1767,1368.9688 C1772.1819,1369.4482 1774.2573,1373.313 1771.1623,1377.7263 C1798.8695,1397.3126 1806.9903,1417.0373 1776.6856,1441.637 C1796.1039,1462.7627 1794.4348,1479.3334 1769.1356,1494.0131 C1802.3055,1507.267 1802.1071,1536.5426 1777.2883,1557.2703 C1805.0949,1578.9446 1810.5833,1605.415 1774.3467,1624.2779 C1805.1228,1639.3922 1807.422,1665.5608 1778.7368,1684.9758 C1804.9942,1702.9481 1799.0464,1726.9606 1771.5696,1737.6168 C1805.7452,1750.9746 1801.9285,1781.747 1775.7733,1799.2216 C1806.4069,1821.7402 1804.254,1845.181 1773.981,1866.0666 C1803.1522,1881.719 1799.0206,1907.0711 1773.642,1922.3951 C1800.71,1945.6136 1798.8568,1978.4653 1760,1987.9688 C1762.1402,1986.5996 1764.1492,1987.5466 1764.2782,1990.1401 C1745.5951,2026.0425 1715.5192,2018.0343 1698.2472,1988.7116 C1680.0326,2024.2171 1660.1696,2022.6744 1634.7068,1996.1345 C1621.9193,2026.5163 1596.2449,2029.2885 1579.1081,2000.2008 C1555.8774,2033.8848 1528.9191,2031.0371 1506.2397,1999.5842 C1482.2349,2026.953 1464.5988,2018.0173 1448.934,1990.8247 C1436.2831,2020.8311 1408.2666,2021.0519 1389.2329,1998.0075 C1366.1628,2030.4131 1344.1392,2024.221 1325.9694,1993.1255 C1309.4256,2031.6065 1284.752,2028.2347 1260.3968,2000.909 C1239.2759,2034.9679 1216.3836,2029.7851 1197.2097,1999.0114 C1177.5072,2032.1222 1145.1117,2029.6676 1125.9246,1998.4405 C1107.001,2026.3086 1085.5383,2018.83 1070.6833,1994.1623 C1052.8543,2024.1764 1025.8674,2027.3759 1007.2235,1994.991 C983.311,2017.9785 963.6471,2023.4546 945.0664,1989.2013 C918.2133,2027.0744 881.6444,2024.9246 863,1980.9688 C866.1761,1978.3182 868.1679,1979.1175 869.614,1982.781 C842.8252,1965.138 839.5191,1942.3411 866.3753,1921.8469 C841.1396,1905.5744 844.8201,1878.7993 870.7494,1866.5759 C837.0098,1851.6795 839.075,1828.0478 864.4907,1806.9428 C825.5872,1788.063 825.1001,1763.3583 858.6905,1738.3487 C828.4945,1715.3403 830.5995,1697.6721 863.0294,1679.2624 C833.7187,1662.4077 837.4299,1635.2387 864.2753,1619.5558 C835.8746,1602.7329 834.9246,1579.2816 861.468,1559.8742 C835.5062,1539.511 828.608,1517.051 862.2632,1497.4472 C839.7313,1477.4222 841.2285,1449.8381 870.6446,1437.0181 C838.1829,1416.9023 837.4772,1382.6426 870,1361.9688 C876.3337,1361.7168 879.3207,1365.4387 877.5348,1371.5632 " fill="#ECF3FB" style="stroke: #2C3E50; stroke-width: 1.5;"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="45" x="1292.5" y="1379.9639">Cloud</text><!--MD5=[db3a3f7a696fa0700c56d5a13fe0863a]
-cluster broker_host--><polygon fill="#F7F9FC" points="1097,1414.9688,1107,1404.9688,1273,1404.9688,1273,1559.9688,1263,1569.9688,1097,1569.9688,1097,1414.9688" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1263" x2="1272" y1="1414.9688" y2="1405.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1097" x2="1263" y1="1414.9688" y2="1414.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1263" x2="1263" y1="1414.9688" y2="1569.9688"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="94" x="1134" y="1430.9639">Broker Host</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="100" x="1131" y="1447.2607">&lt;&lt;device&gt;&gt;</text><!--MD5=[15ea9a56e767e5beec2d7d63fee004cf]
-cluster verdict_host--><polygon fill="#F7F9FC" points="1354,1642.9688,1364,1632.9688,1743,1632.9688,1743,1953.9688,1733,1963.9688,1354,1963.9688,1354,1642.9688" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1733" x2="1742" y1="1642.9688" y2="1633.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1354" x2="1733" y1="1642.9688" y2="1642.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1733" x2="1733" y1="1642.9688" y2="1963.9688"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="115" x="1487" y="1658.9639">Verdict Server</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="100" x="1494.5" y="1675.2607">&lt;&lt;device&gt;&gt;</text><!--MD5=[d32df4dd43dbaca233ccb5783bc5c81a]
-cluster vrunner--><polygon fill="#F7F9FC" points="1402,1722.9688,1412,1712.9688,1703,1712.9688,1703,1913.9688,1693,1923.9688,1402,1923.9688,1402,1722.9688" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1693" x2="1702" y1="1722.9688" y2="1713.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1402" x2="1693" y1="1722.9688" y2="1722.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1693" x2="1693" y1="1722.9688" y2="1923.9688"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="114" x="1491.5" y="1738.9639">VerdictRunner</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="225" x="1436" y="1755.2607">&lt;&lt;executionEnvironment&gt;&gt;</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="64" x="1516.5" y="1771.5576">no rclpy</text><!--MD5=[47c14c564e796a575e671c2b0469a7bb]
-cluster backend--><polygon fill="#F7F9FC" points="887,1758.9688,897,1748.9688,1314,1748.9688,1314,1909.9688,1304,1919.9688,887,1919.9688,887,1758.9688" style="stroke: #2C3E50; stroke-width: 1.5;"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1304" x2="1313" y1="1758.9688" y2="1749.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="887" x2="1304" y1="1758.9688" y2="1758.9688"/><line style="stroke: #2C3E50; stroke-width: 1.5;" x1="1304" x2="1304" y1="1758.9688" y2="1919.9688"/><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="107" x="1043" y="1774.9639">Data Backend</text><text fill="#000000" font-family="Helvetica" font-size="14" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="216" x="988.5" y="1791.2607">&lt;&lt;device&gt;&gt; &lt;&lt;planned&gt;&gt;</text><!--MD5=[24c9d2ed3a504611344a1c48ada3be45]
-entity mon_cfg--><rect fill="#FFF6D6" height="61.9063" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="182" x="448" y="92.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="443" y="97.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="443" y="144.375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="90" x="458" y="113.6074">Monitor Config</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="162" x="458" y="127.5762">Topics · Services · Actions</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="148" x="458" y="141.5449">Params · Lifecycle · QoS</text><!--MD5=[8d9cc08676cd6cda5dd887c7d46c5bbf]
-entity plug_mod--><rect fill="#FFF6D6" height="61.9063" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="183" x="250.5" y="92.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="245.5" y="97.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="245.5" y="144.375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="94" x="260.5" y="113.6074">Plugin Modules</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="163" x="260.5" y="127.5762">Converters · Transformers</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="135" x="260.5" y="141.5449">DSL · Verdict Services</text><!--MD5=[7fbe9c9e6896543d45afd4a2c8e18ee1]
-entity build_box--><rect fill="#FFF6D6" height="47.9375" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="198" x="38" y="99.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="33" y="104.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="33" y="137.4063"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="125" x="48" y="120.6074">Build &amp; Containerize</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="178" x="48" y="134.5762">Dockerfile · docker-compose</text><!--MD5=[aff0e67a1692f4b0d96c087fa0872bfd]
-entity registry--><rect fill="#FFF6D6" height="47.9375" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="157" x="159.5" y="177.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="154.5" y="182.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="154.5" y="215.4063"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="92" x="169.5" y="198.6074">Plugin Registry</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="137" x="169.5" y="212.5762">built-in | module:Class</text><!--MD5=[04e34bac753752e805a88bd2588b187f]
-entity ltl--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="39" x="687.5" y="417.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="682.5" y="422.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="682.5" y="441.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="19" x="697.5" y="438.6074">LTL</text><!--MD5=[131e6470ae5070586cfc34f465595b57]
-entity stl--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="41" x="632.5" y="417.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="627.5" y="422.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="627.5" y="441.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="21" x="642.5" y="438.6074">STL</text><!--MD5=[3f78ac20d5488773c2c71316126e4eaa]
-entity ctl--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="41" x="577.5" y="417.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="572.5" y="422.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="572.5" y="441.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="21" x="587.5" y="438.6074">CTL</text><!--MD5=[4597a36bbce88b098162e644e240bdb2]
-entity cust--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="67" x="496.5" y="417.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="491.5" y="422.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="491.5" y="441.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="47" x="506.5" y="438.6074">Custom</text><!--MD5=[d945125211310d54aa3b7402f8058aa8]
-entity dc1--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="51" x="683.5" y="600.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="678.5" y="605.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="678.5" y="624.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="31" x="693.5" y="621.6074">DC_1</text><!--MD5=[911f0c35836c758be37653371973c67c]
-entity dc2--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="51" x="618.5" y="600.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="613.5" y="605.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="613.5" y="624.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="31" x="628.5" y="621.6074">DC_2</text><!--MD5=[961fc7ab12bd205feeb128d1e0a5c7ef]
-entity dc3--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="51" x="553.5" y="600.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="548.5" y="605.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="548.5" y="624.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="31" x="563.5" y="621.6074">DC_3</text><!--MD5=[322898afb159b38acfc5e9c89df55ca9]
-entity dcn--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="51" x="488.5" y="600.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="483.5" y="605.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="483.5" y="624.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="31" x="498.5" y="621.6074">DC_n</text><!--MD5=[e301f519ba1ee310cd6a739281f8154f]
-entity dp_mon--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="82" x="356" y="958.9688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="351" y="963.9688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="351" y="982.9375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="62" x="366" y="980.1074">Collectors</text><!--MD5=[0e10e1fa95fb4e6bb5e980a882fe1c69]
-entity dp_filt--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="103" x="452.5" y="958.9688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="447.5" y="963.9688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="447.5" y="982.9375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="83" x="462.5" y="980.1074">Transformers</text><!--MD5=[cf6048341e77e2bf46f43425e9c9a77d]
-entity dp_exp--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="88" x="570" y="958.9688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="565" y="963.9688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="565" y="982.9375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="68" x="580" y="980.1074">Dispatcher</text><!--MD5=[8fe3f26dc9cb6e48f7900b72c5b9c9b2]
-entity t_topics--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="60" x="341" y="1192.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="336" y="1197.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="336" y="1216.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="40" x="351" y="1213.6074">Topics</text><!--MD5=[e32795a525679af102e18543ae45a7a6]
-entity t_srv--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="72" x="415" y="1192.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="410" y="1197.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="410" y="1216.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="52" x="425" y="1213.6074">Services</text><!--MD5=[61978df5de805211a3d11ee3bd6565b9]
-entity t_act--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="66" x="501" y="1192.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="496" y="1197.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="496" y="1216.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="46" x="511" y="1213.6074">Actions</text><!--MD5=[c3842712a0da3e0a24afd4eae163dda9]
-entity t_life--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="72" x="581" y="1192.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="576" y="1197.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="576" y="1216.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="52" x="591" y="1213.6074">Lifecycle</text><!--MD5=[c1c950e9460effcf100cd57b5ada9330]
-entity t_par--><rect fill="#FFF6D6" height="33.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="67" x="667.5" y="1192.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="662.5" y="1197.4688"/><rect fill="#FFF6D6" height="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="10" x="662.5" y="1216.4375"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="47" x="677.5" y="1213.6074">Params</text><!--MD5=[f6d135101c32598c4917d37c2cee67a2]
-entity art_mon--><rect fill="#FFF6D6" height="50.9375" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="110" x="1108" y="1183.9688"/><polygon fill="#FFF6D6" points="1201,1188.9688,1201,1202.9688,1213,1202.9688,1213,1194.9688,1207,1188.9688,1201,1188.9688" style="stroke: #8B6A0F; stroke-width: 1.5;"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1207" x2="1207" y1="1188.9688" y2="1194.9688"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1213" x2="1207" y1="1194.9688" y2="1194.9688"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="80" x="1118" y="1208.1074">MonitorNode</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="39" x="1118" y="1222.0762">(rclpy)</text><!--MD5=[415b0356bbc3f38cc099eeb86ae1020c]
-entity art_jsonl_edge--><rect fill="#FFF6D6" height="36.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="101" x="992.5" y="1190.9688"/><polygon fill="#FFF6D6" points="1076.5,1195.9688,1076.5,1209.9688,1088.5,1209.9688,1088.5,1201.9688,1082.5,1195.9688,1076.5,1195.9688" style="stroke: #8B6A0F; stroke-width: 1.5;"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1082.5" x2="1082.5" y1="1195.9688" y2="1201.9688"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1088.5" x2="1082.5" y1="1201.9688" y2="1201.9688"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="71" x="1002.5" y="1215.1074">Edge JSONL</text><!--MD5=[2c716255bef1ace12c90f3984aa1f5c1]
-entity fb_handlers--><rect fill="#FFF6D6" height="50.9375" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="105" x="1078.5" y="950.4688"/><polygon fill="#FFF6D6" points="1166.5,955.4688,1166.5,969.4688,1178.5,969.4688,1178.5,961.4688,1172.5,955.4688,1166.5,955.4688" style="stroke: #8B6A0F; stroke-width: 1.5;"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1172.5" x2="1172.5" y1="955.4688" y2="961.4688"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1178.5" x2="1172.5" y1="961.4688" y2="961.4688"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="75" x="1088.5" y="974.6074">Intervention</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="56" x="1088.5" y="988.5762">Handlers</text><!--MD5=[e701bbac852ce3c7f1c3d2193e52d58f]
-entity broker--><rect fill="#FFF6D6" height="36.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="108" x="1141" y="1508.9688"/><polygon fill="#FFF6D6" points="1232,1513.9688,1232,1527.9688,1244,1527.9688,1244,1519.9688,1238,1513.9688,1232,1513.9688" style="stroke: #8B6A0F; stroke-width: 1.5;"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1238" x2="1238" y1="1513.9688" y2="1519.9688"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1244" x2="1238" y1="1519.9688" y2="1519.9688"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="78" x="1151" y="1533.1074">MQTT Broker</text><!--MD5=[c71fda28f3ac5ef32a0194e523b6fceb]
-entity art_engines--><rect fill="#FFF6D6" height="50.9375" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="114" x="1440" y="1848.9688"/><polygon fill="#FFF6D6" points="1537,1853.9688,1537,1867.9688,1549,1867.9688,1549,1859.9688,1543,1853.9688,1537,1853.9688" style="stroke: #8B6A0F; stroke-width: 1.5;"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1543" x2="1543" y1="1853.9688" y2="1859.9688"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1549" x2="1543" y1="1859.9688" y2="1859.9688"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="84" x="1450" y="1873.1074">DSL Adapters</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="64" x="1450" y="1887.0762">+ Engines</text><!--MD5=[7468467f3b6b392f1d176d828c753b77]
-entity db--><path d="M919,1862.9688 C919,1852.9688 947,1852.9688 947,1852.9688 C947,1852.9688 975,1852.9688 975,1862.9688 L975,1885.9375 C975,1895.9375 947,1895.9375 947,1895.9375 C947,1895.9375 919,1895.9375 919,1885.9375 L919,1862.9688 " fill="#FFF6D6" style="stroke: #8B6A0F; stroke-width: 1.5;"/><path d="M919,1862.9688 C919,1872.9688 947,1872.9688 947,1872.9688 C947,1872.9688 975,1872.9688 975,1862.9688 " fill="none" style="stroke: #8B6A0F; stroke-width: 1.5;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="36" x="929" y="1888.1074">TS DB</text><!--MD5=[201c4c264cab2ea339fbf09154019f28]
-entity dash--><rect fill="#FFF6D6" height="36.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="106" x="1056" y="1855.9688"/><polygon fill="#FFF6D6" points="1145,1860.9688,1145,1874.9688,1157,1874.9688,1157,1866.9688,1151,1860.9688,1145,1860.9688" style="stroke: #8B6A0F; stroke-width: 1.5;"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1151" x2="1151" y1="1860.9688" y2="1866.9688"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1157" x2="1151" y1="1866.9688" y2="1866.9688"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="76" x="1066" y="1880.1074">Dashboards</text><!--MD5=[bddee3244a7db9752d524b1fcd891264]
-entity replay--><rect fill="#FFF6D6" height="36.9688" rx="5" ry="5" style="stroke: #8B6A0F; stroke-width: 1.5;" width="114" x="1176" y="1855.9688"/><polygon fill="#FFF6D6" points="1273,1860.9688,1273,1874.9688,1285,1874.9688,1285,1866.9688,1279,1860.9688,1273,1860.9688" style="stroke: #8B6A0F; stroke-width: 1.5;"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1279" x2="1279" y1="1860.9688" y2="1866.9688"/><line style="stroke: #8B6A0F; stroke-width: 1.5;" x1="1285" x2="1279" y1="1866.9688" y2="1866.9688"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="84" x="1186" y="1880.1074">Offline Replay</text><!--MD5=[de9c7a03d00699af5e09fd283b52e775]
-link mon_cfg to registry--><path d="M447.74,152.4088 C443.51,153.6988 441,154.4688 441,154.4688 C441,154.4688 377.72,168.8087 321.81,181.4788 " fill="none" id="mon_cfg-&gt;registry" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="316.78,182.6188,326.44,184.5382,321.6572,181.5174,324.6779,176.7346,316.78,182.6188" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[c62ef9e26a9ca3401f0f407dac805e12]
-link plug_mod to registry--><path d="M300.9,154.5087 C291.92,161.0687 282.49,167.9588 273.74,174.3488 " fill="none" id="plug_mod-&gt;registry" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="269.5,177.4488,279.127,175.3699,273.5375,174.4994,274.408,168.9099,269.5,177.4488" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[d000b8a5b13ee4e392d246b91915bdc9]
-link build_box to registry--><path d="M167.58,147.4788 C178.75,155.8788 191.46,165.4488 202.99,174.1288 " fill="none" id="build_box-&gt;registry" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="207.18,177.2787,202.38,168.6787,203.18,174.2787,197.58,175.0787,207.18,177.2787" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[bf1ae920e7af3cf270554f274bc2d69c]
-reverse link dp_mon to t_topics--><path d="M394.61,998.2688 C389.46,1044.1087 377.42,1151.2988 372.83,1192.2088 " fill="none" id="dp_mon&lt;-t_topics" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="395.17,993.2488,390.1925,1001.7473,394.6131,998.2176,398.1428,1002.6382,395.17,993.2488" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[ae356696d3c3a8a46e76075c3698e8a2]
-link dp_mon to dp_filt--><path d="M438.24,975.9688 C440.76,975.9688 443.91,975.9688 447.22,975.9688 " fill="none" id="dp_mon-&gt;dp_filt" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="452.48,975.9688,443.48,971.9688,447.48,975.9688,443.48,979.9688,452.48,975.9688" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[26006c54effdbd39c85f37e0817a91f1]
-link dp_filt to dp_exp--><path d="M555.58,975.9688 C558.65,975.9688 561.86,975.9688 564.84,975.9688 " fill="none" id="dp_filt-&gt;dp_exp" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="569.87,975.9688,560.87,971.9688,564.87,975.9688,560.87,979.9688,569.87,975.9688" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[012fa23b65431b2eccf3346b03596c54]
-reverse link dc1 to dp_exp--><path d="M703.29,639.9088 C685.89,705.2088 633.79,900.7088 618.35,958.6288 " fill="none" id="dc1&lt;-dp_exp" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="704.67,634.7088,698.4889,642.3765,703.3835,639.5404,706.2196,644.4349,704.67,634.7088" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[347f898e3774047a8acf8ccdf9655ae0]
-reverse link dc2 to dp_exp--><path d="M642.2,639.9088 C636.7,705.2088 620.25,900.7088 615.38,958.6288 " fill="none" id="dc2&lt;-dp_exp" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="642.63,634.7088,637.8985,643.3466,642.216,639.6916,645.871,644.0091,642.63,634.7088" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[9a9a1b79a404c6a493efb36023007dc8]
-reverse link dc3 to dp_exp--><path d="M581.1,639.9088 C587.52,705.2088 606.71,900.7088 612.4,958.6288 " fill="none" id="dc3&lt;-dp_exp" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="580.59,634.7088,577.4815,644.0542,581.0748,639.6852,585.4438,643.2785,580.59,634.7088" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[092b5520a316100d7721479104f3205d]
-reverse link dcn to dp_exp--><path d="M526.13,639.0587 C535.55,655.0288 547,674.4688 547,674.4688 C547,674.4688 563,691.4688 563,691.4688 C563,691.4688 600.32,898.9388 611.11,958.9188 " fill="none" id="dcn&lt;-dp_exp" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="523.54,634.6688,524.654,644.4544,526.0745,638.9788,531.5501,640.3992,523.54,634.6688" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[2bbdffeeb27180d232498ffe176f1b1f]
-reverse link ltl to dc1--><path d="M707.23,456.6588 C707.64,493.2987 708.46,567.7388 708.82,600.4388 " fill="none" id="ltl&lt;-dc1" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="707.18,451.5287,703.2831,460.5739,707.2371,456.5284,711.2826,460.4825,707.18,451.5287" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[cdf9c0cb9e61973a1cd5b9f5f4f1a156]
-reverse link stl to dc2--><path d="M651.95,456.6588 C650.12,493.2987 646.42,567.7388 644.8,600.4388 " fill="none" id="stl&lt;-dc2" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="652.2,451.5287,647.7669,460.3235,651.9567,456.5228,655.7574,460.7127,652.2,451.5287" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[6a8fb21e6ae3f029a2f49f42f132ba71]
-reverse link ctl to dc3--><path d="M595.78,456.6588 C591.93,493.2987 584.12,567.7388 580.68,600.4388 " fill="none" id="ctl&lt;-dc3" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="596.31,451.5287,591.3809,460.0554,595.7814,456.5007,599.336,460.9012,596.31,451.5287" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[a371ec9eec0ec0d7ef98c6464803b4e9]
-reverse link cust to dcn--><path d="M528.13,456.6588 C524.89,493.2987 518.31,567.7388 515.42,600.4388 " fill="none" id="cust&lt;-dcn" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="528.58,451.5287,523.7972,460.1383,528.1364,456.509,531.7657,460.8482,528.58,451.5287" style="stroke: #A80036; stroke-width: 1.0;"/><!--MD5=[3a295db9c3ddbde48a007f99a84c91b5]
-link t_topics to t_srv--><!--MD5=[4daa9243dd599a2f31b90920afc37c73]
-link t_srv to t_act--><!--MD5=[9e3634002144d8de3e0d313d10e394a7]
-link t_act to t_life--><!--MD5=[ada20ac45ca775850a0fc48a5ab2bda8]
-link t_life to t_par--><!--MD5=[db41f985e0567ed6bfec371117bfcc2f]
-link art_mon to broker--><path d="M1165.48,1234.9988 C1171.5,1294.4288 1186.79,1445.4288 1192.66,1503.3587 " fill="none" id="art_mon-&gt;broker" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1193.2,1508.6688,1196.2793,1499.3136,1192.6997,1503.6938,1188.3194,1500.1142,1193.2,1508.6688" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="47" x="1176" y="1335.1074">«MQTT»</text><!--MD5=[567e52f9ea45498017f7e4ce2e69c65d]
-link broker to vrunner--><path d="M1207.65,1546.3388 C1224.44,1570.0488 1252,1608.9688 1252,1608.9688 C1252,1608.9688 1409,1616.9688 1409,1616.9688 C1409,1616.9688 1409.2463,1632.7506 1409.6166,1656.485 C1409.8017,1668.3522 1410.0179,1682.2075 1410.2498,1697.0723 C1410.3078,1700.7885 1410.3667,1704.5677 1410.4265,1708.3948 C1410.4414,1709.3516 1410.4564,1710.3113 1410.4714,1711.2739 C1410.4789,1711.7551 1410.4864,1712.237 1410.4939,1712.7196 " fill="none" id="broker-&gt;vrunner" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1410.4939,1712.7196,1414.353,1703.6583,1410.4159,1707.7203,1406.354,1703.7831,1410.4939,1712.7196" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="47" x="1253" y="1606.1074">«MQTT»</text><!--MD5=[01bb5cfec4d2d5449f2568a4aae9c2ae]
-link vrunner to broker--><path d="M1422.1443,1712.2007 C1422.2011,1711.1978 1422.2579,1710.1973 1422.3145,1709.1994 C1422.4277,1707.2035 1422.5403,1705.218 1422.6523,1703.2448 C1422.8761,1699.2984 1423.0972,1695.4013 1423.3146,1691.5692 C1424.184,1676.2411 1424.9945,1661.9538 1425.6886,1649.7167 C1427.0769,1625.2425 1428,1608.9688 1428,1608.9688 C1428,1608.9688 1428,1593.9688 1428,1593.9688 C1428,1593.9688 1322.97,1564.4488 1253.95,1545.0388 " fill="none" id="vrunner-&gt;broker" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1249.04,1543.6588,1256.6171,1549.9506,1253.8524,1545.0154,1258.7877,1542.2507,1249.04,1543.6588" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="63" x="1429" y="1606.1074">verdicts/#</text><!--MD5=[b33725c11cd6fb0cd801e7a81b9a0575]
-link broker to db--><path d="M1177.28,1546.0288 C1160.23,1562.9388 1137,1585.9688 1137,1585.9688 C1137,1585.9688 1049,1616.9688 1049,1616.9688 C1049,1616.9688 982.87,1783.2688 957.1,1848.0588 " fill="none" id="broker-&gt;db" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="955.17,1852.9088,962.2082,1846.0193,957.0146,1848.2615,954.7725,1843.0679,955.17,1852.9088" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="65" x="1114" y="1606.1074">«planned»</text><!--MD5=[e8d870e113189051197a256bd25aebac]
-link db to dash--><path d="M975.22,1874.4688 C996.04,1874.4688 1025.1,1874.4688 1050.82,1874.4688 " fill="none" id="db-&gt;dash" style="stroke: #A80036; stroke-width: 1.0;"/><polygon fill="#A80036" points="1055.92,1874.4688,1046.92,1870.4688,1050.92,1874.4688,1046.92,1878.4688,1055.92,1874.4688" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="65" x="983" y="1868.6074">«planned»</text><!--MD5=[1ddb4392a15ae69a8b738a377b1d2866]
-link replay to art_engines--><path d="M1243.06,1855.8388 C1271.6,1802.9988 1351,1655.9688 1351,1655.9688 C1351,1655.9688 1436,1655.9688 1436,1655.9688 C1436,1655.9688 1471.58,1783.3988 1488.39,1843.6288 " fill="none" id="replay-&gt;art_engines" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1489.76,1848.5488,1491.1948,1838.805,1488.4166,1843.7326,1483.489,1840.9544,1489.76,1848.5488" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="121" x="1304.5" y="1606.1074">«replay» «planned»</text><!--MD5=[bda4dfdd1eaf9bf445ab9ff057842ad0]
-link broker to fb_handlers--><path d="M1201.43,1508.7988 C1219.94,1457.9688 1272,1314.9688 1272,1314.9688 C1272,1314.9688 1302,1055.9688 1302,1055.9688 C1302,1055.9688 1302,1040.9688 1302,1040.9688 C1302,1040.9688 1238.13,1017.0688 1188.46,998.4788 " fill="none" id="broker-&gt;fb_handlers" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1183.7,996.6888,1190.7225,1003.5942,1188.3816,998.4444,1193.5315,996.1035,1183.7,996.6888" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="151" x="1301" y="1214.1074">commands/# «planned»</text><!--MD5=[9c105e96e76f70d229fb8ffa8c6313a7]
-link fb_handlers to art_mon--><path d="M1108.74,1001.5288 C1092.39,1019.5788 1073,1040.9688 1073,1040.9688 C1073,1040.9688 1073,1055.9688 1073,1055.9688 C1073,1055.9688 1101,1063.9688 1101,1063.9688 C1101,1063.9688 1132.33,1136.9888 1150.45,1179.2188 " fill="none" id="fb_handlers-&gt;art_mon" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1152.48,1183.9588,1152.6113,1174.1108,1150.5104,1179.363,1145.2581,1177.2621,1152.48,1183.9588" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="228" x="1074" y="1053.1074">«svc»·«param»·«lifecycle» «planned»</text><!--MD5=[842a1dbe48b9cc7840826d6388333c14]
-link mon_cfg to verdict_pkg--><!--MD5=[a8734d334e764ba143e51b13d3675f45]
-link verdict_pkg to edge--><!--MD5=[4fb2140e30a458b15417b4710d5e9e35]
-link plug_mod to dc_pkg--><!--MD5=[61e99520d9fb1f60c5fe3b6ddb5fea78]
-link dc_pkg to broker_host--><!--MD5=[1ad1213db95b63205cd4a1588c29a49d]
-link build_box to dp_pkg--><!--MD5=[6d449efc73864dd70a2e88cb244e17be]
-link dp_pkg to verdict_host--><!--MD5=[125db48c8f0c5aa68db4870bf0d996c2]
-link registry to sut_pkg--><!--MD5=[707535957faf424717ee33178ccce97a]
-link sut_pkg to backend--><!--MD5=[b0f0d1dc700fc776e19f873ed1f59382]
-link registry to col2--><path d="M241.14,225.8888 C245.02,254.7938 251.83,305.5313 257.7463,349.6075 C258.4858,355.117 259.2113,360.5225 259.9155,365.7682 C260.2675,368.3911 260.6143,370.974 260.9547,373.51 " fill="none" id="registry-&gt;col2" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="260.9547,373.51,263.7218,364.0579,260.2895,368.5545,255.7929,365.1222,260.9547,373.51" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="80" x="248" y="269.6074">«configures»</text><!--MD5=[c1e3fd53050c99f596306cabc44d2d55]
-link dp_pkg to art_mon--><path d="M341.3032,1017.0443 C341.3256,1017.1409 341.348,1017.2374 341.3703,1017.3335 C341.4596,1017.7183 341.548,1018.0991 341.6354,1018.4756 C341.8102,1019.2287 341.9811,1019.9646 342.1472,1020.6802 C342.4795,1022.1116 342.793,1023.4619 343.0819,1024.7064 C344.2375,1029.6844 345,1032.9688 345,1032.9688 C345,1032.9688 800,1040.9688 800,1040.9688 C800,1040.9688 1101,1063.9688 1101,1063.9688 C1101,1063.9688 1132.33,1136.9888 1150.45,1179.2188 " fill="none" id="dp_pkg-&gt;art_mon" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1152.48,1183.9588,1152.6113,1174.1108,1150.5104,1179.363,1145.2581,1177.2621,1152.48,1183.9588" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="55" x="996" y="1053.1074">«deploy»</text><!--MD5=[14adc79fa5da0f74e58a8a2238a81534]
-link verdict_pkg to art_engines--><path d="M759.3563,440.2891 C759.6138,440.4375 759.8769,440.5892 760.1455,440.744 C761.2199,441.3634 762.3829,442.0339 763.631,442.7534 C766.1273,444.1925 768.9643,445.8281 772.1156,447.6449 C784.721,454.9122 802.3551,465.0791 823.3239,477.1689 C865.2616,501.3484 920.5381,533.2194 975.6012,564.9675 C1085.7275,628.4638 1195,691.4688 1195,691.4688 C1195,691.4688 1456,1063.9688 1456,1063.9688 C1456,1063.9688 1496,1593.9688 1496,1593.9688 C1496,1593.9688 1496.64,1771.6288 1496.89,1843.6688 " fill="none" id="verdict_pkg-&gt;art_engines" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1496.91,1848.6688,1500.8843,1839.6574,1496.8957,1843.6688,1492.8843,1839.6802,1496.91,1848.6688" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="55" x="1450" y="1053.1074">«deploy»</text><!--MD5=[bebb696fedc7c7218795db31a1217106]
-link build_box to mon_ctr--><path d="M219.18,147.5087 C233.55,151.5387 244,154.4688 244,154.4688 C244,154.4688 1417,200.4688 1417,200.4688 C1417,200.4688 1417,200.4688 1417,976.9688 C1417,976.9688 1405,1055.9688 1405,1055.9688 C1405,1055.9688 1269,1063.9688 1269,1063.9688 C1269,1063.9688 1268.8789,1066.1566 1268.6665,1069.9938 C1268.5603,1071.9124 1268.4313,1074.2434 1268.2832,1076.9194 C1268.2462,1077.5884 1268.208,1078.279 1268.1686,1078.9901 C1268.1588,1079.1678 1268.1489,1079.3469 1268.1389,1079.5272 " fill="none" id="build_box-&gt;mon_ctr" style="stroke: #A80036; stroke-width: 1.0; stroke-dasharray: 7.0,7.0;"/><polygon fill="#A80036" points="1268.1389,1079.5272,1272.6301,1070.762,1268.4152,1074.5348,1264.6423,1070.3199,1268.1389,1079.5272" style="stroke: #A80036; stroke-width: 1.0;"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="55" x="1418" y="511.6074">«deploy»</text><rect fill="#DDDDDD" height="117.7813" rx="5" ry="5" style="stroke: #000000; stroke-width: 1.0;" width="335" x="8" y="2053.9688"/><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="76" x="14" y="2070.1074">Stereotypes</text><text fill="#000000" font-family="Helvetica" font-size="12" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="85" x="14" y="2084.0762">&lt;&lt;device&gt;&gt;</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="112" x="103" y="2084.0762">physical / VM host</text><text fill="#000000" font-family="Helvetica" font-size="12" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="197" x="14" y="2098.0449">&lt;&lt;executionEnvironment&gt;&gt;</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="122" x="215" y="2098.0449">process / container</text><text fill="#000000" font-family="Helvetica" font-size="12" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="92" x="14" y="2112.0137">&lt;&lt;artifact&gt;&gt;</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="148" x="110" y="2112.0137">deployable module / file</text><text fill="#000000" font-family="Helvetica" font-size="12" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="98" x="14" y="2125.9824">&lt;&lt;planned&gt;&gt;</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="195" x="116" y="2125.9824">designed, not yet implemented</text><line style="stroke: none; stroke-width: 1.0;" x1="14" x2="337" y1="2133.8125" y2="2133.8125"/><text fill="#000000" font-family="Helvetica" font-size="12" font-weight="bold" lengthAdjust="spacingAndGlyphs" textLength="88" x="14" y="2149.9512">&lt;&lt;deploy&gt;&gt;</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="210" x="106" y="2149.9512">dashed: an architectural element</text><text fill="#000000" font-family="Helvetica" font-size="12" lengthAdjust="spacingAndGlyphs" textLength="203" x="14" y="2163.9199">is hosted on a deployment node</text><!--MD5=[2aa070f0cecea4671250272717f30ed4]
-@startuml promotion_slide
-title ROS2-Monitor-Infra — Architecture + UML Deployment (Promotion Slide)
-
-skinparam shadowing false
-skinparam defaultFontName Helvetica
-skinparam defaultFontSize 12
-skinparam roundCorner 10
-skinparam ranksep 22
-skinparam nodesep 14
-skinparam linetype polyline
-
-skinparam package {
-  BackgroundColor #DCE5EF
-  BorderColor #2C3E50
-  FontStyle bold
-  FontSize 14
-}
-skinparam component {
-  BackgroundColor #FFF6D6
-  BorderColor #8B6A0F
-}
-skinparam node {
-  BackgroundColor #F7F9FC
-  BorderColor #2C3E50
-}
-skinparam artifact {
-  BackgroundColor #FFF6D6
-  BorderColor #8B6A0F
-}
-skinparam database {
-  BackgroundColor #FFF6D6
-  BorderColor #8B6A0F
-}
-skinparam cloud {
-  BackgroundColor #ECF3FB
-  BorderColor #2C3E50
-}
-
-package "Specification & Plugins" as col1 {
-  component "Monitor Config\nTopics · Services · Actions\nParams · Lifecycle · QoS" as mon_cfg
-  component "Plugin Modules\nConverters · Transformers\nDSL · Verdict Services" as plug_mod
-  component "Build & Containerize\nDockerfile · docker-compose" as build_box
-  component "Plugin Registry\nbuilt-in | module:Class" as registry
-
-  mon_cfg   -down-> registry
-  plug_mod  -down-> registry
-  build_box -down-> registry
-}
-
-package "Runtime Verification Pipelines" as col2 {
-
-  package "Verdict Service" as verdict_pkg {
-    component "LTL" as ltl
-    component "STL" as stl
-    component "CTL" as ctl
-    component "Custom" as cust
-  }
-  package "DSL Adapters" as dc_pkg {
-    component "DC_1" as dc1
-    component "DC_2" as dc2
-    component "DC_3" as dc3
-    component "DC_n" as dcn
-  }
-  package "Data Processor" as dp_pkg {
-    component "Collectors" as dp_mon
-    component "Transformers" as dp_filt
-    component "Dispatcher" as dp_exp
-  }
-  package "ROS 2 Application (SUT)" as sut_pkg {
-    component "Topics" as t_topics
-    component "Services" as t_srv
-    component "Actions" as t_act
-    component "Lifecycle" as t_life
-    component "Params" as t_par
-  }
-
-  t_topics -up-> dp_mon
-  dp_mon -right-> dp_filt
-  dp_filt -right-> dp_exp
-  dp_exp -up-> dc1
-  dp_exp -up-> dc2
-  dp_exp -up-> dc3
-  dp_exp -up-> dcn
-  dc1 -up-> ltl
-  dc2 -up-> stl
-  dc3 -up-> ctl
-  dcn -up-> cust
-
-  t_topics -[hidden]right- t_srv
-  t_srv    -[hidden]right- t_act
-  t_act    -[hidden]right- t_life
-  t_life   -[hidden]right- t_par
-}
-
-package "Deployment (UML)" as col3 {
-
-  node "Edge Host\n<<device>>" as edge {
-    node "Monitor Container\n<<executionEnvironment>>" as mon_ctr {
-      artifact "MonitorNode\n(rclpy)" as art_mon
-      artifact "Edge JSONL" as art_jsonl_edge
-    }
-    node "Feedback Bridge\n<<executionEnvironment>>\n<<planned>>" as fb_bridge {
-      artifact "Intervention\nHandlers" as fb_handlers
-    }
-  }
-
-  cloud "Cloud" as cloudbox {
-    node "Broker Host\n<<device>>" as broker_host {
-      artifact "MQTT Broker" as broker
-    }
-    node "Verdict Server\n<<device>>" as verdict_host {
-      node "VerdictRunner\n<<executionEnvironment>>\nno rclpy" as vrunner {
-        artifact "DSL Adapters\n+ Engines" as art_engines
-      }
-    }
-    node "Data Backend\n<<device>> <<planned>>" as backend {
-      database "TS DB" as db
-      artifact "Dashboards" as dash
-      artifact "Offline Replay" as replay
-    }
-  }
-
-  art_mon  ..> broker  : <<MQTT>>
-  broker   ..> vrunner : <<MQTT>>
-  vrunner  ..> broker  : verdicts/#
-  broker   ..> db      : <<planned>>
-  db        -> dash    : <<planned>>
-  replay   ..> art_engines : <<replay>> <<planned>>
-  broker   ..> fb_handlers : commands/# <<planned>>
-  fb_handlers ..> art_mon  : <<svc>>·<<param>>·<<lifecycle>> <<planned>>
-}
-
-mon_cfg     -[hidden]right- verdict_pkg
-verdict_pkg -[hidden]right- edge
-plug_mod    -[hidden]right- dc_pkg
-dc_pkg      -[hidden]right- broker_host
-build_box   -[hidden]right- dp_pkg
-dp_pkg      -[hidden]right- verdict_host
-registry    -[hidden]right- sut_pkg
-sut_pkg     -[hidden]right- backend
-
-registry    ..> col2 : <<configures>>
-dp_pkg      ..> art_mon     : <<deploy>>
-verdict_pkg ..> art_engines : <<deploy>>
-build_box   ..> mon_ctr     : <<deploy>>
-
-legend bottom left
-  Stereotypes
-  <b><<device>></b> physical / VM host
-  <b><<executionEnvironment>></b> process / container
-  <b><<artifact>></b> deployable module / file
-  <b><<planned>></b> designed, not yet implemented
-  - - - -
-  <b><<deploy>></b> dashed: an architectural element
-  is hosted on a deployment node
-endlegend
-
-@enduml
-
-PlantUML version 1.2020.02(Sun Mar 01 10:22:07 UTC 2020)
-(GPL source distribution)
-Java Runtime: OpenJDK Runtime Environment
-JVM: OpenJDK 64-Bit Server VM
-Java Version: 21.0.10+7-Ubuntu-124.04
-Operating System: Linux
-Default Encoding: UTF-8
-Language: en
-Country: US
---></g></svg>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Generated by graphviz version 2.43.0 (0)
+ -->
+<!-- Title: promotion Pages: 1 -->
+<svg width="2501pt" height="913pt"
+ viewBox="0.00 0.00 2500.50 913.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(4 909)">
+<title>promotion</title>
+<polygon fill="white" stroke="transparent" points="-4,4 -4,-909 2496.5,-909 2496.5,4 -4,4"/>
+<text text-anchor="start" x="1034.75" y="-890" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="15.00">ROS2&#45;Monitor&#45;Infra — Architecture &amp; Deployment</text>
+<g id="clust1" class="cluster">
+<title>cluster_arch</title>
+<path fill="#f2f6fa" stroke="#34495e" d="M20,-127C20,-127 820,-127 820,-127 826,-127 832,-133 832,-139 832,-139 832,-849 832,-849 832,-855 826,-861 820,-861 820,-861 20,-861 20,-861 14,-861 8,-855 8,-849 8,-849 8,-139 8,-139 8,-133 14,-127 20,-127"/>
+<text text-anchor="start" x="371" y="-846.8" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">Architecture</text>
+</g>
+<g id="clust2" class="cluster">
+<title>cluster_spec</title>
+<path fill="#e5ecf4" stroke="#2c3e50" d="M248,-571C248,-571 812,-571 812,-571 818,-571 824,-577 824,-583 824,-583 824,-818 824,-818 824,-824 818,-830 812,-830 812,-830 248,-830 248,-830 242,-830 236,-824 236,-818 236,-818 236,-583 236,-583 236,-577 242,-571 248,-571"/>
+<text text-anchor="start" x="452.5" y="-817.4" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00">Specification &amp; Plugins</text>
+</g>
+<g id="clust3" class="cluster">
+<title>cluster_pipe</title>
+<path fill="#e5ecf4" stroke="#2c3e50" d="M28,-135C28,-135 216,-135 216,-135 222,-135 228,-141 228,-147 228,-147 228,-632 228,-632 228,-638 222,-644 216,-644 216,-644 28,-644 28,-644 22,-644 16,-638 16,-632 16,-632 16,-147 16,-147 16,-141 22,-135 28,-135"/>
+<text text-anchor="start" x="24" y="-631.4" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00">Runtime Verification Pipeline</text>
+</g>
+<g id="clust4" class="cluster">
+<title>cluster_deploy</title>
+<path fill="#f2f6fa" stroke="#34495e" d="M852,-8C852,-8 2103,-8 2103,-8 2109,-8 2115,-14 2115,-20 2115,-20 2115,-860 2115,-860 2115,-866 2109,-872 2103,-872 2103,-872 852,-872 852,-872 846,-872 840,-866 840,-860 840,-860 840,-20 840,-20 840,-14 846,-8 852,-8"/>
+<text text-anchor="start" x="1389.5" y="-857.8" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="14.00">UML Deployment View</text>
+</g>
+<g id="clust9" class="cluster">
+<title>cluster_server</title>
+<path fill="#eef3f8" stroke="#2c3e50" d="M1344,-16C1344,-16 2095,-16 2095,-16 2101,-16 2107,-22 2107,-28 2107,-28 2107,-508 2107,-508 2107,-514 2101,-520 2095,-520 2095,-520 1344,-520 1344,-520 1338,-520 1332,-514 1332,-508 1332,-508 1332,-28 1332,-28 1332,-22 1338,-16 1344,-16"/>
+<text text-anchor="start" x="1619" y="-507.4" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00">Monitoring Services</text>
+<text text-anchor="start" x="1754" y="-507.4" font-family="Helvetica,sans-Serif" font-size="12.00"> &#160;&#160;«device»</text>
+</g>
+<g id="clust10" class="cluster">
+<title>cluster_tg</title>
+<path fill="white" stroke="#2c3e50" d="M1352,-254C1352,-254 1583,-254 1583,-254 1589,-254 1595,-260 1595,-266 1595,-266 1595,-479 1595,-479 1595,-485 1589,-491 1583,-491 1583,-491 1352,-491 1352,-491 1346,-491 1340,-485 1340,-479 1340,-479 1340,-266 1340,-266 1340,-260 1346,-254 1352,-254"/>
+<text text-anchor="start" x="1348" y="-480" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Transport Gateway</text>
+<text text-anchor="start" x="1456" y="-480" font-family="Helvetica,sans-Serif" font-size="10.00"> &#160;&#160;«executionEnvironment»</text>
+</g>
+<g id="clust11" class="cluster">
+<title>cluster_vrt</title>
+<path fill="white" stroke="#2c3e50" d="M1615,-121C1615,-121 1830,-121 1830,-121 1836,-121 1842,-127 1842,-133 1842,-133 1842,-335 1842,-335 1842,-341 1836,-347 1830,-347 1830,-347 1615,-347 1615,-347 1609,-347 1603,-341 1603,-335 1603,-335 1603,-133 1603,-133 1603,-127 1609,-121 1615,-121"/>
+<text text-anchor="start" x="1611" y="-336" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Verdict Runtime</text>
+<text text-anchor="start" x="1703" y="-336" font-family="Helvetica,sans-Serif" font-size="10.00"> &#160;&#160;«executionEnvironment»</text>
+</g>
+<g id="clust12" class="cluster">
+<title>cluster_ert</title>
+<path fill="white" stroke="#2c3e50" d="M1862,-24C1862,-24 2087,-24 2087,-24 2093,-24 2099,-30 2099,-36 2099,-36 2099,-198 2099,-198 2099,-204 2093,-210 2087,-210 2087,-210 1862,-210 1862,-210 1856,-210 1850,-204 1850,-198 1850,-198 1850,-36 1850,-36 1850,-30 1856,-24 1862,-24"/>
+<text text-anchor="start" x="1858" y="-199" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Evidence Runtime</text>
+<text text-anchor="start" x="1960" y="-199" font-family="Helvetica,sans-Serif" font-size="10.00"> &#160;&#160;«executionEnvironment»</text>
+</g>
+<g id="clust5" class="cluster">
+<title>cluster_edge</title>
+<path fill="#eef3f8" stroke="#2c3e50" d="M1000,-113C1000,-113 1312,-113 1312,-113 1318,-113 1324,-119 1324,-125 1324,-125 1324,-829 1324,-829 1324,-835 1318,-841 1312,-841 1312,-841 1000,-841 1000,-841 994,-841 988,-835 988,-829 988,-829 988,-125 988,-125 988,-119 994,-113 1000,-113"/>
+<text text-anchor="start" x="1044" y="-828.4" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="12.00">Robot / Edge Computer</text>
+<text text-anchor="start" x="1202" y="-828.4" font-family="Helvetica,sans-Serif" font-size="12.00"> &#160;&#160;«device»</text>
+</g>
+<g id="clust8" class="cluster">
+<title>cluster_frt</title>
+<path fill="white" stroke="#2c3e50" d="M1075,-121C1075,-121 1304,-121 1304,-121 1310,-121 1316,-127 1316,-133 1316,-133 1316,-331 1316,-331 1316,-337 1310,-343 1304,-343 1304,-343 1075,-343 1075,-343 1069,-343 1063,-337 1063,-331 1063,-331 1063,-133 1063,-133 1063,-127 1069,-121 1075,-121"/>
+<text text-anchor="start" x="1071" y="-332" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Feedback Runtime</text>
+<text text-anchor="start" x="1177" y="-332" font-family="Helvetica,sans-Serif" font-size="10.00"> &#160;&#160;«executionEnvironment»</text>
+</g>
+<g id="clust6" class="cluster">
+<title>cluster_ros2</title>
+<path fill="white" stroke="#2c3e50" d="M1065,-741C1065,-741 1273,-741 1273,-741 1279,-741 1285,-747 1285,-753 1285,-753 1285,-800 1285,-800 1285,-806 1279,-812 1273,-812 1273,-812 1065,-812 1065,-812 1059,-812 1053,-806 1053,-800 1053,-800 1053,-753 1053,-753 1053,-747 1059,-741 1065,-741"/>
+<text text-anchor="start" x="1061" y="-801" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">ROS 2 Runtime</text>
+<text text-anchor="start" x="1146" y="-801" font-family="Helvetica,sans-Serif" font-size="10.00"> &#160;&#160;«executionEnvironment»</text>
+</g>
+<g id="clust7" class="cluster">
+<title>cluster_mrt</title>
+<path fill="white" stroke="#2c3e50" d="M1008,-398C1008,-398 1225,-398 1225,-398 1231,-398 1237,-404 1237,-410 1237,-410 1237,-634 1237,-634 1237,-640 1231,-646 1225,-646 1225,-646 1008,-646 1008,-646 1002,-646 996,-640 996,-634 996,-634 996,-410 996,-410 996,-404 1002,-398 1008,-398"/>
+<text text-anchor="start" x="1004" y="-635" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="10.00">Monitor Runtime</text>
+<text text-anchor="start" x="1098" y="-635" font-family="Helvetica,sans-Serif" font-size="10.00"> &#160;&#160;«executionEnvironment»</text>
+</g>
+<g id="clust13" class="cluster">
+<title>cluster_op</title>
+<path fill="#eef3f8" stroke="#2c3e50" d="M860,-139C860,-139 968,-139 968,-139 974,-139 980,-145 980,-151 980,-151 980,-199 980,-199 980,-205 974,-211 968,-211 968,-211 860,-211 860,-211 854,-211 848,-205 848,-199 848,-199 848,-151 848,-151 848,-145 854,-139 860,-139"/>
+<text text-anchor="start" x="856" y="-199.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">Operator</text>
+<text text-anchor="start" x="911" y="-199.2" font-family="Helvetica,sans-Serif" font-size="11.00"> &#160;&#160;«device»</text>
+</g>
+<!-- MON_CFG -->
+<g id="node1" class="node">
+<title>MON_CFG</title>
+<path fill="#fffef0" stroke="#506478" d="M602.5,-789C602.5,-789 467.5,-789 467.5,-789 461.5,-789 455.5,-783 455.5,-777 455.5,-777 455.5,-757 455.5,-757 455.5,-751 461.5,-745 467.5,-745 467.5,-745 602.5,-745 602.5,-745 608.5,-745 614.5,-751 614.5,-757 614.5,-757 614.5,-777 614.5,-777 614.5,-783 608.5,-789 602.5,-789"/>
+<text text-anchor="middle" x="535" y="-776.2" font-family="Helvetica,sans-Serif" font-size="11.00">Monitor Config</text>
+<text text-anchor="middle" x="535" y="-764.2" font-family="Helvetica,sans-Serif" font-size="11.00">Topics · Services · Actions</text>
+<text text-anchor="middle" x="535" y="-752.2" font-family="Helvetica,sans-Serif" font-size="11.00">Params · Lifecycle · QoS</text>
+</g>
+<!-- REGISTRY -->
+<g id="node4" class="node">
+<title>REGISTRY</title>
+<path fill="#ffe9c4" stroke="#506478" d="M492.5,-615C492.5,-615 377.5,-615 377.5,-615 371.5,-615 365.5,-609 365.5,-603 365.5,-603 365.5,-591 365.5,-591 365.5,-585 371.5,-579 377.5,-579 377.5,-579 492.5,-579 492.5,-579 498.5,-579 504.5,-585 504.5,-591 504.5,-591 504.5,-603 504.5,-603 504.5,-609 498.5,-615 492.5,-615"/>
+<text text-anchor="middle" x="435" y="-600.2" font-family="Helvetica,sans-Serif" font-size="11.00">Plugin Registry</text>
+<text text-anchor="middle" x="435" y="-588.2" font-family="Helvetica,sans-Serif" font-size="11.00">built&#45;in | module:Class</text>
+</g>
+<!-- MON_CFG&#45;&gt;REGISTRY -->
+<g id="edge1" class="edge">
+<title>MON_CFG&#45;&gt;REGISTRY</title>
+<path fill="none" stroke="#506478" d="M522.33,-744.72C502.26,-710.99 463.52,-645.92 445.15,-615.05"/>
+</g>
+<!-- PLUG -->
+<g id="node2" class="node">
+<title>PLUG</title>
+<path fill="#fffef0" stroke="#506478" d="M414,-801C414,-801 256,-801 256,-801 250,-801 244,-795 244,-789 244,-789 244,-745 244,-745 244,-739 250,-733 256,-733 256,-733 414,-733 414,-733 420,-733 426,-739 426,-745 426,-745 426,-789 426,-789 426,-795 420,-801 414,-801"/>
+<text text-anchor="middle" x="335" y="-788.2" font-family="Helvetica,sans-Serif" font-size="11.00">Plugin Modules</text>
+<text text-anchor="middle" x="335" y="-776.2" font-family="Helvetica,sans-Serif" font-size="11.00">Converters · Transformers</text>
+<text text-anchor="middle" x="335" y="-764.2" font-family="Helvetica,sans-Serif" font-size="11.00">DSL · Verdict Services</text>
+<text text-anchor="middle" x="335" y="-752.2" font-family="Helvetica,sans-Serif" font-size="11.00">Exporters · TransportAdapters</text>
+<text text-anchor="middle" x="335" y="-740.2" font-family="Helvetica,sans-Serif" font-size="11.00">FeedbackCommands</text>
+</g>
+<!-- PLUG&#45;&gt;REGISTRY -->
+<g id="edge2" class="edge">
+<title>PLUG&#45;&gt;REGISTRY</title>
+<path fill="none" stroke="#506478" d="M354.76,-732.81C375.82,-697.43 408.34,-642.78 424.77,-615.19"/>
+</g>
+<!-- BUILD -->
+<g id="node3" class="node">
+<title>BUILD</title>
+<path fill="#fffef0" stroke="#506478" d="M804,-785C804,-785 656,-785 656,-785 650,-785 644,-779 644,-773 644,-773 644,-761 644,-761 644,-755 650,-749 656,-749 656,-749 804,-749 804,-749 810,-749 816,-755 816,-761 816,-761 816,-773 816,-773 816,-779 810,-785 804,-785"/>
+<text text-anchor="middle" x="730" y="-770.2" font-family="Helvetica,sans-Serif" font-size="11.00">Build &amp; Containerize</text>
+<text text-anchor="middle" x="730" y="-758.2" font-family="Helvetica,sans-Serif" font-size="11.00">Dockerfile · docker&#45;compose</text>
+</g>
+<!-- BUILD&#45;&gt;REGISTRY -->
+<g id="edge3" class="edge">
+<title>BUILD&#45;&gt;REGISTRY</title>
+<path fill="none" stroke="#506478" d="M709.59,-748.69C689.79,-732.38 658.48,-707.83 629,-690 578.92,-659.71 517.3,-631.97 477.13,-615.05"/>
+</g>
+<!-- DP -->
+<g id="node6" class="node">
+<title>DP</title>
+<path fill="#fffef0" stroke="#506478" d="M207.5,-464C207.5,-464 76.5,-464 76.5,-464 70.5,-464 64.5,-458 64.5,-452 64.5,-452 64.5,-432 64.5,-432 64.5,-426 70.5,-420 76.5,-420 76.5,-420 207.5,-420 207.5,-420 213.5,-420 219.5,-426 219.5,-432 219.5,-432 219.5,-452 219.5,-452 219.5,-458 213.5,-464 207.5,-464"/>
+<text text-anchor="middle" x="142" y="-451.2" font-family="Helvetica,sans-Serif" font-size="11.00">Data Processor</text>
+<text text-anchor="middle" x="142" y="-439.2" font-family="Helvetica,sans-Serif" font-size="11.00">Collectors · Transformers</text>
+<text text-anchor="middle" x="142" y="-427.2" font-family="Helvetica,sans-Serif" font-size="11.00">Dispatcher</text>
+</g>
+<!-- REGISTRY&#45;&gt;DP -->
+<g id="edge7" class="edge">
+<title>REGISTRY&#45;&gt;DP</title>
+<path fill="none" stroke="#506478" stroke-dasharray="5,2" d="M387.13,-571C346.57,-549.82 287.18,-518.81 237.01,-492.61"/>
+<polygon fill="#506478" stroke="#506478" points="228,-487.91 238.95,-488.55 232.43,-490.22 236.86,-492.54 236.86,-492.54 236.86,-492.54 232.43,-490.22 234.78,-496.52 228,-487.91 228,-487.91"/>
+<text text-anchor="middle" x="365.5" y="-536.5" font-family="Helvetica,sans-Serif" font-size="10.00">configures</text>
+</g>
+<!-- EMN -->
+<g id="node10" class="node">
+<title>EMN</title>
+<path fill="#fffef0" stroke="#506478" d="M1144,-619C1144,-619 1016,-619 1016,-619 1010,-619 1004,-613 1004,-607 1004,-607 1004,-587 1004,-587 1004,-581 1010,-575 1016,-575 1016,-575 1144,-575 1144,-575 1150,-575 1156,-581 1156,-587 1156,-587 1156,-607 1156,-607 1156,-613 1150,-619 1144,-619"/>
+<text text-anchor="middle" x="1080" y="-606.2" font-family="Helvetica,sans-Serif" font-size="11.00">MonitorNode</text>
+<text text-anchor="middle" x="1080" y="-594.2" font-family="Helvetica,sans-Serif" font-size="11.00">collectors · transformers</text>
+<text text-anchor="middle" x="1080" y="-582.2" font-family="Helvetica,sans-Serif" font-size="11.00">dispatcher</text>
+</g>
+<!-- REGISTRY&#45;&gt;EMN -->
+<g id="edge23" class="edge">
+<title>REGISTRY&#45;&gt;EMN</title>
+<path fill="none" stroke="#506478" stroke-dasharray="5,2" d="M824,-597C887.69,-597 947.77,-597 993.7,-597"/>
+<polygon fill="#506478" stroke="#506478" points="996,-597 986,-601.5 991,-597 986,-597 986,-597 986,-597 991,-597 986,-592.5 996,-597 996,-597"/>
+<text text-anchor="middle" x="754.25" y="-614" font-family="Helvetica,sans-Serif" font-size="10.00">«deploy»</text>
+<text text-anchor="middle" x="754.25" y="-603" font-family="Helvetica,sans-Serif" font-size="10.00">config + plugins</text>
+</g>
+<!-- SUT -->
+<g id="node5" class="node">
+<title>SUT</title>
+<path fill="#fffef0" stroke="#506478" d="M204.5,-615C204.5,-615 79.5,-615 79.5,-615 73.5,-615 67.5,-609 67.5,-603 67.5,-603 67.5,-591 67.5,-591 67.5,-585 73.5,-579 79.5,-579 79.5,-579 204.5,-579 204.5,-579 210.5,-579 216.5,-585 216.5,-591 216.5,-591 216.5,-603 216.5,-603 216.5,-609 210.5,-615 204.5,-615"/>
+<text text-anchor="middle" x="142" y="-600.2" font-family="Helvetica,sans-Serif" font-size="11.00">ROS 2 Application</text>
+<text text-anchor="middle" x="142" y="-588.2" font-family="Helvetica,sans-Serif" font-size="11.00">(System Under Monitor)</text>
+</g>
+<!-- SUT&#45;&gt;DP -->
+<g id="edge4" class="edge">
+<title>SUT&#45;&gt;DP</title>
+<path fill="none" stroke="#2c3e50" d="M142,-578.75C142,-553.4 142,-505.69 142,-474.13"/>
+<polygon fill="#2c3e50" stroke="#2c3e50" points="145.5,-474.1 142,-464.1 138.5,-474.1 145.5,-474.1"/>
+<text text-anchor="middle" x="153" y="-536.5" font-family="Helvetica,sans-Serif" font-size="10.00">DDS</text>
+</g>
+<!-- DC -->
+<g id="node7" class="node">
+<title>DC</title>
+<path fill="#fffef0" stroke="#506478" d="M175.5,-316C175.5,-316 108.5,-316 108.5,-316 102.5,-316 96.5,-310 96.5,-304 96.5,-304 96.5,-292 96.5,-292 96.5,-286 102.5,-280 108.5,-280 108.5,-280 175.5,-280 175.5,-280 181.5,-280 187.5,-286 187.5,-292 187.5,-292 187.5,-304 187.5,-304 187.5,-310 181.5,-316 175.5,-316"/>
+<text text-anchor="middle" x="142" y="-301.2" font-family="Helvetica,sans-Serif" font-size="11.00">DSL Adapters</text>
+<text text-anchor="middle" x="142" y="-289.2" font-family="Helvetica,sans-Serif" font-size="11.00">Converters</text>
+</g>
+<!-- DP&#45;&gt;DC -->
+<g id="edge5" class="edge">
+<title>DP&#45;&gt;DC</title>
+<path fill="none" stroke="#2c3e50" d="M142,-419.74C142,-394.88 142,-353.66 142,-326.42"/>
+<polygon fill="#2c3e50" stroke="#2c3e50" points="145.5,-326.37 142,-316.37 138.5,-326.37 145.5,-326.37"/>
+</g>
+<!-- DP&#45;&gt;EMN -->
+<g id="edge21" class="edge">
+<title>DP&#45;&gt;EMN</title>
+<path fill="none" stroke="#506478" stroke-dasharray="5,2" d="M228,-452.88C379.05,-469.78 702.38,-503.9 985.75,-519.55"/>
+<polygon fill="#506478" stroke="#506478" points="996,-520.11 985.77,-524.06 991.01,-519.83 986.02,-519.56 986.02,-519.56 986.02,-519.56 991.01,-519.83 986.26,-515.07 996,-520.11 996,-520.11"/>
+<text text-anchor="middle" x="1443" y="-536.5" font-family="Helvetica,sans-Serif" font-size="10.00">«deploy»</text>
+</g>
+<!-- VS -->
+<g id="node8" class="node">
+<title>VS</title>
+<path fill="#ffe9c4" stroke="#506478" d="M204,-187C204,-187 80,-187 80,-187 74,-187 68,-181 68,-175 68,-175 68,-155 68,-155 68,-149 74,-143 80,-143 80,-143 204,-143 204,-143 210,-143 216,-149 216,-155 216,-155 216,-175 216,-175 216,-181 210,-187 204,-187"/>
+<text text-anchor="middle" x="142" y="-174.2" font-family="Helvetica,sans-Serif" font-size="11.00">Verdict Services</text>
+<text text-anchor="middle" x="142" y="-162.2" font-family="Helvetica,sans-Serif" font-size="11.00">LTL · STL · CTL · custom</text>
+<text text-anchor="middle" x="142" y="-150.2" font-family="Helvetica,sans-Serif" font-size="11.00">(plug&#45;in bus)</text>
+</g>
+<!-- DC&#45;&gt;VS -->
+<g id="edge6" class="edge">
+<title>DC&#45;&gt;VS</title>
+<path fill="none" stroke="#2c3e50" d="M142,-279.87C142,-258.91 142,-222.99 142,-197.1"/>
+<polygon fill="#2c3e50" stroke="#2c3e50" points="145.5,-197.03 142,-187.03 138.5,-197.03 145.5,-197.03"/>
+</g>
+<!-- EVR -->
+<g id="node17" class="node">
+<title>EVR</title>
+<path fill="#fffef0" stroke="#506478" d="M1763.5,-320C1763.5,-320 1680.5,-320 1680.5,-320 1674.5,-320 1668.5,-314 1668.5,-308 1668.5,-308 1668.5,-288 1668.5,-288 1668.5,-282 1674.5,-276 1680.5,-276 1680.5,-276 1763.5,-276 1763.5,-276 1769.5,-276 1775.5,-282 1775.5,-288 1775.5,-288 1775.5,-308 1775.5,-308 1775.5,-314 1769.5,-320 1763.5,-320"/>
+<text text-anchor="middle" x="1722" y="-307.2" font-family="Helvetica,sans-Serif" font-size="11.00">VerdictRunner +</text>
+<text text-anchor="middle" x="1722" y="-295.2" font-family="Helvetica,sans-Serif" font-size="11.00">DSL Plugins +</text>
+<text text-anchor="middle" x="1722" y="-283.2" font-family="Helvetica,sans-Serif" font-size="11.00">Verdict Exporter</text>
+</g>
+<!-- VS&#45;&gt;EVR -->
+<g id="edge22" class="edge">
+<title>VS&#45;&gt;EVR</title>
+<path fill="none" stroke="#506478" stroke-dasharray="5,2" d="M228,-172.92C359.83,-183.22 619.84,-202.29 841,-211 850.44,-211.37 1288.98,-213.29 1592.71,-217.47"/>
+<polygon fill="#506478" stroke="#506478" points="1603,-217.61 1592.94,-221.97 1598,-217.54 1593,-217.47 1593,-217.47 1593,-217.47 1598,-217.54 1593.07,-212.97 1603,-217.61 1603,-217.61"/>
+<text text-anchor="middle" x="1907" y="-229" font-family="Helvetica,sans-Serif" font-size="10.00">«deploy»</text>
+</g>
+<!-- ESUT -->
+<g id="node9" class="node">
+<title>ESUT</title>
+<path fill="#fffef0" stroke="#506478" d="M1195,-785C1195,-785 1099,-785 1099,-785 1093,-785 1087,-779 1087,-773 1087,-773 1087,-761 1087,-761 1087,-755 1093,-749 1099,-749 1099,-749 1195,-749 1195,-749 1201,-749 1207,-755 1207,-761 1207,-761 1207,-773 1207,-773 1207,-779 1201,-785 1195,-785"/>
+<text text-anchor="middle" x="1147" y="-764.2" font-family="Helvetica,sans-Serif" font-size="11.00">System Under Test</text>
+</g>
+<!-- ESUT&#45;&gt;EMN -->
+<g id="edge14" class="edge">
+<title>ESUT&#45;&gt;EMN</title>
+<path fill="none" stroke="#2c3e50" d="M1137.03,-741C1128.07,-718.52 1114.56,-684.66 1102.94,-655.52"/>
+<polygon fill="#2c3e50" stroke="#2c3e50" points="1106.1,-653.99 1099.14,-646 1099.6,-656.58 1106.1,-653.99"/>
+<text text-anchor="middle" x="1122" y="-657" font-family="Helvetica,sans-Serif" font-size="10.00">«DDS»</text>
+</g>
+<!-- ELES -->
+<g id="node11" class="node">
+<title>ELES</title>
+<path fill="#fffef0" stroke="#506478" d="M1116,-460C1116,-460 1042,-460 1042,-460 1036,-460 1030,-454 1030,-448 1030,-448 1030,-436 1030,-436 1030,-430 1036,-424 1042,-424 1042,-424 1116,-424 1116,-424 1122,-424 1128,-430 1128,-436 1128,-436 1128,-448 1128,-448 1128,-454 1122,-460 1116,-460"/>
+<text text-anchor="middle" x="1079" y="-445.2" font-family="Helvetica,sans-Serif" font-size="11.00">Local Evidence</text>
+<text text-anchor="middle" x="1079" y="-433.2" font-family="Helvetica,sans-Serif" font-size="11.00">(JSONL)</text>
+</g>
+<!-- EMN&#45;&gt;ELES -->
+<!-- IED2 -->
+<g id="node12" class="node">
+<title>IED2</title>
+<ellipse fill="white" stroke="#506478" cx="1193" cy="-442" rx="36" ry="36"/>
+<text text-anchor="middle" x="1193" y="-444.6" font-family="Helvetica,sans-Serif" font-size="8.00">Exporter</text>
+<text text-anchor="middle" x="1193" y="-435.6" font-family="Helvetica,sans-Serif" font-size="8.00">&lt;DataRecord&gt;</text>
+</g>
+<!-- EMN&#45;&gt;IED2 -->
+<g id="edge9" class="edge">
+<title>EMN&#45;&gt;IED2</title>
+<path fill="none" stroke="#2c3e50" stroke-dasharray="5,2" d="M1098.61,-574.91C1111.53,-559.95 1128.89,-539.19 1143,-520 1154.05,-504.98 1165.44,-487.6 1174.56,-473.16"/>
+</g>
+<!-- ETA -->
+<g id="node15" class="node">
+<title>ETA</title>
+<path fill="#fffef0" stroke="#506478" d="M1488,-464C1488,-464 1360,-464 1360,-464 1354,-464 1348,-458 1348,-452 1348,-452 1348,-432 1348,-432 1348,-426 1354,-420 1360,-420 1360,-420 1488,-420 1488,-420 1494,-420 1500,-426 1500,-432 1500,-432 1500,-452 1500,-452 1500,-458 1494,-464 1488,-464"/>
+<text text-anchor="middle" x="1424" y="-451.2" font-family="Helvetica,sans-Serif" font-size="11.00">Transport Adapters</text>
+<text text-anchor="middle" x="1424" y="-439.2" font-family="Helvetica,sans-Serif" font-size="11.00">MQTT · TCP · WebSocket</text>
+<text text-anchor="middle" x="1424" y="-427.2" font-family="Helvetica,sans-Serif" font-size="11.00">ROS 2 topic · custom</text>
+</g>
+<!-- EMN&#45;&gt;ETA -->
+<g id="edge15" class="edge">
+<title>EMN&#45;&gt;ETA</title>
+<path fill="none" stroke="#b22222" d="M1156.08,-593.65C1206.15,-589.3 1271.68,-578.08 1323,-550 1345.93,-537.45 1366.67,-517.84 1383.31,-498.81"/>
+<polygon fill="#b22222" stroke="#b22222" points="1386.13,-500.89 1389.94,-491 1380.8,-496.35 1386.13,-500.89"/>
+<text text-anchor="middle" x="1380.5" y="-542" font-family="Helvetica,sans-Serif" font-size="10.00">«transport»</text>
+<text text-anchor="middle" x="1380.5" y="-531" font-family="Helvetica,sans-Serif" font-size="10.00">data</text>
+</g>
+<!-- EFA -->
+<g id="node13" class="node">
+<title>EFA</title>
+<path fill="#fffef0" stroke="#506478" d="M1296,-316C1296,-316 1204,-316 1204,-316 1198,-316 1192,-310 1192,-304 1192,-304 1192,-292 1192,-292 1192,-286 1198,-280 1204,-280 1204,-280 1296,-280 1296,-280 1302,-280 1308,-286 1308,-292 1308,-292 1308,-304 1308,-304 1308,-310 1302,-316 1296,-316"/>
+<text text-anchor="middle" x="1250" y="-295.2" font-family="Helvetica,sans-Serif" font-size="11.00">Feedback Adapter</text>
+</g>
+<!-- EFA&#45;&gt;ESUT -->
+<g id="edge19" class="edge">
+<title>EFA&#45;&gt;ESUT</title>
+<path fill="none" stroke="#1f5f3f" d="M1265.61,-343C1267,-348.33 1268.19,-353.75 1269,-359 1270.49,-368.66 1269.46,-371.23 1269,-381 1263.44,-499.17 1288.64,-536.45 1244,-646 1230.27,-679.71 1203.79,-711.43 1181.96,-733.79"/>
+<polygon fill="#1f5f3f" stroke="#1f5f3f" points="1179.35,-731.45 1174.76,-741 1184.3,-736.4 1179.35,-731.45"/>
+<text text-anchor="middle" x="1291" y="-536.5" font-family="Helvetica,sans-Serif" font-size="10.00">«ROS 2»</text>
+</g>
+<!-- IFC2 -->
+<g id="node14" class="node">
+<title>IFC2</title>
+<ellipse fill="white" stroke="#506478" cx="1250" cy="-165" rx="36" ry="36"/>
+<text text-anchor="middle" x="1250" y="-167.6" font-family="Helvetica,sans-Serif" font-size="8.00">Feedback</text>
+<text text-anchor="middle" x="1250" y="-158.6" font-family="Helvetica,sans-Serif" font-size="8.00">Command</text>
+</g>
+<!-- EFA&#45;&gt;IFC2 -->
+<g id="edge10" class="edge">
+<title>EFA&#45;&gt;IFC2</title>
+<path fill="none" stroke="#2c3e50" stroke-dasharray="5,2" d="M1250,-279.87C1250,-259.97 1250,-226.6 1250,-201.11"/>
+</g>
+<!-- ETA&#45;&gt;EFA -->
+<g id="edge18" class="edge">
+<title>ETA&#45;&gt;EFA</title>
+<path fill="none" stroke="#b22222" d="M1340,-372.45C1330.48,-364.68 1320.9,-356.86 1311.74,-349.38"/>
+<polygon fill="#b22222" stroke="#b22222" points="1313.87,-346.61 1303.91,-343 1309.45,-352.03 1313.87,-346.61"/>
+<text text-anchor="middle" x="1375.5" y="-373" font-family="Helvetica,sans-Serif" font-size="10.00">«transport»</text>
+<text text-anchor="middle" x="1375.5" y="-362" font-family="Helvetica,sans-Serif" font-size="10.00">cmd</text>
+</g>
+<!-- ITA2 -->
+<g id="node16" class="node">
+<title>ITA2</title>
+<ellipse fill="white" stroke="#506478" cx="1424" cy="-298" rx="36" ry="36"/>
+<text text-anchor="middle" x="1424" y="-300.6" font-family="Helvetica,sans-Serif" font-size="8.00">Transport</text>
+<text text-anchor="middle" x="1424" y="-291.6" font-family="Helvetica,sans-Serif" font-size="8.00">Adapter</text>
+</g>
+<!-- ETA&#45;&gt;ITA2 -->
+<g id="edge11" class="edge">
+<title>ETA&#45;&gt;ITA2</title>
+<path fill="none" stroke="#2c3e50" stroke-dasharray="5,2" d="M1424,-419.74C1424,-397.15 1424,-361.05 1424,-334.21"/>
+</g>
+<!-- ETA&#45;&gt;EVR -->
+<g id="edge16" class="edge">
+<title>ETA&#45;&gt;EVR</title>
+<path fill="none" stroke="#b22222" d="M1595,-359.52C1621.51,-346.88 1647.07,-334.71 1668.22,-324.63"/>
+<polygon fill="#b22222" stroke="#b22222" points="1669.94,-327.68 1677.47,-320.22 1666.93,-321.36 1669.94,-327.68"/>
+<text text-anchor="middle" x="1618.5" y="-367.5" font-family="Helvetica,sans-Serif" font-size="10.00">«transport»</text>
+</g>
+<!-- IVS2 -->
+<g id="node18" class="node">
+<title>IVS2</title>
+<ellipse fill="white" stroke="#506478" cx="1722" cy="-165" rx="36" ry="36"/>
+<text text-anchor="middle" x="1722" y="-167.6" font-family="Helvetica,sans-Serif" font-size="8.00">Verdict</text>
+<text text-anchor="middle" x="1722" y="-158.6" font-family="Helvetica,sans-Serif" font-size="8.00">Service</text>
+</g>
+<!-- EVR&#45;&gt;IVS2 -->
+<g id="edge12" class="edge">
+<title>EVR&#45;&gt;IVS2</title>
+<path fill="none" stroke="#2c3e50" stroke-dasharray="5,2" d="M1722,-275.95C1722,-255.77 1722,-224.94 1722,-201.05"/>
+</g>
+<!-- EEDB -->
+<g id="node19" class="node">
+<title>EEDB</title>
+<path fill="#fffef0" stroke="#506478" d="M1949,-179.73C1949,-181.53 1929.73,-183 1906,-183 1882.27,-183 1863,-181.53 1863,-179.73 1863,-179.73 1863,-150.27 1863,-150.27 1863,-148.47 1882.27,-147 1906,-147 1929.73,-147 1949,-148.47 1949,-150.27 1949,-150.27 1949,-179.73 1949,-179.73"/>
+<path fill="none" stroke="#506478" d="M1949,-179.73C1949,-177.92 1929.73,-176.45 1906,-176.45 1882.27,-176.45 1863,-177.92 1863,-179.73"/>
+<text text-anchor="middle" x="1906" y="-162.2" font-family="Helvetica,sans-Serif" font-size="11.00">Evidence DB</text>
+</g>
+<!-- EVR&#45;&gt;EEDB -->
+<g id="edge17" class="edge">
+<title>EVR&#45;&gt;EEDB</title>
+<path fill="none" stroke="#1f5f3f" d="M1754.55,-275.9C1780.48,-258.87 1817.52,-234.04 1849,-211 1858.35,-204.16 1868.33,-196.43 1877.28,-189.34"/>
+<polygon fill="#1f5f3f" stroke="#1f5f3f" points="1879.54,-192.02 1885.17,-183.04 1875.17,-186.54 1879.54,-192.02"/>
+<text text-anchor="middle" x="1848" y="-229" font-family="Helvetica,sans-Serif" font-size="10.00">«persist»</text>
+</g>
+<!-- EDAA -->
+<g id="node20" class="node">
+<title>EDAA</title>
+<path fill="#fffef0" stroke="#506478" d="M1942.5,-68C1942.5,-68 1869.5,-68 1869.5,-68 1863.5,-68 1857.5,-62 1857.5,-56 1857.5,-56 1857.5,-44 1857.5,-44 1857.5,-38 1863.5,-32 1869.5,-32 1869.5,-32 1942.5,-32 1942.5,-32 1948.5,-32 1954.5,-38 1954.5,-44 1954.5,-44 1954.5,-56 1954.5,-56 1954.5,-62 1948.5,-68 1942.5,-68"/>
+<text text-anchor="middle" x="1906" y="-47.2" font-family="Helvetica,sans-Serif" font-size="11.00">Dashboard API</text>
+</g>
+<!-- EEDB&#45;&gt;EDAA -->
+<!-- EWD -->
+<g id="node21" class="node">
+<title>EWD</title>
+<path fill="#fffef0" stroke="#506478" d="M960,-183C960,-183 880,-183 880,-183 874,-183 868,-177 868,-171 868,-171 868,-159 868,-159 868,-153 874,-147 880,-147 880,-147 960,-147 960,-147 966,-147 972,-153 972,-159 972,-159 972,-171 972,-171 972,-177 966,-183 960,-183"/>
+<text text-anchor="middle" x="920" y="-162.2" font-family="Helvetica,sans-Serif" font-size="11.00">Web Dashboard</text>
+</g>
+<!-- EWD&#45;&gt;EDAA -->
+<g id="edge20" class="edge">
+<title>EWD&#45;&gt;EDAA</title>
+<path fill="none" stroke="#404040" d="M956.65,-146.98C983.54,-135.31 1021.27,-120.61 1056,-113 1207.48,-79.8 1680.76,-59.4 1847.31,-53.1"/>
+<polygon fill="#404040" stroke="#404040" points="1840.58,-57.57 1850,-52.72 1839.61,-50.64 1840.58,-57.57"/>
+<text text-anchor="middle" x="1198" y="-96" font-family="Helvetica,sans-Serif" font-size="10.00">«HTTPS»</text>
+</g>
+<!-- legend -->
+<g id="node22" class="node">
+<title>legend</title>
+<path fill="#fffef0" stroke="transparent" d="M2480.5,-844C2480.5,-844 2135.5,-844 2135.5,-844 2129.5,-844 2123.5,-838 2123.5,-832 2123.5,-832 2123.5,-702 2123.5,-702 2123.5,-696 2129.5,-690 2135.5,-690 2135.5,-690 2480.5,-690 2480.5,-690 2486.5,-690 2492.5,-696 2492.5,-702 2492.5,-702 2492.5,-832 2492.5,-832 2492.5,-838 2486.5,-844 2480.5,-844"/>
+<polygon fill="#f4f4f4" stroke="transparent" points="2123.5,-690 2123.5,-844 2492.5,-844 2492.5,-690 2123.5,-690"/>
+<text text-anchor="start" x="2128" y="-832.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">UML stereotypes</text>
+<text text-anchor="start" x="2128" y="-814.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">«device»</text>
+<text text-anchor="start" x="2286" y="-813.2" font-family="Helvetica,sans-Serif" font-size="11.00">physical / VM host</text>
+<text text-anchor="start" x="2128" y="-796.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">«executionEnvironment»</text>
+<text text-anchor="start" x="2286" y="-795.2" font-family="Helvetica,sans-Serif" font-size="11.00">process / container</text>
+<text text-anchor="start" x="2128" y="-778.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">«artifact»</text>
+<text text-anchor="start" x="2286" y="-777.2" font-family="Helvetica,sans-Serif" font-size="11.00">deployed module / file / DB</text>
+<text text-anchor="start" x="2128" y="-760.2" font-family="Helvetica,sans-Serif" font-weight="bold" font-size="11.00">«deploy»</text>
+<text text-anchor="start" x="2286" y="-759.2" font-family="Helvetica,sans-Serif" font-size="11.00">architectural ↔ deployment mapping</text>
+<text text-anchor="start" x="2128" y="-748.4" font-family="Helvetica,sans-Serif" font-size="2.00"> </text>
+<text text-anchor="start" x="2128" y="-734.2" font-family="Helvetica,sans-Serif" font-size="11.00">○ = </text>
+<text text-anchor="start" x="2155" y="-734.2" font-family="Helvetica,sans-Serif" font-style="italic" font-size="11.00">provided interface</text>
+<text text-anchor="start" x="2256" y="-734.2" font-family="Helvetica,sans-Serif" font-size="11.00"> — the SPI implemented</text>
+<text text-anchor="start" x="2128" y="-715.2" font-family="Helvetica,sans-Serif" font-size="11.00">by user plugins (DataConverter, VerdictService,</text>
+<text text-anchor="start" x="2128" y="-697.2" font-family="Helvetica,sans-Serif" font-size="11.00">Exporter&lt;T&gt;, TransportAdapter, FeedbackCommand).</text>
+<polygon fill="none" stroke="#506478" points="2123.5,-690 2123.5,-844 2492.5,-844 2492.5,-690 2123.5,-690"/>
+</g>
+</g>
+</svg>

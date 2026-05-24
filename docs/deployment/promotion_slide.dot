@@ -1,0 +1,169 @@
+// ROS2-Monitor-Infra — Promotion Slide (Architecture + UML Deployment)
+// Render: dot -Tpng promotion_slide.dot -o promotion_slide.png
+
+digraph promotion {
+  graph [
+    rankdir=TB,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=15,
+    labelloc=t,
+    label=<<b>ROS2-Monitor-Infra — Architecture &amp; Deployment</b>>,
+    compound=true,
+    nodesep=0.4,
+    ranksep=0.7,
+    splines=spline,
+    newrank=true
+  ];
+  node [fontname="Helvetica", fontsize=11, shape=box, style="filled,rounded",
+        fillcolor="#FFFEF0", color="#506478"];
+  edge [fontname="Helvetica", fontsize=10, color="#2C3E50"];
+
+  // =================================================================
+  // PART A — ARCHITECTURE  (3 logical layers, top half)
+  // =================================================================
+  subgraph cluster_arch {
+    label=<<b>Architecture</b>>;
+    style="rounded"; color="#34495E"; bgcolor="#F2F6FA"; fontsize=14;
+
+    // Specification & Plugins
+    subgraph cluster_spec {
+      label=<<b>Specification &amp; Plugins</b>>;
+      style="rounded"; color="#2C3E50"; bgcolor="#E5ECF4"; fontsize=12;
+      MON_CFG  [label="Monitor Config\nTopics · Services · Actions\nParams · Lifecycle · QoS"];
+      PLUG     [label="Plugin Modules\nConverters · Transformers\nDSL · Verdict Services\nExporters · TransportAdapters\nFeedbackCommands"];
+      BUILD    [label="Build &amp; Containerize\nDockerfile · docker-compose"];
+      REGISTRY [label="Plugin Registry\nbuilt-in | module:Class", fillcolor="#FFE9C4"];
+      MON_CFG -> REGISTRY [arrowhead=none, color="#506478"];
+      PLUG    -> REGISTRY [arrowhead=none, color="#506478"];
+      BUILD   -> REGISTRY [arrowhead=none, color="#506478"];
+    }
+
+    // Pipelines
+    subgraph cluster_pipe {
+      label=<<b>Runtime Verification Pipeline</b>>;
+      style="rounded"; color="#2C3E50"; bgcolor="#E5ECF4"; fontsize=12;
+      SUT  [label="ROS 2 Application\n(System Under Monitor)"];
+      DP   [label="Data Processor\nCollectors · Transformers\nDispatcher"];
+      DC   [label="DSL Adapters\nConverters"];
+      VS   [label="Verdict Services\nLTL · STL · CTL · custom\n(plug-in bus)", fillcolor="#FFE9C4"];
+      SUT -> DP [label="DDS"];
+      DP  -> DC;
+      DC  -> VS;
+    }
+
+    REGISTRY -> DP [label="configures",
+                    style=dashed, arrowhead=open,
+                    ltail=cluster_spec, lhead=cluster_pipe,
+                    color="#506478"];
+  }
+
+  // =================================================================
+  // PART B — UML DEPLOYMENT  (bottom half)
+  // =================================================================
+  subgraph cluster_deploy {
+    label=<<b>UML Deployment View</b>>;
+    style="rounded"; color="#34495E"; bgcolor="#F2F6FA"; fontsize=14;
+
+    subgraph cluster_edge {
+      label=<<b>Robot / Edge Computer</b>   «device»>;
+      style="rounded"; color="#2C3E50"; bgcolor="#EEF3F8"; fontsize=12;
+
+      subgraph cluster_ros2 {
+        label=<<b>ROS 2 Runtime</b>   «executionEnvironment»>;
+        style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=10;
+        ESUT [label="System Under Test"];
+      }
+      subgraph cluster_mrt {
+        label=<<b>Monitor Runtime</b>   «executionEnvironment»>;
+        style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=10;
+        EMN [label="MonitorNode\ncollectors · transformers\ndispatcher"];
+        ELES [label="Local Evidence\n(JSONL)"];
+        EMN -> ELES [style=invis, weight=10];
+        IED2 [label="Exporter\n<DataRecord>", shape=circle, fillcolor="white",
+              width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+        EMN -> IED2 [arrowhead=none, style=dashed];
+      }
+      subgraph cluster_frt {
+        label=<<b>Feedback Runtime</b>   «executionEnvironment»>;
+        style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=10;
+        EFA [label="Feedback Adapter"];
+        IFC2 [label="Feedback\nCommand", shape=circle, fillcolor="white",
+              width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+        EFA -> IFC2 [arrowhead=none, style=dashed];
+      }
+    }
+
+    subgraph cluster_server {
+      label=<<b>Monitoring Services</b>   «device»>;
+      style="rounded"; color="#2C3E50"; bgcolor="#EEF3F8"; fontsize=12;
+
+      subgraph cluster_tg {
+        label=<<b>Transport Gateway</b>   «executionEnvironment»>;
+        style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=10;
+        ETA [label="Transport Adapters\nMQTT · TCP · WebSocket\nROS 2 topic · custom"];
+        ITA2 [label="Transport\nAdapter", shape=circle, fillcolor="white",
+              width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+        ETA -> ITA2 [arrowhead=none, style=dashed];
+      }
+      subgraph cluster_vrt {
+        label=<<b>Verdict Runtime</b>   «executionEnvironment»>;
+        style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=10;
+        EVR [label="VerdictRunner +\nDSL Plugins +\nVerdict Exporter"];
+        IVS2 [label="Verdict\nService", shape=circle, fillcolor="white",
+              width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+        EVR -> IVS2 [arrowhead=none, style=dashed];
+      }
+      subgraph cluster_ert {
+        label=<<b>Evidence Runtime</b>   «executionEnvironment»>;
+        style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=10;
+        EEDB [label="Evidence DB", shape=cylinder];
+        EDAA [label="Dashboard API"];
+        EEDB -> EDAA [style=invis, weight=10];
+      }
+    }
+
+    subgraph cluster_op {
+      label=<<b>Operator</b>   «device»>;
+      style="rounded"; color="#2C3E50"; bgcolor="#EEF3F8"; fontsize=11;
+      EWD [label="Web Dashboard"];
+    }
+
+    // Deployment runtime arrows
+    ESUT -> EMN  [label="«DDS»",            ltail=cluster_ros2, lhead=cluster_mrt];
+    EMN  -> ETA  [label="«transport»\ndata", lhead=cluster_tg,   color="#B22222"];
+    ETA  -> EVR  [label="«transport»",       ltail=cluster_tg,   color="#B22222"];
+    EVR  -> EEDB [label="«persist»",         color="#1F5F3F"];
+    ETA  -> EFA  [label="«transport»\ncmd",  ltail=cluster_tg,   lhead=cluster_frt, color="#B22222"];
+    EFA  -> ESUT [label="«ROS 2»",           ltail=cluster_frt,  lhead=cluster_ros2, color="#1F5F3F"];
+    EWD  -> EDAA [label="«HTTPS»",           lhead=cluster_ert,  color="#404040"];
+  }
+
+  // =================================================================
+  // CROSS-LINK ARCH ↔ DEPLOYMENT  (deploy stereotypes)
+  // =================================================================
+  DP -> EMN  [label="«deploy»", style=dashed, color="#506478", arrowhead=open,
+              ltail=cluster_pipe, lhead=cluster_mrt, constraint=false];
+  VS -> EVR  [label="«deploy»", style=dashed, color="#506478", arrowhead=open,
+              ltail=cluster_pipe, lhead=cluster_vrt, constraint=false];
+  REGISTRY -> EMN [label="«deploy»\nconfig + plugins",
+                   style=dashed, color="#506478", arrowhead=open,
+                   ltail=cluster_spec, lhead=cluster_mrt, constraint=false];
+
+  // =================================================================
+  // LEGEND
+  // =================================================================
+  legend [shape=plain, label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#F4F4F4">
+      <tr><td align="left" colspan="2"><b>UML stereotypes</b></td></tr>
+      <tr><td align="left"><b>«device»</b></td><td align="left">physical / VM host</td></tr>
+      <tr><td align="left"><b>«executionEnvironment»</b></td><td align="left">process / container</td></tr>
+      <tr><td align="left"><b>«artifact»</b></td><td align="left">deployed module / file / DB</td></tr>
+      <tr><td align="left"><b>«deploy»</b></td><td align="left">architectural ↔ deployment mapping</td></tr>
+      <tr><td align="left" colspan="2"><font point-size="2"> </font></td></tr>
+      <tr><td align="left" colspan="2">○ = <i>provided interface</i> — the SPI implemented</td></tr>
+      <tr><td align="left" colspan="2">by user plugins (DataConverter, VerdictService,</td></tr>
+      <tr><td align="left" colspan="2">Exporter&lt;T&gt;, TransportAdapter, FeedbackCommand).</td></tr>
+    </table>
+  >];
+}

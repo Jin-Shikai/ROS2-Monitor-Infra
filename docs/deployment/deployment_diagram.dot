@@ -1,0 +1,151 @@
+// ROS2-Monitor-Infra — UML Deployment Diagram (Final Vision)
+// Render: dot -Tpng deployment_diagram.dot -o deployment_diagram.png
+
+digraph deployment {
+  graph [
+    rankdir=LR,
+    bgcolor="white",
+    fontname="Helvetica",
+    fontsize=14,
+    labelloc=t,
+    label=<<b>ROS2-Monitor-Infra — UML Deployment Diagram (Final Vision)</b>>,
+    compound=true,
+    nodesep=0.4,
+    ranksep=0.8,
+    splines=spline,
+    newrank=true
+  ];
+  node [fontname="Helvetica", fontsize=11, shape=box, style="filled,rounded",
+        fillcolor="#FFFEF0", color="#506478"];
+  edge [fontname="Helvetica", fontsize=10, color="#2C3E50"];
+
+  // ============================================================
+  // ROBOT / EDGE COMPUTER  (leftmost device)
+  // ============================================================
+  subgraph cluster_edge {
+    label=<<b>Robot / Edge Computer</b>   «device»   network_mode: host>;
+    style="rounded"; color="#2C3E50"; fontname="Helvetica"; fontsize=13;
+    bgcolor="#EEF3F8";
+
+    subgraph cluster_ros2 {
+      label=<<b>ROS 2 Runtime</b>   «executionEnvironment»>;
+      style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=11;
+      SUT [label="System Under Test\nnodes · topics · services · actions"];
+    }
+
+    subgraph cluster_mrt {
+      label=<<b>Monitor Runtime</b>   «executionEnvironment»>;
+      style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=11;
+      CFG [label="Config + plugin\npackage"];
+      COL [label="Collectors"];
+      TR  [label="Transformer\nPipeline"];
+      DD  [label="DataRecord\nDispatcher"];
+      LES [label="Local Evidence\nStore (JSONL)"];
+      CFG -> COL [style=invis, weight=10];
+      COL -> TR  [style=invis, weight=10];
+      TR  -> DD  [style=invis, weight=10];
+      DD  -> LES [style=invis, weight=10];
+      ITR [label="Transformer",         shape=circle, fillcolor="white",
+           width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+      IED [label="Exporter\n<DataRecord>", shape=circle, fillcolor="white",
+           width=1.1, height=1.1, fixedsize=true, fontsize=8, style=filled];
+      TR -> ITR [arrowhead=none, style=dashed];
+      DD -> IED [arrowhead=none, style=dashed];
+    }
+
+    subgraph cluster_frt {
+      label=<<b>Feedback Runtime</b>   «executionEnvironment»>;
+      style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=11;
+      FA  [label="Feedback Adapter"];
+      IFC [label="Feedback\nCommand", shape=circle, fillcolor="white",
+           width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+      FA -> IFC [arrowhead=none, style=dashed];
+    }
+  }
+
+  // ============================================================
+  // MONITORING SERVICES  (right device)
+  // ============================================================
+  subgraph cluster_server {
+    label=<<b>Monitoring Services</b>   «device»>;
+    style="rounded"; color="#2C3E50"; fontname="Helvetica"; fontsize=13;
+    bgcolor="#EEF3F8";
+
+    subgraph cluster_tg {
+      label=<<b>Transport Gateway</b>   «executionEnvironment»>;
+      style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=11;
+      TA  [label="Transport Adapters\nMQTT · TCP · WebSocket\nROS 2 topic · custom"];
+      ITA [label="Transport\nAdapter", shape=circle, fillcolor="white",
+           width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+      TA -> ITA [arrowhead=none, style=dashed];
+    }
+
+    subgraph cluster_vrt {
+      label=<<b>Verdict Runtime</b>   «executionEnvironment»>;
+      style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=11;
+      VRN [label="VerdictRunner"];
+      DSL [label="DSL / Verdict\nPlugin"];
+      VE  [label="Verdict Exporter"];
+      VRN -> DSL [style=invis, weight=10];
+      DSL -> VE  [style=invis, weight=10];
+      IDC [label="Data\nConverter",   shape=circle, fillcolor="white",
+           width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+      IVS [label="Verdict\nService",  shape=circle, fillcolor="white",
+           width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+      IEV [label="Exporter\n<Verdict>", shape=circle, fillcolor="white",
+           width=1.0, height=1.0, fixedsize=true, fontsize=8, style=filled];
+      VRN -> IDC [arrowhead=none, style=dashed];
+      DSL -> IVS [arrowhead=none, style=dashed];
+      VE  -> IEV [arrowhead=none, style=dashed];
+    }
+
+    subgraph cluster_ert {
+      label=<<b>Evidence Runtime</b>   «executionEnvironment»>;
+      style="rounded"; color="#2C3E50"; bgcolor="white"; fontsize=11;
+      RS  [label="Replay Service"];
+      EDB [label="Evidence DB", shape=cylinder];
+      DA  [label="Dashboard API"];
+      RS  -> EDB [style=invis, weight=10];
+      EDB -> DA  [style=invis, weight=10];
+    }
+  }
+
+  // ============================================================
+  // OPERATOR WORKSTATION  (rightmost)
+  // ============================================================
+  subgraph cluster_op {
+    label=<<b>Operator Workstation</b>   «device»>;
+    style="rounded"; color="#2C3E50"; bgcolor="#EEF3F8"; fontsize=12;
+    WD [label="Web Dashboard"];
+  }
+
+  // ============================================================
+  // RUNTIME COMMUNICATION (cross-cluster edges)
+  // ============================================================
+  SUT -> COL [label=<«DDS»<br/>observe>,                 ltail=cluster_ros2, lhead=cluster_mrt, weight=1];
+  DD  -> TA  [label=<«transport»<br/>DataRecord stream>, lhead=cluster_tg,  color="#B22222"];
+  TA  -> VRN [label=<«transport»<br/>data stream>,       ltail=cluster_tg,  color="#B22222"];
+  VE  -> EDB [label=<«persist»<br/>verdict evidence>,    color="#1F5F3F"];
+  DSL -> TA  [label=<«transport»<br/>command stream>,    lhead=cluster_tg,  color="#B22222", constraint=false];
+  TA  -> FA  [label=<«transport»<br/>command stream>,    ltail=cluster_tg,  lhead=cluster_frt, color="#B22222"];
+  FA  -> SUT [label=<«ROS 2»<br/>intervention>,          ltail=cluster_frt, lhead=cluster_ros2, color="#1F5F3F"];
+  WD  -> DA  [label=<«HTTPS»>,                           lhead=cluster_ert, color="#404040"];
+
+  // ============================================================
+  // LEGEND
+  // ============================================================
+  legend [shape=plain, label=<
+    <table border="1" cellborder="0" cellspacing="0" cellpadding="3" bgcolor="#F4F4F4">
+      <tr><td align="left" colspan="2"><b>UML stereotypes</b></td></tr>
+      <tr><td align="left"><b>«device»</b></td><td align="left">physical / VM host</td></tr>
+      <tr><td align="left"><b>«executionEnvironment»</b></td><td align="left">process / container</td></tr>
+      <tr><td align="left"><b>«artifact»</b></td><td align="left">deployed module / file / DB</td></tr>
+      <tr><td colspan="2"><font point-size="2"> </font></td></tr>
+      <tr><td align="left" colspan="2">Solid arrows are runtime communication paths.</td></tr>
+      <tr><td align="left" colspan="2">Small circles (○) are <i>provided interfaces</i> — the SPI</td></tr>
+      <tr><td align="left" colspan="2">implemented by user plugins; they mark the extension</td></tr>
+      <tr><td align="left" colspan="2">points where the framework is extended without</td></tr>
+      <tr><td align="left" colspan="2">modifying its own code.</td></tr>
+    </table>
+  >];
+}
