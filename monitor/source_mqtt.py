@@ -12,7 +12,7 @@ imported in test environments without the dependency installed.
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from data_record import DataRecord
 from exporter import Exporter
@@ -60,8 +60,9 @@ class MQTTSource(Source[DataRecord]):
             self._owns_client = False
             return
 
-        self._client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        mqtt_module = cast(Any, mqtt)
+        self._client = mqtt_module.Client(
+            callback_api_version=mqtt_module.CallbackAPIVersion.VERSION2,
             client_id=client_id,
         )
         self._owns_client = True

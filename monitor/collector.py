@@ -2,7 +2,7 @@
 
 Subscribes to ROS2 sources (topics / service events / action hidden topics),
 wraps each incoming message into a DataRecord, runs it through the per-collector
-TransformerPipeline, and dispatches the result.
+TransformerPipeline, and exports the result.
 
 Source-node resolution rule (UNKNOWN-retry):
     DDS discovery may not have resolved the publisher's node name by the time
@@ -37,13 +37,13 @@ class DataCollector(ABC):
         session_id: str,
         source_name: str,
         pipeline: TransformerPipeline,
-        dispatch: Callable[[DataRecord], None],
+        export: Callable[[DataRecord], None],
     ):
         self.node = node
         self.session_id = session_id
         self.source_name = source_name
         self.pipeline = pipeline
-        self.dispatch = dispatch
+        self.export = export
         self._seq = 0
         # Per-topic cache of resolved publisher node names. Key absent = not yet
         # resolved (retry on next callback); value = confirmed node list.
@@ -62,7 +62,7 @@ class DataCollector(ABC):
     def _emit(self, record: DataRecord) -> None:
         out = self.pipeline.process(record)
         if out is not None:
-            self.dispatch(out)
+            self.export(out)
 
     def _resolve_nodes(self, topic_name: str) -> list[str] | None:
         """Return publisher node names for `topic_name`, applying UNKNOWN-retry.
@@ -100,10 +100,10 @@ class TopicCollector(DataCollector):
         source_name: str,
         msg_type_str: str,
         pipeline: TransformerPipeline,
-        dispatch: Callable[[DataRecord], None],
+        export: Callable[[DataRecord], None],
         qos: int = 10,
     ):
-        super().__init__(node, session_id, source_name, pipeline, dispatch)
+        super().__init__(node, session_id, source_name, pipeline, export)
         self.msg_type_str = msg_type_str
         self.qos = qos
         self._subscription = None
@@ -146,9 +146,9 @@ class ServiceCollector(DataCollector):
         source_name: str,
         service_type_str: str,
         pipeline: TransformerPipeline,
-        dispatch: Callable[[DataRecord], None],
+        export: Callable[[DataRecord], None],
     ):
-        super().__init__(node, session_id, source_name, pipeline, dispatch)
+        super().__init__(node, session_id, source_name, pipeline, export)
         self.service_type_str = service_type_str
         self._event_topic = f"{source_name}/_service_event"
         self._subscription = None
@@ -197,9 +197,9 @@ class ActionCollector(DataCollector):
         action_type_str: str,
         phases: list[str],
         pipeline: TransformerPipeline,
-        dispatch: Callable[[DataRecord], None],
+        export: Callable[[DataRecord], None],
     ):
-        super().__init__(node, session_id, source_name, pipeline, dispatch)
+        super().__init__(node, session_id, source_name, pipeline, export)
         self.action_type_str = action_type_str
         self.phases = set(phases) if phases else {"feedback", "status"}
         self._feedback_topic = f"{source_name}/_action/feedback"
@@ -259,11 +259,11 @@ class CollectorManager:
         self,
         node: Node,
         session_id: str,
-        dispatch: Callable[[DataRecord], None],
+        export: Callable[[DataRecord], None],
     ):
         self.node = node
         self.session_id = session_id
-        self.dispatch = dispatch
+        self.export = export
         self.collectors: list[DataCollector] = []
 
     def register(self, collector: DataCollector) -> None:

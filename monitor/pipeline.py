@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from config_model import ConverterSpec, VerdictSpec
 from converter import ConverterExporter, resolve_converter_class
 from data_record import DataRecord
 from exporter import Dispatcher, Exporter, FileExporter
@@ -56,7 +57,7 @@ def _substitute_session_id(value: Any, session_id: str) -> Any:
 
 
 def _build_verdict_dispatcher(
-    verdict_spec: dict,
+    verdict_spec: VerdictSpec,
     output_dir: str,
     session_id: str,
     converter_type: str,
@@ -66,18 +67,18 @@ def _build_verdict_dispatcher(
     Returns None if any exporter fails to resolve / instantiate —
     caller logs and skips the chain.
     """
-    specs = verdict_spec.get("exporters") or []
+    specs = verdict_spec.exporters
     dispatcher: Dispatcher = Dispatcher(label=f"Verdict[{converter_type}]")
-    for raw in specs:
-        if not isinstance(raw, dict) or "type" not in raw:
-            logger.error(f"Verdict exporter spec missing 'type'; skipping entry: {raw}")
+    for spec in specs:
+        if not spec.type:
+            logger.error(f"Verdict exporter spec missing 'type'; skipping entry: {spec.raw}")
             return None
         try:
-            cls = resolve_verdict_exporter_class(raw["type"])
+            cls = resolve_verdict_exporter_class(spec.type)
         except (KeyError, ImportError, AttributeError, TypeError, ValueError) as ex:
-            logger.error(f"Cannot resolve verdict exporter '{raw['type']}': {ex}")
+            logger.error(f"Cannot resolve verdict exporter '{spec.type}': {ex}")
             return None
-        kwargs = {k: v for k, v in raw.items() if k != "type"}
+        kwargs = dict(spec.kwargs)
         kwargs = _substitute_session_id(kwargs, session_id)
         # file paths that are relative resolve against output_dir
         if "path" in kwargs and isinstance(kwargs["path"], str):
@@ -88,13 +89,13 @@ def _build_verdict_dispatcher(
         try:
             dispatcher.add(cls(**kwargs))
         except Exception as ex:
-            logger.error(f"Failed to build verdict exporter '{raw['type']}': {ex}")
+            logger.error(f"Failed to build verdict exporter '{spec.type}': {ex}")
             return None
     return dispatcher
 
 
 def build_converter_chain(
-    spec: dict,
+    spec: ConverterSpec,
     output_dir: str,
     session_id: str,
     logger: Any,
@@ -109,13 +110,13 @@ def build_converter_chain(
     The `logger` parameter accepts either an rclpy logger or a stdlib
     `logging.Logger` — only `.info()` and `.error()` are called.
     """
-    converter_type = spec.get("type")
+    converter_type = spec.type
     if not converter_type:
-        logger.error(f"Converter spec missing 'type'; skipping: {spec}")
+        logger.error(f"Converter spec missing 'type'; skipping: {spec.raw}")
         return None
 
-    verdict_spec = spec.get("verdict")
-    if not verdict_spec or not verdict_spec.get("type"):
+    verdict_spec = spec.verdict
+    if verdict_spec is None or not verdict_spec.type:
         logger.error(
             f"Converter '{converter_type}' must include a 'verdict' "
             f"section with a 'type'; skipping."
@@ -127,26 +128,19 @@ def build_converter_chain(
     except (KeyError, ImportError, AttributeError, TypeError, ValueError) as ex:
         logger.error(f"Cannot resolve converter '{converter_type}': {ex}")
         return None
-    conv_kwargs = {
-        k: v for k, v in spec.items()
-        if k not in ("type", "verdict", "output", "inputs")
-    }
     try:
-        converter = conv_cls(**conv_kwargs)
+        converter = conv_cls(**spec.kwargs)
     except Exception as ex:
         logger.error(f"Failed to build converter '{converter_type}': {ex}")
         return None
 
     try:
-        v_cls = resolve_verdict_class(verdict_spec["type"])
+        v_cls = resolve_verdict_class(verdict_spec.type)
     except (KeyError, ImportError, AttributeError, TypeError, ValueError) as ex:
-        logger.error(f"Cannot resolve verdict service '{verdict_spec['type']}': {ex}")
+        logger.error(f"Cannot resolve verdict service '{verdict_spec.type}': {ex}")
         return None
-    v_kwargs = {
-        k: v for k, v in verdict_spec.items() if k not in ("type", "exporters")
-    }
     try:
-        verdict_service = v_cls(**v_kwargs)
+        verdict_service = v_cls(**verdict_spec.kwargs)
     except Exception as ex:
         logger.error(f"Failed to build verdict service: {ex}")
         return None
@@ -161,13 +155,13 @@ def build_converter_chain(
     # default (stdout). Otherwise hand the Dispatcher[Verdict] directly —
     # Dispatcher is itself an Exporter[Verdict], so VerdictExporter just calls
     # `.export()` on it and fan-out happens inside the dispatcher.
-    downstream = verdict_dispatcher if verdict_dispatcher._exporters else None
+    downstream = verdict_dispatcher if not verdict_dispatcher.is_empty() else None
 
     dsl_dispatcher: Dispatcher = Dispatcher(label=f"DSL[{converter_type}]")
     dsl_dispatcher.add(VerdictExporter(verdict_service, exporter=downstream))
 
     # Optional: also archive dsl records to a file for offline replay.
-    dsl_record_output = spec.get("output")
+    dsl_record_output = spec.output
     if dsl_record_output:
         out_path = Path(dsl_record_output)
         if not out_path.is_absolute():
@@ -181,7 +175,7 @@ def build_converter_chain(
             )
         )
 
-    inputs = spec.get("inputs")
+    inputs = spec.inputs
     if inputs is not None:
         if not isinstance(inputs, list) or not all(isinstance(s, str) for s in inputs):
             logger.error(
@@ -205,7 +199,7 @@ def build_converter_chain(
         input_note = " inputs=<all>"
 
     logger.info(
-        f"Converter chain enabled: {converter_type} -> {verdict_spec['type']}"
-        f"{input_note} ({len(verdict_dispatcher._exporters)} verdict exporter(s))"
+        f"Converter chain enabled: {converter_type} -> {verdict_spec.type}"
+        f"{input_note} ({verdict_dispatcher.size} verdict exporter(s))"
     )
     return outer, verdict_dispatcher

@@ -138,5 +138,5 @@ class _UserExporter(Exporter[Verdict]):
     def __init__(self, label="custom"):
         self.label = label
         self.received: list[Verdict] = []
-    def export(self, v: Verdict) -> None:
-        self.received.append(v)
+    def export(self, record: Verdict) -> None:
+        self.received.append(record)

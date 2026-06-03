@@ -12,13 +12,13 @@ in YAML by `type: module.path:ClassName`.
 
 from __future__ import annotations
 
-import importlib
 import logging
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from exporter import Exporter, StdoutExporter
+from plugins import resolve_plugin_class
 from verdict import Verdict
 
 logger = logging.getLogger(__name__)
@@ -42,11 +42,11 @@ class VerdictFileExporter(Exporter[Verdict]):
         self._written = 0
         self.flush_every = max(1, int(flush_every))
 
-    def export(self, verdict: Verdict) -> None:
+    def export(self, record: Verdict) -> None:
         with self._lock:
             if self._f.closed:
                 return
-            self._f.write(verdict.to_json() + "\n")
+            self._f.write(record.to_json() + "\n")
             self._written += 1
             if self._written % self.flush_every == 0:
                 self._f.flush()
@@ -111,8 +111,9 @@ class VerdictMQTTExporter(Exporter[Verdict]):
             self._owns_client = False
             return
 
-        self._client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        mqtt_module = cast(Any, mqtt)
+        self._client = mqtt_module.Client(
+            callback_api_version=mqtt_module.CallbackAPIVersion.VERSION2,
             client_id=client_id,
         )
         self._client.max_queued_messages_set(self.max_queued_messages)
@@ -138,11 +139,11 @@ class VerdictMQTTExporter(Exporter[Verdict]):
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         logger.warning("VerdictMQTTExporter disconnected: rc=%s", reason_code)
 
-    def export(self, verdict: Verdict) -> None:
+    def export(self, record: Verdict) -> None:
         if self._client is None:
             return
         try:
-            self._client.publish(self.topic, verdict.to_json(), qos=self.qos)
+            self._client.publish(self.topic, record.to_json(), qos=self.qos)
             self._published += 1
         except Exception as ex:
             logger.warning("VerdictMQTTExporter publish failed on %s: %s", self.topic, ex)
@@ -169,20 +170,9 @@ def resolve_verdict_exporter_class(type_str: str) -> type[Exporter]:
     (e.g. 'file', 'stdout', 'mqtt') or a 'module.path:ClassName' import
     string for user-defined exporters.
     """
-    if ":" in type_str:
-        module_path, _, class_name = type_str.partition(":")
-        module = importlib.import_module(module_path)
-        cls = getattr(module, class_name)
-        if not (isinstance(cls, type) and issubclass(cls, Exporter)):
-            raise TypeError(
-                f"{type_str} is not an Exporter subclass; cannot be used as a "
-                f"verdict exporter."
-            )
-        return cls
-    if type_str not in VERDICT_EXPORTER_REGISTRY:
-        raise KeyError(
-            f"Unknown verdict exporter type '{type_str}'. "
-            f"Built-ins: {sorted(VERDICT_EXPORTER_REGISTRY)}. "
-            f"For user-defined exporters use 'module.path:ClassName'."
-        )
-    return VERDICT_EXPORTER_REGISTRY[type_str]
+    return resolve_plugin_class(
+        type_str,
+        VERDICT_EXPORTER_REGISTRY,
+        Exporter,
+        "verdict exporter",
+    )

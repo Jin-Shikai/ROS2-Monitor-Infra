@@ -33,6 +33,7 @@ class DataRecord:
 
     # --- Session ---
     session_id: str = ""
+    record_id: str = ""          # stable within a session; data records only
 
     # --- Source identity ---
     source_type: str = ""         # "topic" | "service" | "action"
@@ -115,6 +116,7 @@ class DataRecord:
         return cls(
             _type="data",
             session_id=session_id,
+            record_id=_make_record_id(session_id, "topic", topic_name, seq),
             source_type="topic",
             source_name=topic_name,
             source_node=source_node,
@@ -163,6 +165,7 @@ class DataRecord:
         return cls(
             _type="data",
             session_id=session_id,
+            record_id=_make_record_id(session_id, "service", service_name, seq, phase),
             source_type="service",
             source_name=service_name,
             source_node=source_node,
@@ -194,6 +197,7 @@ class DataRecord:
         return cls(
             _type="data",
             session_id=session_id,
+            record_id=_make_record_id(session_id, "action", action_name, seq, "feedback"),
             source_type="action",
             source_name=action_name,
             source_node=source_node,
@@ -218,6 +222,7 @@ class DataRecord:
         return cls(
             _type="data",
             session_id=session_id,
+            record_id=_make_record_id(session_id, "action", action_name, seq, "status"),
             source_type="action",
             source_name=action_name,
             source_node=source_node,
@@ -240,3 +245,14 @@ def _extract_ros_timestamp(data: dict) -> dict | None:
     if stamp.get("sec", 0) == 0 and stamp.get("nanosec", 0) == 0:
         return None  # default-constructed, not meaningful
     return stamp
+
+
+def _make_record_id(
+    session_id: str,
+    source_type: str,
+    source_name: str,
+    seq: int,
+    phase: str | None = None,
+) -> str:
+    phase_part = phase or "-"
+    return f"{session_id}:{source_type}:{source_name}:{phase_part}:{seq}"

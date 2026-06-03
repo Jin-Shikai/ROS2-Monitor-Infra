@@ -6,8 +6,6 @@ MQTTExporter tests live in test_exporter_mqtt.py.
 import json
 from pathlib import Path
 
-import pytest
-
 from data_record import DataRecord
 from exporter import Exporter, Dispatcher, FileExporter
 
@@ -63,13 +61,10 @@ def test_file_exporter_flush_every_batches_flushes(tmp_path):
     assert len((tmp_path / "s.jsonl").read_text().strip().splitlines()) == 5
 
 
-def test_dispatcher_registry_and_build():
+def test_dispatcher_empty_state():
     d = Dispatcher()
-    d.register("file", FileExporter)
-    assert d.has("file")
-    assert not d.has("nope")
-    with pytest.raises(KeyError):
-        d.build("nope")
+    assert d.is_empty()
+    assert d.size == 0
 
 
 def test_dispatcher_fans_out_to_all(tmp_path):
@@ -83,8 +78,11 @@ def test_dispatcher_fans_out_to_all(tmp_path):
     a, b = Recorder(), Recorder()
     d.add(a)
     d.add(b)
+    assert d.size == 2
+    assert d.exporters == (a, b)
+    assert not d.is_empty()
     r = _rec(1)
-    d.dispatch(r)
+    d.export(r)
     assert a.records == [r]
     assert b.records == [r]
 
@@ -104,7 +102,7 @@ def test_dispatcher_isolates_exporter_exceptions(capsys):
     d.add(Boom())
     good = Recorder()
     d.add(good)
-    d.dispatch(_rec())
+    d.export(_rec())
     assert good.count == 1
     assert "broken" in capsys.readouterr().out
 
@@ -119,5 +117,3 @@ def test_dispatcher_flush_and_close_all_tolerate_errors():
     d.add(Boom())
     d.flush_all()  # must not raise
     d.close_all()  # must not raise
-
-

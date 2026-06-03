@@ -106,35 +106,31 @@ class StdoutExporter(Exporter[T], Generic[T]):
 
 
 class Dispatcher(Exporter[T], Generic[T]):
-    """Fan-out Exporter: owns an exporter list plus a plugin registry.
+    """Fan-out Exporter.
 
     Dispatcher IS-A Exporter[T] — `export(record)` forwards to every
     registered exporter, with per-exporter try/except so one bad exporter
-    cannot take down the rest. This is what lets a `VerdictExporter` or
-    a `Source` accept a Dispatcher anywhere an `Exporter[T]` is expected.
-
-    `dispatch` is kept as an alias for `export` so call sites that read as
-    "dispatch this record to N exporters" stay grammatical.
+    cannot take down the rest. This lets a `VerdictExporter` or a `Source`
+    accept a Dispatcher anywhere an `Exporter[T]` is expected.
     """
 
     def __init__(self, label: str = "Dispatcher"):
         self._label = label
         self._exporters: list[Exporter[T]] = []
-        self._registry: dict[str, type[Exporter[T]]] = {}
-
-    def register(self, name: str, exporter_cls: type[Exporter[T]]) -> None:
-        self._registry[name] = exporter_cls
-
-    def has(self, name: str) -> bool:
-        return name in self._registry
-
-    def build(self, name: str, **kwargs) -> Exporter[T]:
-        if name not in self._registry:
-            raise KeyError(f"Unknown exporter: {name}")
-        return self._registry[name](**kwargs)
 
     def add(self, exporter: Exporter[T]) -> None:
         self._exporters.append(exporter)
+
+    @property
+    def size(self) -> int:
+        return len(self._exporters)
+
+    @property
+    def exporters(self) -> tuple[Exporter[T], ...]:
+        return tuple(self._exporters)
+
+    def is_empty(self) -> bool:
+        return not self._exporters
 
     def export(self, record: T) -> None:
         for e in self._exporters:
@@ -145,8 +141,6 @@ class Dispatcher(Exporter[T], Generic[T]):
                     f"[{self._label}] exporter {type(e).__name__} export failed: {ex}",
                     flush=True,
                 )
-
-    dispatch = export
 
     def flush_all(self) -> None:
         for e in self._exporters:

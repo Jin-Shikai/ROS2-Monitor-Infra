@@ -33,6 +33,8 @@ class CmdVelSpeedConverter(DataConverter):
         return {
             "speed": speed,
             "_source_name": record.source_name,
+            "_session_id": record.session_id,
+            "_record_id": record.record_id,
             "_timestamp": record.timestamp,
             "_property_id": PROPERTY_ID,
         }

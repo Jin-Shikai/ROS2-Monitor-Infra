@@ -39,15 +39,15 @@ def _data_record(rtype="data"):
 
 def test_data_converter_is_abstract():
     with pytest.raises(TypeError):
-        DataConverter()
+        DataConverter()  # pyright: ignore[reportAbstractUsage]
 
 
 def test_converter_exporter_dispatches_result():
     class Capture(Exporter):
         def __init__(self):
             self.items = []
-        def export(self, item):
-            self.items.append(item)
+        def export(self, record):
+            self.items.append(record)
 
     downstream = Dispatcher()
     cap = Capture()
@@ -61,8 +61,8 @@ def test_converter_exporter_drops_when_convert_returns_none():
     class Capture(Exporter):
         def __init__(self):
             self.items = []
-        def export(self, item):
-            self.items.append(item)
+        def export(self, record):
+            self.items.append(record)
 
     downstream = Dispatcher()
     cap = Capture()
@@ -76,8 +76,8 @@ def test_converter_exporter_skips_session_bookends():
     class Capture(Exporter):
         def __init__(self):
             self.items = []
-        def export(self, item):
-            self.items.append(item)
+        def export(self, record):
+            self.items.append(record)
 
     downstream = Dispatcher()
     cap = Capture()
@@ -92,7 +92,7 @@ def test_converter_exporter_skips_session_bookends():
 def test_converter_exporter_close_propagates():
     closed = []
     class Closeable(Exporter):
-        def export(self, r): pass
+        def export(self, record): pass
         def close(self): closed.append(True)
     downstream = Dispatcher()
     downstream.add(Closeable())

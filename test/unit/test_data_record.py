@@ -74,6 +74,7 @@ def test_from_topic_msg_fields():
     assert rec.phase is None
     assert rec.metadata == {"seq": 7}
     assert rec.ros_timestamp is None  # no header.stamp
+    assert rec.record_id == "s:topic:/cmd_vel:-:7"
 
 
 def test_from_topic_msg_extracts_ros_timestamp():

@@ -8,10 +8,12 @@ when neither source provides a type.
 
 from __future__ import annotations
 
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from config_model import MonitoredSourceSpec
 import monitor_node
 from monitor_node import MonitorNode
 
@@ -26,9 +28,9 @@ class _FakeLogger:
     def warn(self, msg): pass
 
 
-def _make_node(active_service_types: dict[str, str]) -> MonitorNode:
+def _make_node(active_service_types: dict[str, str]) -> Any:
     """Build a MonitorNode without invoking rclpy / Node.__init__."""
-    node = MonitorNode.__new__(MonitorNode)
+    node = cast(Any, MonitorNode.__new__(MonitorNode))
     node.session_id = "sid"
     node.config = MagicMock()
     node.config.output_dir = "."
@@ -46,7 +48,9 @@ def _make_node(active_service_types: dict[str, str]) -> MonitorNode:
 def test_service_type_from_config_takes_precedence(mock_collector):
     node = _make_node(active_service_types={"/svc": "discovered/srv/Type"})
 
-    node._register_service({"name": "/svc", "type": "explicit/srv/Type"})
+    node._register_service(
+        MonitoredSourceSpec.from_dict({"name": "/svc", "type": "explicit/srv/Type"})
+    )
 
     mock_collector.assert_called_once()
     kwargs = mock_collector.call_args.kwargs
@@ -59,7 +63,7 @@ def test_service_type_from_config_takes_precedence(mock_collector):
 def test_service_type_auto_discovered_when_missing(mock_collector):
     node = _make_node(active_service_types={"/set_bool": "std_srvs/srv/SetBool"})
 
-    node._register_service({"name": "/set_bool"})
+    node._register_service(MonitoredSourceSpec.from_dict({"name": "/set_bool"}))
 
     mock_collector.assert_called_once()
     kwargs = mock_collector.call_args.kwargs
@@ -72,7 +76,7 @@ def test_service_type_auto_discovered_when_missing(mock_collector):
 def test_service_skipped_when_type_unknown(mock_collector):
     node = _make_node(active_service_types={})
 
-    node._register_service({"name": "/missing"})
+    node._register_service(MonitoredSourceSpec.from_dict({"name": "/missing"}))
 
     mock_collector.assert_not_called()
     node.manager.register.assert_not_called()
@@ -84,7 +88,9 @@ def test_service_skipped_when_type_unknown(mock_collector):
 def test_service_skipped_when_name_missing(mock_collector):
     node = _make_node(active_service_types={"/svc": "std_srvs/srv/SetBool"})
 
-    node._register_service({"type": "std_srvs/srv/SetBool"})
+    node._register_service(
+        MonitoredSourceSpec.from_dict({"type": "std_srvs/srv/SetBool"})
+    )
 
     mock_collector.assert_not_called()
     node.manager.register.assert_not_called()

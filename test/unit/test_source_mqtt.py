@@ -48,8 +48,8 @@ def _fake_message(topic: str, payload_obj) -> SimpleNamespace:
 def test_on_message_parses_json_and_pushes_to_downstream_exporter():
     client = MagicMock()
     src = MQTTSource(client=client)
-    sink = _ListExporter()
-    src.start(sink)
+    exporter = _ListExporter()
+    src.start(exporter)
 
     rec = DataRecord.from_topic_msg(
         session_id="sid", topic_name="/odom",
@@ -58,8 +58,8 @@ def test_on_message_parses_json_and_pushes_to_downstream_exporter():
     )
     src._on_message(client, None, _fake_message("monitor/topic/odom", rec))
 
-    assert len(sink.items) == 1
-    out = sink.items[0]
+    assert len(exporter.items) == 1
+    out = exporter.items[0]
     assert out.source_name == "/odom"
     assert out.data == {"twist.twist.linear.x": 0.4}
     assert out.metadata["seq"] == 7
@@ -69,10 +69,10 @@ def test_on_message_parses_json_and_pushes_to_downstream_exporter():
 def test_on_message_drops_invalid_json(caplog):
     client = MagicMock()
     src = MQTTSource(client=client)
-    sink = _ListExporter()
-    src.start(sink)
+    exporter = _ListExporter()
+    src.start(exporter)
     src._on_message(client, None, _fake_message("monitor/topic/odom", "not-json{"))
-    assert sink.items == []
+    assert exporter.items == []
     assert src._received == 0
 
 

@@ -2,14 +2,7 @@
 
 Fires a violation Verdict when `speed > 0.30 m/s` and a cleared Verdict
 when it falls back. Edge-triggered: at most one Verdict per state
-transition. Equivalent to the old YAML
-
-    field: speed
-    op: ">"
-    threshold: 0.30
-    sustain_sec: 0.0
-
-but with the parameters owned by the class.
+transition. The speed-limit parameters are owned by this class.
 """
 
 from __future__ import annotations

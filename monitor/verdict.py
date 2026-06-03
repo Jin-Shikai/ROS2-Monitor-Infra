@@ -22,13 +22,13 @@ user-defined) are configured per YAML.
 
 from __future__ import annotations
 
-import importlib
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
 import json
 from typing import Any
 
 from exporter import Exporter, StdoutExporter
+from plugins import resolve_plugin_class
 
 
 @dataclass
@@ -39,9 +39,16 @@ class Verdict:
     property_id: str
     result: bool                     # True = property holds; False = violation
     details: dict = field(default_factory=dict)
+    monitor_session_id: str = ""
+    verifier_session_id: str = ""
+    input_record_ids: list[str] = field(default_factory=list)
 
     def to_json(self) -> str:
-        return json.dumps(asdict(self), default=str, ensure_ascii=False)
+        d = asdict(self)
+        for key in ("monitor_session_id", "verifier_session_id", "input_record_ids"):
+            if d.get(key) in ("", []):
+                d.pop(key, None)
+        return json.dumps(d, default=str, ensure_ascii=False)
 
 
 class VerdictService(ABC):
@@ -78,7 +85,21 @@ class VerdictExporter(Exporter[Any]):
     def export(self, record: Any) -> None:
         verdict = self.service.evaluate(record)
         if verdict is not None:
+            _attach_correlation(verdict, record)
             self.exporter.export(verdict)
+
+
+def _attach_correlation(verdict: Verdict, record: Any) -> None:
+    if not isinstance(record, dict):
+        return
+    if not verdict.monitor_session_id and record.get("_session_id"):
+        verdict.monitor_session_id = str(record["_session_id"])
+    if verdict.input_record_ids:
+        return
+    if isinstance(record.get("_input_record_ids"), list):
+        verdict.input_record_ids = list(record["_input_record_ids"])
+    elif record.get("_record_id"):
+        verdict.input_record_ids = [str(record["_record_id"])]
 
 
 def resolve_verdict_class(spec: str) -> type[VerdictService]:
@@ -91,9 +112,4 @@ def resolve_verdict_class(spec: str) -> type[VerdictService]:
             f"Bad verdict spec '{spec}'. Expected 'module.path:ClassName' "
             f"(e.g. 'custom.threshold_verdict:ThresholdVerdict')."
         )
-    module_path, _, class_name = spec.partition(":")
-    module = importlib.import_module(module_path)
-    cls = getattr(module, class_name)
-    if not (isinstance(cls, type) and issubclass(cls, VerdictService)):
-        raise TypeError(f"{spec} is not a VerdictService subclass")
-    return cls
+    return resolve_plugin_class(spec, {}, VerdictService, "verdict service")

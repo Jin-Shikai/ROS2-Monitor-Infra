@@ -17,14 +17,14 @@ sequenceDiagram
     TP-->>DC: filtered DataRecord (or None = drop)
 
     Note over DC,EXP: Transport stage
-    DC->>ED1: dispatch(record)
+    DC->>ED1: export(record)
     ED1->>EXP: export(record)
     ED1->>CE: export(record)
     CE->>CV: convert(record)
     CV-->>CE: dsl_record (or None = drop)
 
     Note over CE,VS: Evaluation stage
-    CE->>ED2: dispatch(dsl_record)
+    CE->>ED2: export(dsl_record)
     ED2->>VS: export(dsl_record)
     VS->>VS: evaluate(dsl_record)
-    VS-->>VS: emit Verdict via sink (or stay silent)
+    VS-->>VS: emit Verdict via exporter (or stay silent)

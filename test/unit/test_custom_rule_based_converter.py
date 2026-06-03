@@ -53,6 +53,7 @@ def test_partial_extraction_default():
         field_map={"v": "twist.twist.linear.x", "missing": "no.such.path"},
     )
     out = c.convert(_data_record())
+    assert out is not None
     assert out["v"] == 0.7
     assert "missing" not in out
 
@@ -85,4 +86,5 @@ def test_omits_property_id_when_not_configured():
         field_map={"v": "twist.twist.linear.x"},
     )
     out = c.convert(_data_record())
+    assert out is not None
     assert "_property_id" not in out

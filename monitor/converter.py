@@ -14,12 +14,12 @@ generic Dispatcher transport layer:
 
 from __future__ import annotations
 
-import importlib
 from abc import ABC, abstractmethod
 from typing import Any
 
 from data_record import DataRecord
 from exporter import Dispatcher, Exporter
+from plugins import resolve_plugin_class
 
 
 class DataConverter(ABC):
@@ -52,7 +52,7 @@ class ConverterExporter(Exporter[DataRecord]):
         result = self.converter.convert(record)
         if result is None:
             return
-        self.downstream.dispatch(result)
+        self.downstream.export(result)
 
     def flush(self) -> None:
         self.downstream.flush_all()
@@ -71,9 +71,4 @@ def resolve_converter_class(spec: str) -> type[DataConverter]:
             f"Bad converter spec '{spec}'. Expected 'module.path:ClassName' "
             f"(e.g. 'custom.rule_based_converter:RuleBasedConverter')."
         )
-    module_path, _, class_name = spec.partition(":")
-    module = importlib.import_module(module_path)
-    cls = getattr(module, class_name)
-    if not (isinstance(cls, type) and issubclass(cls, DataConverter)):
-        raise TypeError(f"{spec} is not a DataConverter subclass")
-    return cls
+    return resolve_plugin_class(spec, {}, DataConverter, "converter")

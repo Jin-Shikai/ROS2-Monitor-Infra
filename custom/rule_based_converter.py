@@ -86,6 +86,8 @@ class RuleBasedConverter(DataConverter):
         if not out:
             return None
         out["_source_name"] = record.source_name
+        out["_session_id"] = record.session_id
+        out["_record_id"] = record.record_id
         out["_timestamp"] = record.timestamp
         if self.property_id is not None:
             out["_property_id"] = self.property_id

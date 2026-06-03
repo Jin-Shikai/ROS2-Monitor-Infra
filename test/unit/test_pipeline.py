@@ -1,18 +1,19 @@
 """Unit tests for monitor/pipeline.py — extracted DSL chain builder.
 
-These tests cover the same logic that was previously embedded in
-monitor_node._build_converter_chain, plus a verdict-runner-side smoke test
-that drives a complete chain with a `Dispatcher[DataRecord]` standing in
-for the MonitorNode raw dispatcher.
+These tests cover DSL chain construction plus a verdict-runner-side smoke
+test that drives a complete chain with a `Dispatcher[DataRecord]` standing
+in for the MonitorNode raw dispatcher.
 """
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
+from config_model import ConverterSpec
 from data_record import DataRecord
 from exporter import Dispatcher
 from pipeline import build_converter_chain
@@ -24,11 +25,13 @@ def logger():
 
 
 def test_missing_type_returns_none(logger, tmp_path):
-    assert build_converter_chain({}, str(tmp_path), "sid", logger) is None
+    spec = ConverterSpec.from_dict({})
+    assert build_converter_chain(spec, str(tmp_path), "sid", logger) is None
 
 
 def test_missing_verdict_section_returns_none(logger, tmp_path):
     spec = {"type": "custom.rule_based_converter:RuleBasedConverter"}
+    spec = ConverterSpec.from_dict(spec)
     assert build_converter_chain(spec, str(tmp_path), "sid", logger) is None
 
 
@@ -37,6 +40,7 @@ def test_unresolvable_converter_returns_none(logger, tmp_path):
         "type": "no.such.module:Nope",
         "verdict": {"type": "custom.threshold_verdict:ThresholdVerdict"},
     }
+    spec = ConverterSpec.from_dict(spec)
     assert build_converter_chain(spec, str(tmp_path), "sid", logger) is None
 
 
@@ -60,12 +64,13 @@ def test_session_id_substituted_in_verdict_exporter_path(logger, tmp_path):
             ],
         },
     }
+    spec = ConverterSpec.from_dict(spec)
     built = build_converter_chain(spec, str(tmp_path), "abc123", logger)
     assert built is not None
     _, verdict_dispatcher = built
-    exporters = verdict_dispatcher._exporters
+    exporters = verdict_dispatcher.exporters
     assert len(exporters) == 1
-    assert exporters[0].path == Path(tmp_path) / "verdicts_abc123.jsonl"
+    assert cast(Any, exporters[0]).path == Path(tmp_path) / "verdicts_abc123.jsonl"
     verdict_dispatcher.close_all()
 
 
@@ -89,10 +94,11 @@ def test_new_exporters_schema_with_file_and_stdout(logger, tmp_path):
             ],
         },
     }
+    spec = ConverterSpec.from_dict(spec)
     built = build_converter_chain(spec, str(tmp_path), "S", logger)
     assert built is not None
     _, verdict_dispatcher = built
-    assert len(verdict_dispatcher._exporters) == 2
+    assert verdict_dispatcher.size == 2
     verdict_dispatcher.close_all()
 
 
@@ -114,6 +120,7 @@ def test_end_to_end_chain_writes_verdict_on_breach(logger, tmp_path):
             "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
         },
     }
+    spec = ConverterSpec.from_dict(spec)
     built = build_converter_chain(spec, str(tmp_path), "S", logger)
     assert built is not None
     converter_exporter, verdict_dispatcher = built
@@ -129,7 +136,7 @@ def test_end_to_end_chain_writes_verdict_on_breach(logger, tmp_path):
         data={"twist.twist.linear.x": 0.4},  # > 0.2 ⇒ violation
         seq=1,
     )
-    raw.dispatch(rec)
+    raw.export(rec)
     verdict_dispatcher.close_all()
 
     out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
@@ -148,6 +155,7 @@ def test_inputs_filter_drops_other_sources(logger, tmp_path):
             "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
         },
     }
+    spec = ConverterSpec.from_dict(spec)
     built = build_converter_chain(spec, str(tmp_path), "S", logger)
     assert built is not None
     outer, verdict_dispatcher = built
@@ -157,13 +165,13 @@ def test_inputs_filter_drops_other_sources(logger, tmp_path):
 
     # /odom should be filtered out by inputs even though its data shape would
     # otherwise match (twist.linear.x present).
-    raw.dispatch(DataRecord.from_topic_msg(
+    raw.export(DataRecord.from_topic_msg(
         session_id="S", topic_name="/odom",
         msg_type="nav_msgs/msg/Odometry",
         data={"twist.linear.x": 0.99}, seq=1,
     ))
     # /cmd_vel with a breach should fire.
-    raw.dispatch(DataRecord.from_topic_msg(
+    raw.export(DataRecord.from_topic_msg(
         session_id="S", topic_name="/cmd_vel",
         msg_type="geometry_msgs/msg/Twist",
         data={"twist.linear.x": 0.5}, seq=2,
@@ -184,6 +192,7 @@ def test_inputs_empty_list_rejected(logger, tmp_path):
             "exporters": [{"type": "stdout"}],
         },
     }
+    spec = ConverterSpec.from_dict(spec)
     assert build_converter_chain(spec, str(tmp_path), "S", logger) is None
 
 
@@ -196,6 +205,7 @@ def test_inputs_wrong_type_rejected(logger, tmp_path):
             "exporters": [{"type": "stdout"}],
         },
     }
+    spec = ConverterSpec.from_dict(spec)
     assert build_converter_chain(spec, str(tmp_path), "S", logger) is None
 
 
@@ -214,4 +224,5 @@ def test_unknown_verdict_exporter_type_returns_none(logger, tmp_path):
             "exporters": [{"type": "nope"}],
         },
     }
+    spec = ConverterSpec.from_dict(spec)
     assert build_converter_chain(spec, str(tmp_path), "S", logger) is None

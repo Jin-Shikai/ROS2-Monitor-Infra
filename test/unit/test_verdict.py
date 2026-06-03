@@ -22,28 +22,28 @@ class _ListExporter(Exporter[Verdict]):
     def __init__(self):
         self.items: list[Verdict] = []
 
-    def export(self, verdict: Verdict) -> None:
-        self.items.append(verdict)
+    def export(self, record: Verdict) -> None:
+        self.items.append(record)
 
 
 class _AlwaysFires(VerdictService):
     def __init__(self, property_id="p"):
         self.property_id = property_id
-    def evaluate(self, record):
+    def evaluate(self, dsl_record):
         return Verdict(
             timestamp=0.0, property_id=self.property_id,
-            result=True, details={"echoed": record},
+            result=True, details={"echoed": dsl_record},
         )
 
 
 class _NeverFires(VerdictService):
-    def evaluate(self, record):
+    def evaluate(self, dsl_record):
         return None
 
 
 def test_verdict_service_is_abstract():
     with pytest.raises(TypeError):
-        VerdictService()
+        VerdictService()  # pyright: ignore[reportAbstractUsage]
 
 
 def test_verdict_to_json_round_trip():
@@ -55,18 +55,18 @@ def test_verdict_to_json_round_trip():
 
 
 def test_verdict_exporter_forwards_to_downstream_on_emit():
-    sink = _ListExporter()
-    exp = VerdictExporter(_AlwaysFires(), exporter=sink)
+    exporter = _ListExporter()
+    exp = VerdictExporter(_AlwaysFires(), exporter=exporter)
     exp.export({"any": "record"})
-    assert len(sink.items) == 1
-    assert sink.items[0].property_id == "p"
+    assert len(exporter.items) == 1
+    assert exporter.items[0].property_id == "p"
 
 
 def test_verdict_exporter_silent_when_service_returns_none():
-    sink = _ListExporter()
-    exp = VerdictExporter(_NeverFires(), exporter=sink)
+    exporter = _ListExporter()
+    exp = VerdictExporter(_NeverFires(), exporter=exporter)
     exp.export({"any": "record"})
-    assert sink.items == []
+    assert exporter.items == []
 
 
 def test_verdict_exporter_default_prints_to_stdout(capsys):
@@ -74,6 +74,18 @@ def test_verdict_exporter_default_prints_to_stdout(capsys):
     exp.export({"x": 1})
     out = capsys.readouterr().out
     assert "[Verdict]" in out
+
+
+def test_verdict_exporter_attaches_correlation_from_dsl_record():
+    exporter = _ListExporter()
+    exp = VerdictExporter(_AlwaysFires(), exporter=exporter)
+    exp.export({
+        "_session_id": "monitor-s",
+        "_record_id": "monitor-s:topic:/odom:-:1",
+    })
+    verdict = exporter.items[0]
+    assert verdict.monitor_session_id == "monitor-s"
+    assert verdict.input_record_ids == ["monitor-s:topic:/odom:-:1"]
 
 
 def test_resolve_requires_module_path():

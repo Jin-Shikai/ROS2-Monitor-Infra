@@ -37,37 +37,16 @@ import os
 import signal
 import sys
 import threading
-from dataclasses import dataclass, field
-from typing import Any
 
 import yaml
 
+from config_model import RunnerConfig
 from data_record import generate_session_id
 from exporter import Dispatcher
 from pipeline import build_converter_chain
 from sources import resolve_source_class
 
 logger = logging.getLogger("verdict_runner")
-
-
-@dataclass
-class RunnerConfig:
-    output_dir: str
-    converters: list[dict]
-    source: dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def load(cls, yaml_path: str) -> "RunnerConfig":
-        with open(yaml_path, "r") as f:
-            data = yaml.safe_load(f) or {}
-        monitor = data.get("monitor", {}) or {}
-        runner = data.get("verdict_runner", {}) or {}
-        source_spec = runner.get("source") or {}
-        return cls(
-            output_dir=monitor.get("output_dir", "./output"),
-            converters=list(data.get("converters") or []),
-            source=dict(source_spec),
-        )
 
 
 def main() -> int:
@@ -101,18 +80,17 @@ def main() -> int:
         logger.error("No 'converters:' configured; nothing to evaluate.")
         return 1
 
-    source_kwargs = dict(cfg.source)
-    source_type = source_kwargs.pop("type", None)
-    if not source_type:
+    if cfg.source is None or not cfg.source.type:
         logger.error("'verdict_runner.source' must include a 'type'.")
         return 1
+    source_type = cfg.source.type
     try:
         source_cls = resolve_source_class(source_type)
     except (KeyError, ImportError, AttributeError, TypeError, ValueError) as ex:
         logger.error("Cannot resolve source '%s': %s", source_type, ex)
         return 1
     try:
-        source = source_cls(**source_kwargs)
+        source = source_cls(**cfg.source.kwargs)
     except Exception as ex:
         logger.error("Failed to build source '%s': %s", source_type, ex)
         return 1
