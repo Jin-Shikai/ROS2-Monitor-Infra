@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from data_record import DataRecord
-from exporter import Exporter, ExportDispatcher, FileExporter
+from exporter import Exporter, Dispatcher, FileExporter
 
 
 def _rec(seq=1):
@@ -64,7 +64,7 @@ def test_file_exporter_flush_every_batches_flushes(tmp_path):
 
 
 def test_dispatcher_registry_and_build():
-    d = ExportDispatcher()
+    d = Dispatcher()
     d.register("file", FileExporter)
     assert d.has("file")
     assert not d.has("nope")
@@ -79,7 +79,7 @@ def test_dispatcher_fans_out_to_all(tmp_path):
         def export(self, record):
             self.records.append(record)
 
-    d = ExportDispatcher()
+    d = Dispatcher()
     a, b = Recorder(), Recorder()
     d.add(a)
     d.add(b)
@@ -100,7 +100,7 @@ def test_dispatcher_isolates_exporter_exceptions(capsys):
         def export(self, record):
             self.count += 1
 
-    d = ExportDispatcher()
+    d = Dispatcher()
     d.add(Boom())
     good = Recorder()
     d.add(good)
@@ -115,7 +115,7 @@ def test_dispatcher_flush_and_close_all_tolerate_errors():
         def flush(self): raise RuntimeError()
         def close(self): raise RuntimeError()
 
-    d = ExportDispatcher()
+    d = Dispatcher()
     d.add(Boom())
     d.flush_all()  # must not raise
     d.close_all()  # must not raise

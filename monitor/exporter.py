@@ -105,11 +105,16 @@ class StdoutExporter(Exporter[T], Generic[T]):
         print(f"[{self.label}] {self._serialize(record)}", flush=True)
 
 
-class Dispatcher(Generic[T]):
-    """Owns an exporter list plus a plugin registry (name -> class).
+class Dispatcher(Exporter[T], Generic[T]):
+    """Fan-out Exporter: owns an exporter list plus a plugin registry.
 
-    Records go in via dispatch(); each registered Exporter gets its own
-    try/except so a single bad exporter cannot take down the rest.
+    Dispatcher IS-A Exporter[T] — `export(record)` forwards to every
+    registered exporter, with per-exporter try/except so one bad exporter
+    cannot take down the rest. This is what lets a `VerdictExporter` or
+    a `Source` accept a Dispatcher anywhere an `Exporter[T]` is expected.
+
+    `dispatch` is kept as an alias for `export` so call sites that read as
+    "dispatch this record to N exporters" stay grammatical.
     """
 
     def __init__(self, label: str = "Dispatcher"):
@@ -131,7 +136,7 @@ class Dispatcher(Generic[T]):
     def add(self, exporter: Exporter[T]) -> None:
         self._exporters.append(exporter)
 
-    def dispatch(self, record: T) -> None:
+    def export(self, record: T) -> None:
         for e in self._exporters:
             try:
                 e.export(record)
@@ -140,6 +145,8 @@ class Dispatcher(Generic[T]):
                     f"[{self._label}] exporter {type(e).__name__} export failed: {ex}",
                     flush=True,
                 )
+
+    dispatch = export
 
     def flush_all(self) -> None:
         for e in self._exporters:
@@ -154,7 +161,3 @@ class Dispatcher(Generic[T]):
                 e.close()
             except Exception:
                 pass
-
-
-# Backward-compat alias for callers that still use the old name.
-ExportDispatcher = Dispatcher

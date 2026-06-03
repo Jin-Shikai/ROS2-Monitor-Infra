@@ -39,10 +39,14 @@ exporters:
 # required there. Run with:
 #   python3 monitor/verdict_runner.py --config monitor/config.yaml
 verdict_runner:
-  broker: localhost
-  port: 1883
-  topic_filter: monitor/#
-  qos: 1
+  # Pluggable inbound transport. Built-ins: mqtt. User-defined sources
+  # use 'module.path:ClassName' (must be a `Source[DataRecord]` subclass).
+  source:
+    type: mqtt
+    broker: localhost
+    port: 1883
+    topic_filter: monitor/#
+    qos: 1
 
 # DSL evaluation chains. Each entry wires a DataConverter to a VerdictService.
 # Use a builtin name (e.g. RuleBasedConverter / ThresholdVerdict) or a Python
@@ -60,10 +64,8 @@ converters:
       op: ">"
       threshold: 0.5
       sustain_sec: 0.0
-      # New unified schema: one or more Exporter[Verdict] instances.
-      # Built-in types: file, stdout, mqtt. User-defined exporters use
-      # 'module.path:ClassName'. The legacy 'output: <path>' is still
-      # accepted as syntactic sugar for [{type: file, path: <path>}].
+      # One or more Exporter[Verdict] instances. Built-in types: file,
+      # stdout, mqtt. User-defined exporters use 'module.path:ClassName'.
       exporters:
         - type: file
           path: verdicts_{session_id}.jsonl

@@ -1,9 +1,9 @@
-"""MQTTSource — subscribe to an MQTT broker and feed DataRecords into a sink.
+"""MQTTSource — subscribe to an MQTT broker and push DataRecords downstream.
 
 This is the verdict-side inbound adapter; mirror image of MQTTExporter on
 the monitor side. Each MQTT message payload is parsed with
-`DataRecord.from_json()` and forwarded to the configured sink (typically
-`Dispatcher.dispatch`).
+`DataRecord.from_json()` and handed to the downstream `Exporter[DataRecord]`
+(typically a `Dispatcher[DataRecord]`).
 
 Falls back to a no-op when paho-mqtt is missing, so the module can still be
 imported in test environments without the dependency installed.
@@ -12,9 +12,10 @@ imported in test environments without the dependency installed.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any
 
 from data_record import DataRecord
+from exporter import Exporter
 from source import Source
 
 logger = logging.getLogger(__name__)
@@ -43,7 +44,7 @@ class MQTTSource(Source[DataRecord]):
         self.topic_filter = topic_filter
         self.qos = int(qos)
         self.keepalive = int(keepalive)
-        self._sink: Callable[[DataRecord], None] | None = None
+        self._exporter: Exporter[DataRecord] | None = None
         self._received = 0
 
         if client is not None:
@@ -78,7 +79,7 @@ class MQTTSource(Source[DataRecord]):
             logger.warning("MQTTSource connect failed: rc=%s", reason_code)
 
     def _on_message(self, client, userdata, message):
-        if self._sink is None:
+        if self._exporter is None:
             return
         try:
             payload = message.payload.decode("utf-8")
@@ -90,13 +91,13 @@ class MQTTSource(Source[DataRecord]):
             )
             return
         try:
-            self._sink(record)
+            self._exporter.export(record)
             self._received += 1
         except Exception as ex:
-            logger.error("MQTTSource sink error: %s", ex)
+            logger.error("MQTTSource downstream export error: %s", ex)
 
-    def start(self, sink: Callable[[DataRecord], None]) -> None:
-        self._sink = sink
+    def start(self, exporter: Exporter[DataRecord]) -> None:
+        self._exporter = exporter
         if self._client is None:
             return
         self._client.on_connect = self._on_connect

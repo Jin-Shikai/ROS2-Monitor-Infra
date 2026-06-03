@@ -7,9 +7,9 @@ example implementation.
 
 VerdictExporter wraps a VerdictService as an Exporter so it can be registered
 on the downstream Dispatcher carrying DSL-ready records. Verdicts emitted by
-the service are forwarded to a `sink` callable — typically the `.dispatch`
-method of a `Dispatcher[Verdict]` whose member Exporters (file / stdout /
-mqtt / user-defined) are configured per YAML.
+the service are forwarded to a downstream `Exporter[Verdict]` — typically a
+`Dispatcher[Verdict]` whose member Exporters (file / stdout / mqtt /
+user-defined) are configured per YAML.
 
   Dispatcher[Any] -> VerdictExporter -> VerdictService.evaluate() -> Verdict
                                                                        |
@@ -23,12 +23,12 @@ mqtt / user-defined) are configured per YAML.
 from __future__ import annotations
 
 import importlib
-import json
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable
+import json
+from typing import Any
 
-from exporter import Exporter
+from exporter import Exporter, StdoutExporter
 
 
 @dataclass
@@ -60,28 +60,25 @@ class VerdictService(ABC):
 class VerdictExporter(Exporter[Any]):
     """Adapter: presents a VerdictService as an Exporter on a Dispatcher[Any].
 
-    When a Verdict is emitted, it is forwarded to `sink` (default: print to
-    stdout). In production wiring `sink` is a `Dispatcher[Verdict].dispatch`,
-    fanning out to any number of `Exporter[Verdict]` instances (file, mqtt,
+    When a Verdict is emitted, it is forwarded to the downstream
+    `Exporter[Verdict]` (default: a `StdoutExporter[Verdict]`). In
+    production wiring this is typically a `Dispatcher[Verdict]`, fanning
+    out to any number of `Exporter[Verdict]` instances (file, mqtt,
     stdout, user-defined).
     """
 
     def __init__(
         self,
         service: VerdictService,
-        sink: Callable[[Verdict], None] | None = None,
+        exporter: Exporter[Verdict] | None = None,
     ):
         self.service = service
-        self.sink = sink or _default_sink
+        self.exporter = exporter or StdoutExporter[Verdict](label="Verdict")
 
     def export(self, record: Any) -> None:
         verdict = self.service.evaluate(record)
         if verdict is not None:
-            self.sink(verdict)
-
-
-def _default_sink(verdict: Verdict) -> None:
-    print(f"[Verdict] {verdict.to_json()}", flush=True)
+            self.exporter.export(verdict)
 
 
 def resolve_verdict_class(spec: str) -> type[VerdictService]:

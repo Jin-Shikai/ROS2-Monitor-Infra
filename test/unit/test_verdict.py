@@ -7,12 +7,23 @@ import json
 
 import pytest
 
+from exporter import Exporter
 from verdict import (
     Verdict,
     VerdictExporter,
     VerdictService,
     resolve_verdict_class,
 )
+
+
+class _ListExporter(Exporter[Verdict]):
+    """Test helper: collect emitted Verdicts into an in-memory list."""
+
+    def __init__(self):
+        self.items: list[Verdict] = []
+
+    def export(self, verdict: Verdict) -> None:
+        self.items.append(verdict)
 
 
 class _AlwaysFires(VerdictService):
@@ -43,22 +54,22 @@ def test_verdict_to_json_round_trip():
     }
 
 
-def test_verdict_exporter_invokes_sink_on_emit():
-    captured = []
-    exp = VerdictExporter(_AlwaysFires(), sink=captured.append)
+def test_verdict_exporter_forwards_to_downstream_on_emit():
+    sink = _ListExporter()
+    exp = VerdictExporter(_AlwaysFires(), exporter=sink)
     exp.export({"any": "record"})
-    assert len(captured) == 1
-    assert captured[0].property_id == "p"
+    assert len(sink.items) == 1
+    assert sink.items[0].property_id == "p"
 
 
 def test_verdict_exporter_silent_when_service_returns_none():
-    captured = []
-    exp = VerdictExporter(_NeverFires(), sink=captured.append)
+    sink = _ListExporter()
+    exp = VerdictExporter(_NeverFires(), exporter=sink)
     exp.export({"any": "record"})
-    assert captured == []
+    assert sink.items == []
 
 
-def test_verdict_exporter_default_sink_prints(capsys):
+def test_verdict_exporter_default_prints_to_stdout(capsys):
     exp = VerdictExporter(_AlwaysFires())
     exp.export({"x": 1})
     out = capsys.readouterr().out

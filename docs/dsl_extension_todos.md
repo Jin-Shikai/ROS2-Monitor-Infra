@@ -4,7 +4,11 @@ Scope: design notes for evolving the DataConverter / VerdictService /
 verdict-output layer. Captures what already works today, the open
 extensibility gaps, and a reproducible playbook for adding new DSL
 backends. Updated 2026-05-12 (TODO 1 design revised to unify around the
-existing `Exporter[T]` hierarchy — see Section 2).
+existing `Exporter[T]` hierarchy — see Section 2). Updated 2026-05-12
+again to finish the unification: `sink` terminology gone, `Dispatcher`
+now IS-A `Exporter[T]`, and the verdict-runner's inbound transport is
+pluggable via a `Source` registry symmetric to verdict-side exporters
+(§9).
 
 ---
 
@@ -86,9 +90,8 @@ verdict:
       webhook: https://hooks.slack.com/...
 ```
 
-**Backward compatibility**: keep `output: <path>` as syntactic sugar
-for `exporters: [{type: file, path: <path>}]`. Existing configs and
-the Nav2 case study continue to work unchanged.
+Only the `exporters:` list is accepted. There is no legacy `output:`
+sugar — every verdict sink is declared as one entry in `exporters:`.
 
 ### Implementation sketch
 
@@ -129,8 +132,7 @@ def resolve_verdict_exporter_class(type_str: str) -> type[Exporter[Verdict]]:
 
 `pipeline.build_converter_chain` is updated to:
 
-1. Read `verdict.exporters: [...]` (or synthesize from legacy
-   `verdict.output:`).
+1. Read `verdict.exporters: [...]`.
 2. For each spec, resolve the class and instantiate with the spec's
    kwargs (minus `type:`), substituting `{session_id}` in any string
    value.
@@ -313,8 +315,7 @@ Implemented in this branch. Summary of what changed:
   describes the new `Dispatcher[Verdict]` wiring.
 - [monitor/pipeline.py](../monitor/pipeline.py) —
   `build_converter_chain` now returns `(ConverterExporter, Dispatcher[Verdict])`.
-  Parses `verdict.exporters: [...]` (preferred) or legacy
-  `verdict.output: <path>` (sugar for one `file` exporter). Recursive
+  Parses `verdict.exporters: [...]`. Recursive
   `{session_id}` substitution is applied to every string kwarg, so MQTT
   topics, file paths, Slack channels, etc. all get the same templating.
   Relative `path` kwargs resolve against `monitor.output_dir`.
@@ -484,23 +485,108 @@ exporter" or similar, a named-Exporter table can be added then.
 
 ---
 
-## 9. Suggested next work
+## 9. Status: TODO 5 landed (pluggable verdict-runner Source + final unification, 2026-05-12)
+
+Two cleanups, done together because they're the same idea applied to
+opposite ends of the chain:
+
+### 9a. `sink` terminology removed; `Dispatcher` is now an `Exporter[T]`
+
+The earlier round of work removed `FileVerdictSink` and the "Sink" base
+class, but `verdict.py` still had a `sink: Callable` parameter on
+`VerdictExporter` plus a `_default_sink` helper, and `Source.start(sink)`
+took a callable on the inbound side. The framework now uses exactly one
+term — `Exporter` — end to end.
+
+- [monitor/exporter.py](../monitor/exporter.py) — `Dispatcher` now
+  subclasses `Exporter[T]`. Its fan-out loop is the `export` method;
+  `dispatch = export` is kept as an alias so the existing
+  `dispatcher.dispatch(record)` call sites stay grammatical. This is what
+  lets a Dispatcher be handed to any consumer that expects an
+  `Exporter[T]` (VerdictExporter downstream, Source upstream).
+- [monitor/verdict.py](../monitor/verdict.py) — `VerdictExporter`
+  constructor parameter is now `exporter: Exporter[Verdict] | None`.
+  Default is a `StdoutExporter[Verdict](label="Verdict")`. Calls
+  `self.exporter.export(verdict)`. `_default_sink` deleted.
+- [monitor/source.py](../monitor/source.py) — `Source.start(exporter: Exporter[T])`.
+  No more `Callable` indirection.
+- [monitor/source_mqtt.py](../monitor/source_mqtt.py) —
+  `self._exporter: Exporter[DataRecord]`, calls `.export()`.
+- [monitor/pipeline.py](../monitor/pipeline.py) —
+  `VerdictExporter(verdict_service, exporter=verdict_dispatcher)` instead
+  of `sink=verdict_dispatcher.dispatch`.
+
+### 9b. Verdict-runner ingestion is pluggable via a `Source` registry
+
+Previously the verdict-runner hardcoded `MQTTSource(...)` directly, with
+broker/port/topic_filter/qos baked into `RunnerConfig` as MQTT-specific
+fields. That made MQTT a privileged transport rather than one option among
+many — out of step with the symmetric story on the verdict-output side.
+
+- [monitor/sources.py](../monitor/sources.py) — new file. `SOURCE_REGISTRY`
+  maps short names (`mqtt`) to `Source` subclasses; `resolve_source_class`
+  also accepts `module.path:ClassName` for user-defined sources. Same
+  shape as `verdict_exporters.resolve_verdict_exporter_class`.
+- [monitor/verdict_runner.py](../monitor/verdict_runner.py) — `RunnerConfig`
+  now carries a single `source: dict` (`{type, **kwargs}`). `main()`
+  resolves the class via the registry, instantiates with the remaining
+  kwargs, and calls `source.start(raw_dispatcher)` directly (Dispatcher
+  is an Exporter now).
+- [monitor/config.yaml](../monitor/config.yaml) — `verdict_runner:` now
+  uses the nested `source:` schema.
+
+### YAML shape
+
+```yaml
+verdict_runner:
+  source:
+    type: mqtt                 # or 'module.path:ClassName' for user-defined
+    broker: localhost
+    port: 1883
+    topic_filter: monitor/#
+    qos: 1
+```
+
+A user-defined replay-from-file or UDP-socket source is one
+`Source[DataRecord]` subclass plus one line of YAML — no framework
+changes. Symmetric to how verdict-side exporters work.
+
+### Tests (now 112 passing, up from 107)
+
+- [test/unit/test_verdict.py](../test/unit/test_verdict.py) — updated
+  `VerdictExporter` constructor calls to `exporter=` and switched test
+  doubles to small `Exporter[Verdict]` classes.
+- [test/unit/test_source_mqtt.py](../test/unit/test_source_mqtt.py) —
+  same migration for `MQTTSource.start(...)`.
+- [test/unit/test_sources.py](../test/unit/test_sources.py) — new file,
+  5 tests for registry + `module:Class` loader + bad-type rejection.
+
+### Why this matters for the framework story
+
+The system boundary is now exactly `Source → Dispatcher → Exporter`
+(with `ConverterExporter`/`VerdictExporter` as adapters that fit inside
+this same vocabulary). Every transport — file, MQTT, ROS2 topic, UDP,
+gRPC — is an `Exporter[T]` on the outbound side and a `Source[T]` on the
+inbound side, both pluggable, both selected from YAML, both resolvable
+via `module.path:ClassName` for user code. There is no second hierarchy
+to learn.
+
+---
+
+## 10. Suggested next work
 
 1. ~~**TODO 1 — pluggable verdict outputs**~~ ✅ landed 2026-05-12.
 2. ~~**TODO 2 — user exporter classes**~~ ✅ subsumed by TODO 1.
 3. ~~**TODO 3 — per-source exporters**~~ ✅ landed 2026-05-12.
 4. ~~**TODO 4 — converter `inputs:` filter**~~ ✅ landed 2026-05-12.
-5. **TODO 5 — generic `Exporter[T]` MQTT publisher**: today
-   `MQTTExporter` (DataRecord) and `VerdictMQTTExporter` (Verdict)
-   duplicate ~30 lines of paho v2 client lifecycle. Worth extracting
-   a shared `MQTTPublisher` helper once a third caller appears, not
-   before. ~30 LOC + 1 test file.
+5. ~~**TODO 5 — `sink` unification + pluggable verdict-runner Source**~~
+   ✅ landed 2026-05-12.
 6. **TODO 6 — example custom transports** under `custom/`: a
    `ROS2TopicExporter` (publishes verdicts to a `std_msgs/String`
-   topic on the monitor's own node) and a `SocketExporter` (UDP). Each
-   ~30 LOC, written as user-pluggable demos rather than built-ins.
-   Promote to built-in only if the Nav2 case study consistently uses
-   them.
+   topic on the monitor's own node), a `SocketExporter` (UDP), and a
+   matching `FileReplaySource` / `SocketSource`. Each ~30 LOC, written
+   as user-pluggable demos rather than built-ins. Promote to built-in
+   only if the Nav2 case study consistently uses them.
 7. **Phase 5 — TurtleBot3 / Nav2 case study**: drive a real Nav2 stack
    into the monitor, validate that a meaningful property fires, decide
    on the basis of that experience whether sliding-window / LTL /
@@ -511,3 +597,13 @@ exporter" or similar, a named-Exporter table can be added then.
    codifying the wrong abstraction. When the time comes, each will be
    one or two files under `custom/<case>/` following the same one-
    property-per-package layout as `nav2_case1`.
+
+### Explicitly dropped
+
+- *Generic `Exporter[T]` MQTT publisher / shared `MQTTPublisher` helper.*
+  The earlier draft of this section listed extracting a paho client
+  helper shared by `MQTTExporter` and `VerdictMQTTExporter`. Dropping
+  it: the duplication is ~30 lines of well-understood lifecycle code,
+  the two classes will likely keep diverging (publish-many-topics vs
+  publish-one-topic semantics), and a premature shared helper would
+  couple them. Revisit only if a third paho-publishing class appears.

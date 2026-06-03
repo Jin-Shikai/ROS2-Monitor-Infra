@@ -1,10 +1,10 @@
 """MonitorNode — orchestrates the 4-layer monitoring pipeline.
 
-ROS2 Application -> DataCollector -> TransformerPipeline -> ExportDispatcher -> Exporter(s)
+ROS2 Application -> DataCollector -> TransformerPipeline -> Dispatcher -> Exporter(s)
 
 Responsibilities:
     1. Load MonitorConfig from YAML.
-    2. Generate a session_id and build the ExportDispatcher with configured exporters.
+    2. Generate a session_id and build the Dispatcher with configured exporters.
     3. Instantiate one Collector per configured topic/service/action, each with its
        own TransformerPipeline.
     4. Emit session_start, spin, and on shutdown emit session_end + close exporters.
@@ -110,7 +110,7 @@ def _build_dispatcher(
     output_dir: str,
     session_id: str,
     logger,
-    label: str = "ExportDispatcher",
+    label: str = "Dispatcher",
     source_name: str | None = None,
 ) -> Dispatcher:
     """Build a Dispatcher[DataRecord] from a list of exporter specs.
@@ -388,10 +388,12 @@ def main() -> int:
 
     rclpy.init()
     node: MonitorNode | None = None
+                
+    from rclpy.executors import ExternalShutdownException
     try:
         node = MonitorNode(config)
         rclpy.spin(node)
-    except (KeyboardInterrupt, rclpy.executors.ExternalShutdownException):
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         if node is not None:

@@ -55,15 +55,6 @@ def _substitute_session_id(value: Any, session_id: str) -> Any:
     return value
 
 
-def _legacy_output_to_exporters(verdict_spec: dict) -> list[dict]:
-    """Translate the legacy `verdict.output: <path>` sugar into the new
-    `exporters: [{type: file, path: <path>}]` form."""
-    path = verdict_spec.get("output")
-    if not path:
-        return []
-    return [{"type": "file", "path": path}]
-
-
 def _build_verdict_dispatcher(
     verdict_spec: dict,
     output_dir: str,
@@ -71,11 +62,11 @@ def _build_verdict_dispatcher(
     converter_type: str,
     logger: Any,
 ) -> Dispatcher | None:
-    """Build the Dispatcher[Verdict] from `verdict.exporters: [...]` (or
-    the legacy `verdict.output:` sugar). Returns None if any exporter
-    fails to resolve / instantiate — caller logs and skips the chain.
+    """Build the Dispatcher[Verdict] from `verdict.exporters: [...]`.
+    Returns None if any exporter fails to resolve / instantiate —
+    caller logs and skips the chain.
     """
-    specs = verdict_spec.get("exporters") or _legacy_output_to_exporters(verdict_spec)
+    specs = verdict_spec.get("exporters") or []
     dispatcher: Dispatcher = Dispatcher(label=f"Verdict[{converter_type}]")
     for raw in specs:
         if not isinstance(raw, dict) or "type" not in raw:
@@ -152,7 +143,7 @@ def build_converter_chain(
         logger.error(f"Cannot resolve verdict service '{verdict_spec['type']}': {ex}")
         return None
     v_kwargs = {
-        k: v for k, v in verdict_spec.items() if k not in ("type", "output", "exporters")
+        k: v for k, v in verdict_spec.items() if k not in ("type", "exporters")
     }
     try:
         verdict_service = v_cls(**v_kwargs)
@@ -166,12 +157,14 @@ def build_converter_chain(
     if verdict_dispatcher is None:
         return None
 
-    # When no exporters are configured at all, fall back to the default
-    # stdout sink (preserves prior behaviour).
-    sink = verdict_dispatcher.dispatch if verdict_dispatcher._exporters else None
+    # When no exporters are configured at all, fall back to VerdictExporter's
+    # default (stdout). Otherwise hand the Dispatcher[Verdict] directly —
+    # Dispatcher is itself an Exporter[Verdict], so VerdictExporter just calls
+    # `.export()` on it and fan-out happens inside the dispatcher.
+    downstream = verdict_dispatcher if verdict_dispatcher._exporters else None
 
     dsl_dispatcher: Dispatcher = Dispatcher(label=f"DSL[{converter_type}]")
-    dsl_dispatcher.add(VerdictExporter(verdict_service, sink=sink))
+    dsl_dispatcher.add(VerdictExporter(verdict_service, exporter=downstream))
 
     # Optional: also archive dsl records to a file for offline replay.
     dsl_record_output = spec.get("output")

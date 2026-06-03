@@ -13,7 +13,26 @@ import pytest
 
 import source_mqtt
 from data_record import DataRecord
+from exporter import Exporter
 from source_mqtt import MQTTSource
+
+
+class _ListExporter(Exporter[DataRecord]):
+    def __init__(self):
+        self.items: list[DataRecord] = []
+
+    def export(self, record: DataRecord) -> None:
+        self.items.append(record)
+
+
+class _FnExporter(Exporter[DataRecord]):
+    """Adapter so tests can pass a plain callable downstream of a Source."""
+
+    def __init__(self, fn):
+        self._fn = fn
+
+    def export(self, record: DataRecord) -> None:
+        self._fn(record)
 
 
 def _fake_message(topic: str, payload_obj) -> SimpleNamespace:
@@ -26,11 +45,11 @@ def _fake_message(topic: str, payload_obj) -> SimpleNamespace:
     return SimpleNamespace(topic=topic, payload=payload)
 
 
-def test_on_message_parses_json_and_invokes_sink():
+def test_on_message_parses_json_and_pushes_to_downstream_exporter():
     client = MagicMock()
     src = MQTTSource(client=client)
-    received: list[DataRecord] = []
-    src.start(received.append)
+    sink = _ListExporter()
+    src.start(sink)
 
     rec = DataRecord.from_topic_msg(
         session_id="sid", topic_name="/odom",
@@ -39,8 +58,8 @@ def test_on_message_parses_json_and_invokes_sink():
     )
     src._on_message(client, None, _fake_message("monitor/topic/odom", rec))
 
-    assert len(received) == 1
-    out = received[0]
+    assert len(sink.items) == 1
+    out = sink.items[0]
     assert out.source_name == "/odom"
     assert out.data == {"twist.twist.linear.x": 0.4}
     assert out.metadata["seq"] == 7
@@ -50,30 +69,30 @@ def test_on_message_parses_json_and_invokes_sink():
 def test_on_message_drops_invalid_json(caplog):
     client = MagicMock()
     src = MQTTSource(client=client)
-    received: list[DataRecord] = []
-    src.start(received.append)
+    sink = _ListExporter()
+    src.start(sink)
     src._on_message(client, None, _fake_message("monitor/topic/odom", "not-json{"))
-    assert received == []
+    assert sink.items == []
     assert src._received == 0
 
 
-def test_on_message_swallows_sink_errors():
+def test_on_message_swallows_downstream_errors():
     client = MagicMock()
     src = MQTTSource(client=client)
 
-    def bad_sink(_):
+    def bad(_):
         raise RuntimeError("downstream blew up")
 
-    src.start(bad_sink)
+    src.start(_FnExporter(bad))
     rec = DataRecord.from_topic_msg("sid", "/x", "y", {}, 1)
-    # Must not raise: sink errors must be isolated.
+    # Must not raise: downstream errors must be isolated.
     src._on_message(client, None, _fake_message("monitor/topic/x", rec))
 
 
 def test_on_connect_subscribes_to_topic_filter():
     client = MagicMock()
     src = MQTTSource(client=client, topic_filter="monitor/#", qos=2)
-    src.start(lambda _: None)
+    src.start(_FnExporter(lambda _: None))
     src._on_connect(client, None, {}, 0, None)
     client.subscribe.assert_called_once_with("monitor/#", qos=2)
 
@@ -81,7 +100,7 @@ def test_on_connect_subscribes_to_topic_filter():
 def test_on_connect_failure_does_not_subscribe(caplog):
     client = MagicMock()
     src = MQTTSource(client=client)
-    src.start(lambda _: None)
+    src.start(_FnExporter(lambda _: None))
     src._on_connect(client, None, {}, 5, None)
     client.subscribe.assert_not_called()
 
@@ -89,7 +108,7 @@ def test_on_connect_failure_does_not_subscribe(caplog):
 def test_stop_does_not_touch_externally_supplied_client():
     client = MagicMock()
     src = MQTTSource(client=client)
-    src.start(lambda _: None)
+    src.start(_FnExporter(lambda _: None))
     src.stop()
     client.loop_stop.assert_not_called()
     client.disconnect.assert_not_called()
@@ -101,5 +120,5 @@ def test_no_paho_start_is_noop(monkeypatch):
     src = MQTTSource()
     assert src._client is None
     # Must not raise.
-    src.start(lambda _: None)
+    src.start(_FnExporter(lambda _: None))
     src.stop()

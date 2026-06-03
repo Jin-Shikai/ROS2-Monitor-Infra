@@ -40,9 +40,10 @@ def test_unresolvable_converter_returns_none(logger, tmp_path):
     assert build_converter_chain(spec, str(tmp_path), "sid", logger) is None
 
 
-def test_session_id_substituted_in_verdict_output_path(logger, tmp_path):
-    """Legacy `verdict.output: <path>` sugar still works and resolves
-    `{session_id}` against the chain's session id."""
+def test_session_id_substituted_in_verdict_exporter_path(logger, tmp_path):
+    """`{session_id}` in any string kwarg of a verdict exporter spec
+    resolves against the chain's session id, and relative paths root
+    at `output_dir`."""
     spec = {
         "type": "custom.rule_based_converter:RuleBasedConverter",
         "source_match": "^/odom$",
@@ -54,7 +55,9 @@ def test_session_id_substituted_in_verdict_output_path(logger, tmp_path):
             "field": "velocity",
             "op": ">",
             "threshold": 0.2,
-            "output": "verdicts_{session_id}.jsonl",
+            "exporters": [
+                {"type": "file", "path": "verdicts_{session_id}.jsonl"},
+            ],
         },
     }
     built = build_converter_chain(spec, str(tmp_path), "abc123", logger)
@@ -108,7 +111,7 @@ def test_end_to_end_chain_writes_verdict_on_breach(logger, tmp_path):
             "op": ">",
             "threshold": 0.2,
             "sustain_sec": 0.0,
-            "output": "v_{session_id}.jsonl",
+            "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
         },
     }
     built = build_converter_chain(spec, str(tmp_path), "S", logger)

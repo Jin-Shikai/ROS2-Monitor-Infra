@@ -3,7 +3,7 @@ DataRecord: the core data unit flowing through the monitoring pipeline.
 
 Every message captured by a Collector is wrapped into a DataRecord before
 entering the TransformerPipeline.  After transformation the same DataRecord
-(possibly with trimmed/flattened `data`) is handed to the ExportDispatcher.
+(possibly with trimmed/flattened `data`) is handed to the Dispatcher.
 
 """
 
