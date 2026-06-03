@@ -1,0 +1,21 @@
+services:
+  monitor_node:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=0
+      - ROS_DISTRO=kilted
+      - MONITOR_CONFIG=/demo/deploy_mode1/config.yaml
+    volumes:
+      - ../../monitor:/monitor
+      - ../../custom:/monitor/custom
+      - ../../demo/deploy_mode1:/demo/deploy_mode1:ro
+      - ../../output/mode1:/output/mode1
+    command: >
+      /bin/bash -lc
+      "source /opt/ros/kilted/setup.bash &&
+       python3 /monitor/monitor_node.py --config /demo/deploy_mode1/config.yaml"
+    stdin_open: true
+    tty: true

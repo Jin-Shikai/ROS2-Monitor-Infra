@@ -1,0 +1,20 @@
+monitor:
+  output_dir: /output/verifier
+  session_id_prefix: verifier1
+
+verdict_runner:
+  source:
+    type: mqtt
+    broker: 127.0.0.1
+    port: 1883
+    topic_filter: monitor/#
+    qos: 1
+
+converters:
+  - type: custom.odom_speed_converter:OdomSpeedConverter
+    verdict:
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
+      exporters:
+        - type: stdout
+        - type: file
+          path: verdicts_{session_id}.jsonl

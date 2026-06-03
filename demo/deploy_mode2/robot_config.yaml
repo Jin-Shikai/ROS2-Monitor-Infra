@@ -1,0 +1,23 @@
+monitor:
+  output_dir: /output/robot
+  session_id_prefix: robot1
+
+topics:
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - twist.twist.linear.x
+          - twist.twist.angular.z
+      - type: RateThrottler
+        max_rate_hz: 5.0
+    exporters:
+      - type: mqtt
+        broker: 127.0.0.1
+        port: 1883
+        topic_prefix: monitor/
+        qos: 1
+        max_queued_messages: 1000

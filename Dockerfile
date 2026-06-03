@@ -13,10 +13,11 @@ RUN apt-get update && apt-get install -y \
     ros-kilted-rosidl-runtime-py \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install pyyaml --break-system-packages
+RUN pip3 install pyyaml paho-mqtt --break-system-packages
 
 WORKDIR /monitor
 
 COPY monitor/ /monitor/
+COPY custom/ /monitor/custom/
 
 CMD ["/bin/bash", "-c", "source /opt/ros/kilted/setup.bash && python3 monitor_node.py"]

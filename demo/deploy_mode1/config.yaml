@@ -1,0 +1,27 @@
+monitor:
+  output_dir: /output/mode1
+  session_id_prefix: mode1_robot1
+
+topics:
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - twist.twist.linear.x
+          - twist.twist.angular.z
+      - type: RateThrottler
+        max_rate_hz: 5.0
+    exporters:
+      - type: file
+
+converters:
+  - type: custom.odom_speed_converter:OdomSpeedConverter
+    verdict:
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
+      exporters:
+        - type: stdout
+        - type: file
+          path: verdicts_{session_id}.jsonl

@@ -56,11 +56,12 @@ def build_data_record_dispatcher(
     logger: Any,
     label: str = "Dispatcher",
     source_name: str | None = None,
+    default_to_file: bool = True,
 ) -> Dispatcher[DataRecord]:
     dispatcher: Dispatcher[DataRecord] = Dispatcher(label=label)
 
     if not specs:
-        if source_name is not None:
+        if source_name is not None or not default_to_file:
             return dispatcher
         specs = [ExporterSpec.from_dict({"type": "file"})]
 
@@ -98,11 +99,16 @@ class MonitorRuntime:
         self.config = config
         self.session_id = session_id
         self.logger = logger
+        has_source_exporters = any(
+            spec.exporters
+            for spec in [*config.topics, *config.services, *config.actions]
+        )
         self.dispatcher = build_data_record_dispatcher(
             config.exporters,
             config.output_dir,
             session_id,
             logger,
+            default_to_file=not has_source_exporters,
         )
         self.converter_dispatcher: Dispatcher[DataRecord] = Dispatcher(
             label="Converters"
