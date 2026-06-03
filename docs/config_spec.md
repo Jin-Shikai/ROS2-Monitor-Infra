@@ -1,95 +1,79 @@
 # Configuration Specification
 
-> Version: 1.0 — 2026-06-03
+> Version: 1.1 - 2026-06-03
 > Implementation: `monitor/config_model.py`
 > Default example: `monitor/config.yaml`
 
 ## Overview
 
-The monitor configuration is a YAML document consumed by two entrypoints:
+The configuration is a YAML document consumed by two entrypoints:
 
 | Entrypoint | Reads |
 |---|---|
 | `monitor/monitor_node.py` | `monitor`, `topics`, `services`, `actions`, `exporters`, `converters` |
 | `monitor/verdict_runner.py` | `monitor.output_dir`, `verdict_runner.source`, `converters` |
 
-The same YAML can therefore describe both deployment styles:
-
-1. **Integrated monitor + verdict evaluation** on the robot: `monitor_node`
-   captures ROS2 data and also runs converter/verdict chains locally.
-2. **Split monitor/verifier deployment**: `monitor_node` exports
-   `DataRecord` messages through a transport such as MQTT, while
-   `verdict_runner` consumes them through `verdict_runner.source`.
-
-All plugin-like blocks use the same shape:
+Plugin-like blocks share this shape:
 
 ```yaml
 type: short_name_or_module.path:ClassName
 ...: plugin constructor kwargs
 ```
 
-`type` selects a built-in or user-defined class. All sibling keys become
-constructor keyword arguments unless this document explicitly reserves them.
+The exact `type` format depends on the block: exporters and sources accept
+short built-in names or `module.path:ClassName`; converters and verdict
+services currently require `module.path:ClassName`; transformers currently use
+the built-in names listed below. Sibling keys become constructor keyword
+arguments unless listed as framework-reserved fields in this document.
 
----
+## Top-Level Fields
 
-## Top-Level Shape
-
-```yaml
-monitor: {...}
-topics: [...]
-services: [...]
-actions: [...]
-exporters: [...]
-verdict_runner:
-  source: {...}
-converters: [...]
-```
-
-All top-level lists are optional. Missing lists parse as empty lists.
-
----
+| Field | Type | Required | Default | Used by | Notes |
+|---|---|---:|---|---|---|
+| `monitor` | mapping | no | `{}` | both | Global runtime settings. |
+| `topics` | list of `MonitoredSourceSpec` | no | `[]` | `monitor_node` | Topic collectors. |
+| `services` | list of `MonitoredSourceSpec` | no | `[]` | `monitor_node` | Service event collectors. |
+| `actions` | list of `MonitoredSourceSpec` | no | `[]` | `monitor_node` | Action feedback/status collectors. |
+| `exporters` | list of `ExporterSpec` | no | `[]` | `monitor_node` | Global DataRecord exporters. |
+| `verdict_runner` | mapping | yes for `verdict_runner`, no for `monitor_node` | `{}` | `verdict_runner` | Must contain `source` when running `verdict_runner`. |
+| `converters` | list of `ConverterSpec` | no | `[]` | both | Converter/verdict chains. Required in practice when verdict evaluation is expected. |
 
 ## `monitor`
 
-Global monitor settings.
+| Field | Type | Required | Default | Used by | Notes |
+|---|---|---:|---|---|---|
+| `output_dir` | string | no | `"./output"` | both | Base directory for relative file outputs. |
+| `session_id_prefix` | string | no | `""` | `monitor_node` | Prefix prepended to generated monitor session ids. |
 
-| Key | Type | Default | Consumed by | Purpose |
-|---|---|---|---|---|
-| `output_dir` | `string` | `"./output"` | `monitor_node`, `verdict_runner` | Base directory for relative file outputs. |
-| `session_id_prefix` | `string` | `""` | `monitor_node` | Optional prefix prepended to generated monitor session ids. |
+`verdict_runner` reads `monitor.output_dir` to resolve relative verdict and DSL
+archive paths. It generates its own verifier-side session id.
 
 Example:
 
 ```yaml
 monitor:
-  output_dir: ./output/nav2
-  session_id_prefix: robot1
+  output_dir: /output/verifier
+  session_id_prefix: verifier1
 ```
-
-`verdict_runner` reads `monitor.output_dir` only to resolve relative verdict
-exporter paths. It generates its own verifier-side session id.
-
----
 
 ## Monitored Sources
 
-`topics`, `services`, and `actions` are lists of `MonitoredSourceSpec`.
+`topics`, `services`, and `actions` contain `MonitoredSourceSpec` entries.
 
-### Common Source Keys
+### Common Source Fields
 
-| Key | Type | Required | Applies to | Purpose |
-|---|---|---|---|---|
-| `name` | `string` | yes | topic, service, action | ROS graph source name, such as `/odom` or `/navigate_to_pose`. |
-| `type` | `string` | topic/service optional, action required | topic, service, action | ROS2 message/service/action type. Topics and services can be discovered at startup if active. |
-| `transformers` | `list[TransformerSpec]` | no | topic, service, action | Per-source transformer chain. |
-| `exporters` | `list[ExporterSpec]` | no | topic, service, action | Per-source DataRecord exporters. Replaces global exporters for that source. |
+| Field | Type | Required | Default | Applies to | Notes |
+|---|---|---:|---|---|---|
+| `name` | string | yes | none | topic, service, action | ROS graph source name, such as `/odom`. Runtime skips entries with an empty name. |
+| `type` | string | topic/service no, action yes | topic/service: discovered if active; action: none | topic, service, action | ROS2 message/service/action type. |
+| `transformers` | list of `TransformerSpec` | no | `[]` | topic, service, action | Per-source transformer chain. |
+| `exporters` | list of `ExporterSpec` | no | `[]` | topic, service, action | Per-source DataRecord exporters. If present, this source uses them instead of global `exporters`. |
 
-### Topic Keys
+### Topic Fields
 
-| Key | Type | Default | Purpose |
-|---|---|---|---|
-| `qos` | `int` | `10` | QoS depth passed to `create_subscription()`. |
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `qos` | int | no | `10` | QoS depth passed to `create_subscription()`. |
 
 Example:
 
@@ -101,33 +85,35 @@ topics:
     transformers:
       - type: FieldExtractor
         fields:
-          - pose.pose.position.x
           - twist.twist.linear.x
+    exporters:
+      - type: mqtt
+        broker: 127.0.0.1
 ```
 
-### Service Keys
+### Service Fields
 
-Services use the common keys only.
+Services use only the common source fields.
 
-The monitor subscribes to `/<service_name>/_service_event`; the service
-server must enable ROS2 service introspection for records to appear.
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `name` | string | yes | none | Service name. |
+| `type` | string | no | discovered if active | Service type. |
+| `transformers` | list of `TransformerSpec` | no | `[]` | Per-service transformer chain. |
+| `exporters` | list of `ExporterSpec` | no | `[]` | Per-service DataRecord exporters. |
 
-Example:
+The monitor subscribes to `/<service_name>/_service_event`; the service server
+must enable ROS2 service introspection for records to appear.
 
-```yaml
-services:
-  - name: /set_bool
-    type: std_srvs/srv/SetBool
-```
+### Action Fields
 
-### Action Keys
-
-| Key | Type | Default | Purpose |
-|---|---|---|---|
-| `phases` | `list[string]` | `["feedback", "status"]` | Hidden action topics to subscribe to. Currently supported: `feedback`, `status`. |
-
-`type` is required for actions because action type discovery is not currently
-implemented by `MonitorNode`.
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `name` | string | yes | none | Action name. |
+| `type` | string | yes | none | Action type. Runtime skips entries without it. |
+| `phases` | list of strings | no | `["feedback", "status"]` | Hidden action topics to subscribe to. Supported values: `feedback`, `status`. |
+| `transformers` | list of `TransformerSpec` | no | `[]` | Per-action transformer chain. |
+| `exporters` | list of `ExporterSpec` | no | `[]` | Per-action DataRecord exporters. |
 
 Example:
 
@@ -138,143 +124,136 @@ actions:
     phases: [feedback, status]
 ```
 
----
-
 ## Transformers
 
-Transformer specs are plugin specs. Built-ins:
+Each transformer entry is a `TransformerSpec`.
 
-| Type | Constructor kwargs | Effect |
-|---|---|---|
-| `FieldExtractor` | `fields: list[string]` | Keeps selected fields and flattens them into dot-notation keys. |
-| `RateThrottler` | `max_rate_hz: float` | Drops records faster than the configured rate. |
-| `OnChangeFilter` | `watch_fields: list[string]` | Emits only when watched field values change. |
+### `TransformerSpec`
 
-Example:
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `type` | string | yes | none | Built-in transformer name. Runtime skips entries with an empty or unknown type. |
+| other fields | any | depends on selected transformer | none | Passed to the transformer constructor. |
 
-```yaml
-transformers:
-  - type: FieldExtractor
-    fields:
-      - twist.linear.x
-      - twist.angular.z
-  - type: RateThrottler
-    max_rate_hz: 5.0
-```
+### Built-In Transformer Constructor Fields
 
-Transformer specs are parsed as `TransformerSpec(type, kwargs, raw)`.
-All keys except `type` are passed to the transformer constructor.
-
----
+| Transformer | Field | Type | Required | Default | Notes |
+|---|---|---|---:|---|---|
+| `FieldExtractor` | `fields` | list of strings | yes | none | Keeps selected fields and flattens nested values into dot-notation keys. |
+| `RateThrottler` | `max_rate_hz` | float | yes | none | Must be greater than zero. |
+| `OnChangeFilter` | `watch_fields` | list of strings | yes | none | Emits when watched field values change. |
 
 ## DataRecord Exporters
 
-Top-level `exporters` configure the global DataRecord export stream.
-Per-source `exporters` override the global stream for that source.
+DataRecord exporters can be declared globally under top-level `exporters` or
+per source under `topics[*].exporters`, `services[*].exporters`, or
+`actions[*].exporters`.
 
-Built-ins:
+If a source declares its own `exporters`, that source uses only those exporters
+for DataRecord output. If a source does not declare exporters, it uses the
+global `exporters`.
 
-| Type | Constructor kwargs | Output |
-|---|---|---|
-| `file` | `output_dir`, `session_id`, `flush_every`, `filename_suffix` | JSONL file. `output_dir` and `session_id` are filled by the framework if omitted. |
-| `mqtt` | `broker`, `port`, `topic_prefix`, `qos`, `keepalive`, `max_queued_messages`, `publish_bookends`, `client_id` | Publishes DataRecords as JSON strings. |
+If there are no global exporters and no source-level exporters, `monitor_node`
+creates a default file exporter. If there is at least one source-level exporter
+and no global exporters, sources without their own exporters have no DataRecord
+output, though converter chains still receive their records.
 
-User-defined DataRecord exporters are supported with
-`type: module.path:ClassName`. The class must subclass `Exporter`.
+### `ExporterSpec`
+
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `type` | string | yes | none | Built-in exporter name or `module.path:ClassName`. Runtime skips entries with an empty or unknown type. |
+| other fields | any | depends on selected exporter | exporter-specific | Passed to the exporter constructor, with framework defaults applied where documented below. |
+
+### Built-In DataRecord Exporter Fields
+
+| Exporter | Field | Type | Required | Default | Notes |
+|---|---|---|---:|---|---|
+| `file` | `output_dir` | string | no | `monitor.output_dir` | Filled by the framework if omitted. |
+| `file` | `session_id` | string | no | current monitor session id | Filled by the framework if omitted. |
+| `file` | `flush_every` | int | no | `1` | Values lower than one are coerced to one. |
+| `file` | `filename_suffix` | string | no | global: `""`; per-source: sanitized source name | Example per-source suffix: `_cmd_vel`. |
+| `mqtt` | `broker` | string | no | `"localhost"` | MQTT broker host. |
+| `mqtt` | `port` | int | no | `1883` | MQTT broker port. |
+| `mqtt` | `topic_prefix` | string | no | `"monitor/"` | Data records publish to `<prefix><source_type>/<source_name>`. |
+| `mqtt` | `qos` | int | no | `1` | MQTT publish QoS. |
+| `mqtt` | `keepalive` | int | no | `60` | MQTT keepalive seconds. |
+| `mqtt` | `max_queued_messages` | int | no | `1000` | Passed to paho's queue limit. |
+| `mqtt` | `publish_bookends` | bool | no | `true` | If false, skips `session_start` and `session_end`. |
+| `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
 Example:
 
 ```yaml
-exporters:
-  - type: file
-  - type: mqtt
-    broker: localhost
-    port: 1883
-    topic_prefix: monitor/
-    qos: 1
-```
-
-Per-source example:
-
-```yaml
 topics:
-  - name: /cmd_vel
-    type: geometry_msgs/msg/Twist
+  - name: /odom
+    type: nav_msgs/msg/Odometry
     exporters:
-      - type: file
+      - type: mqtt
+        broker: 127.0.0.1
+        port: 1883
 ```
-
-For per-source file exporters, `filename_suffix` defaults to a sanitized source
-name such as `_cmd_vel`.
-
----
 
 ## `converters`
 
-Each converter entry builds one independent DSL evaluation chain:
+Each converter entry builds one independent chain:
 
 ```text
 DataRecord -> DataConverter -> VerdictService -> Verdict exporters
 ```
 
-### Converter Keys
+### `ConverterSpec`
 
-| Key | Type | Required | Purpose |
-|---|---|---|---|
-| `type` | `string` | yes | `DataConverter` class, always `module.path:ClassName`. |
-| `inputs` | `list[string]` | no | Source-name filter applied by the framework before the converter sees records. |
-| `output` | `string` | no | Optional JSONL archive path for DSL-ready records. Relative paths resolve against `monitor.output_dir`. |
-| `verdict` | `VerdictSpec` | yes | Verdict service and its output exporters. |
-
-All other keys become converter constructor kwargs.
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `type` | string | yes | none | `DataConverter` class as `module.path:ClassName`. Runtime skips entries with an empty or unresolvable type. |
+| `inputs` | list of strings | no | omitted, converter sees all records | Source-name filter applied before the converter. Empty lists are rejected. |
+| `output` | string | no | omitted, no DSL archive | Optional JSONL archive path for DSL-ready records. Relative paths resolve against `monitor.output_dir`; `{session_id}` is substituted. |
+| `verdict` | `VerdictSpec` | yes | none | Verdict service and verdict exporters. |
+| other fields | any | depends on selected converter | none | Passed to the converter constructor. |
 
 Example:
 
 ```yaml
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
-    inputs: ["/odom"]
-    source_match: "^/odom$"
-    field_map:
-      velocity: twist.twist.linear.x
-    property_id: odom_speed_limit
+  - type: custom.odom_speed_converter:OdomSpeedConverter
     verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
-      property_id: odom_speed_limit
-      field: velocity
-      op: ">"
-      threshold: 0.5
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
       exporters:
+        - type: stdout
         - type: file
           path: verdicts_{session_id}.jsonl
 ```
 
-`inputs` is preferred over duplicating source-name checks inside custom
-converters. If omitted, the converter sees all data records.
+### `VerdictSpec`
 
-### `verdict`
-
-| Key | Type | Required | Purpose |
-|---|---|---|---|
-| `type` | `string` | yes | `VerdictService` class, always `module.path:ClassName`. |
-| `exporters` | `list[ExporterSpec]` | no | Verdict output exporters. Empty or missing means stdout fallback. |
-
-All other keys become verdict service constructor kwargs.
-
----
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `type` | string | yes | none | `VerdictService` class as `module.path:ClassName`. Runtime skips chains with an empty or unresolvable type. |
+| `exporters` | list of `ExporterSpec` | no | `[]`, which means stdout fallback | Verdict output exporters. |
+| other fields | any | depends on selected verdict service | none | Passed to the verdict service constructor. |
 
 ## Verdict Exporters
 
-Built-ins:
+Verdict exporters are declared under `converters[*].verdict.exporters`.
 
-| Type | Constructor kwargs | Output |
-|---|---|---|
-| `file` | `path`, `flush_every` | Appends verdict JSONL to `path`. Relative `path` resolves against `monitor.output_dir`. |
-| `stdout` | none | Prints verdicts to stdout. |
-| `mqtt` | `topic`, `broker`, `port`, `qos`, `keepalive`, `max_queued_messages`, `client_id` | Publishes each verdict JSON string to one topic. |
+If `exporters` is omitted or empty, verdicts are printed to stdout by the
+default `VerdictExporter`.
 
-User-defined verdict exporters are supported with
-`type: module.path:ClassName`. The class must subclass `Exporter`.
+### Built-In Verdict Exporter Fields
+
+| Exporter | Field | Type | Required | Default | Notes |
+|---|---|---|---:|---|---|
+| `file` | `path` | string | yes | none | JSONL output path. Relative paths resolve against `monitor.output_dir`. |
+| `file` | `flush_every` | int | no | `1` | Values lower than one are coerced to one. |
+| `stdout` | none | - | - | - | No constructor fields. |
+| `mqtt` | `topic` | string | yes | none | MQTT topic for verdict JSON strings. |
+| `mqtt` | `broker` | string | no | `"localhost"` | MQTT broker host. |
+| `mqtt` | `port` | int | no | `1883` | MQTT broker port. |
+| `mqtt` | `qos` | int | no | `1` | MQTT publish QoS. |
+| `mqtt` | `keepalive` | int | no | `60` | MQTT keepalive seconds. |
+| `mqtt` | `max_queued_messages` | int | no | `1000` | Passed to paho's queue limit. |
+| `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
 All string kwargs under `verdict.exporters` support `{session_id}`
 substitution. This session id is:
@@ -284,15 +263,11 @@ substitution. This session id is:
 | `monitor_node` integrated mode | Monitor session id. |
 | `verdict_runner` split mode | Verifier runner session id. |
 
----
-
 ## `verdict_runner`
 
-Configuration for `monitor/verdict_runner.py`.
-
-| Key | Type | Required | Purpose |
-|---|---|---|---|
-| `source` | `SourceSpec` | yes for `verdict_runner` | Inbound DataRecord transport. |
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `source` | `SourceSpec` | yes when running `verdict_runner` | none | Inbound DataRecord transport. |
 
 Example:
 
@@ -300,47 +275,48 @@ Example:
 verdict_runner:
   source:
     type: mqtt
-    broker: localhost
-    port: 1883
+    broker: 127.0.0.1
     topic_filter: monitor/#
-    qos: 1
 ```
 
-Built-in sources:
+### `SourceSpec`
 
-| Type | Constructor kwargs | Input |
-|---|---|---|
-| `mqtt` | `broker`, `port`, `topic_filter`, `qos`, `keepalive`, `client_id` | MQTT payloads containing serialized DataRecords. |
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `type` | string | yes | none | Built-in source name or `module.path:ClassName`. `verdict_runner` exits if missing or unresolvable. |
+| other fields | any | depends on selected source | source-specific | Passed to the source constructor. |
 
-User-defined sources are supported with `type: module.path:ClassName`. The
-class must subclass `Source`.
+### Built-In Source Fields
 
----
+| Source | Field | Type | Required | Default | Notes |
+|---|---|---|---:|---|---|
+| `mqtt` | `broker` | string | no | `"localhost"` | MQTT broker host. |
+| `mqtt` | `port` | int | no | `1883` | MQTT broker port. |
+| `mqtt` | `topic_filter` | string | no | `"monitor/#"` | MQTT subscription filter. |
+| `mqtt` | `qos` | int | no | `1` | MQTT subscribe QoS. |
+| `mqtt` | `keepalive` | int | no | `60` | MQTT keepalive seconds. |
+| `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
 ## Parsed Model Reference
 
-The YAML is parsed into these dataclasses:
-
-| Dataclass | Source YAML |
-|---|---|
-| `MonitorConfig` | Full YAML for `monitor_node`. |
-| `RunnerConfig` | Full YAML for `verdict_runner`, reduced to runner fields. |
-| `MonitoredSourceSpec` | Entries under `topics`, `services`, `actions`. |
-| `TransformerSpec` | Entries under source `transformers`. |
-| `ExporterSpec` | DataRecord exporters and verdict exporters. |
-| `ConverterSpec` | Entries under `converters`. |
-| `VerdictSpec` | Nested `verdict` blocks. |
-| `SourceSpec` | `verdict_runner.source`. |
+| Dataclass | Source YAML | Defaults |
+|---|---|---|
+| `MonitorConfig` | Full YAML for `monitor_node` | See top-level and `monitor` tables. |
+| `RunnerConfig` | Full YAML for `verdict_runner` | `output_dir="./output"`, `converters=[]`, `source=None`. |
+| `MonitoredSourceSpec` | Entries under `topics`, `services`, `actions` | `transformers=[]`, `exporters=[]`, `qos=None`, `phases=None`. |
+| `TransformerSpec` | Entries under source `transformers` | `kwargs={}`, `raw={}`. |
+| `ExporterSpec` | DataRecord exporters and verdict exporters | `kwargs={}`, `raw={}`. |
+| `ConverterSpec` | Entries under `converters` | `inputs=None`, `output=None`. |
+| `VerdictSpec` | Nested `verdict` blocks | `exporters=[]`. |
+| `SourceSpec` | `verdict_runner.source` | `kwargs={}`, `raw={}`. |
 
 Each plugin spec retains:
 
-| Field | Meaning |
-|---|---|
-| `type` | Built-in short name or import path. |
-| `kwargs` | Constructor kwargs after reserved framework keys are removed. |
-| `raw` | Original YAML mapping for logging and diagnostics. |
-
----
+| Field | Type | Required | Default | Meaning |
+|---|---|---:|---|---|
+| `type` | string | yes | none | Built-in short name or import path. |
+| `kwargs` | mapping | no | `{}` | Constructor kwargs after reserved framework keys are removed. |
+| `raw` | mapping | no | `{}` | Original YAML mapping for logging and diagnostics. |
 
 ## Minimal Examples
 
@@ -353,21 +329,13 @@ monitor:
 topics:
   - name: /odom
     type: nav_msgs/msg/Odometry
-
-exporters:
-  - type: file
+    exporters:
+      - type: file
 
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
-    source_match: "^/odom$"
-    field_map:
-      velocity: twist.twist.linear.x
+  - type: custom.odom_speed_converter:OdomSpeedConverter
     verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
-      property_id: odom_speed_limit
-      field: velocity
-      op: ">"
-      threshold: 0.5
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
       exporters:
         - type: stdout
 ```
@@ -378,21 +346,23 @@ Robot-side monitor:
 
 ```yaml
 monitor:
-  output_dir: ./output
+  output_dir: ./output/robot
 
 topics:
   - name: /odom
     type: nav_msgs/msg/Odometry
-
-exporters:
-  - type: mqtt
-    broker: broker.local
-    topic_prefix: monitor/robot1/
+    exporters:
+      - type: mqtt
+        broker: broker.local
+        topic_prefix: monitor/robot1/
 ```
 
-Verifier-side runner reads the same YAML section shape:
+Verifier-side runner:
 
 ```yaml
+monitor:
+  output_dir: ./output/verifier
+
 verdict_runner:
   source:
     type: mqtt
@@ -400,17 +370,9 @@ verdict_runner:
     topic_filter: monitor/robot1/#
 
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
-    inputs: ["/odom"]
-    source_match: "^/odom$"
-    field_map:
-      velocity: twist.twist.linear.x
+  - type: custom.odom_speed_converter:OdomSpeedConverter
     verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
-      property_id: odom_speed_limit
-      field: velocity
-      op: ">"
-      threshold: 0.5
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
       exporters:
         - type: file
           path: verdicts_{session_id}.jsonl
