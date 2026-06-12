@@ -1,0 +1,14 @@
+monitor: {output_dir: /output}
+verdict_runner:
+  source: {type: mqtt, broker: mosquitto, topic_filter: "global/#"}
+converters:
+  - type: custom.fleet_distance:FleetDistanceConverter
+    inputs: [/robot1/odom, /robot2/odom]
+    robot_a: /robot1
+    robot_b: /robot2
+    verdict:
+      type: custom.fleet_distance:MinimumFleetDistanceVerdict
+      minimum_distance: 1.0
+      exporters:
+        - {type: stdout}
+        - {type: file, path: "fleet_distance_{session_id}.jsonl"}

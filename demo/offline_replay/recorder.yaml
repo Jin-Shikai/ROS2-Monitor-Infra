@@ -1,0 +1,18 @@
+monitor:
+  output_dir: /output
+  session_id_prefix: offline_recording_robot
+
+topics:
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - twist.twist.linear.x
+    exporters:
+      - type: file
+        output_dir: /output
+        session_id: recorded_live
+        filename_suffix: ""

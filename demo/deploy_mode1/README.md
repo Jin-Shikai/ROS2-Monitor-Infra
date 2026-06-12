@@ -5,7 +5,15 @@ one `monitor_node` process on the robot host. The `/odom` topic owns its
 DataRecord exporter, while the converter and verdict business rules live in
 custom Python classes rather than YAML fields.
 
-Not included yet: replay, feedback, evidence runtime and dashboard.
+The Compose case is self-testing: it starts
+`demo/common/robot_simulator.py` in the same container, monitors the robot's
+`/odom` motion, and switches its speed every three seconds:
+
+- `0.4 m/s`: above the `0.3 m/s` limit, emitting `result=false`
+- `0.2 m/s`: below the limit, emitting a clearing `result=true`
+
+The verdict service emits only when the property state changes, so the log
+alternates between violation and recovery instead of printing at 10 Hz.
 
 ## Run
 
@@ -15,17 +23,9 @@ From the project root:
 docker compose -f demo/deploy_mode1/docker-compose.yml up --build
 ```
 
-The container uses `network_mode: host` so ROS2 DDS discovery can see robot
-nodes on the host. Use `ROS_DOMAIN_ID=0` for the robot process.
-
-## Feed it ROS2 data
-
-Run a ROS2 node publishing `/odom` as `nav_msgs/msg/Odometry`, for example:
-
-```bash
-source /opt/ros/kilted/setup.bash
-python3 test/fake_robot.py
-```
+The container uses `network_mode: host`, preserving the traditional
+robot-side topology and allowing the bundled robot and monitor to share DDS.
+No separately started ROS2 process is required.
 
 DataRecords and verdicts are written under:
 

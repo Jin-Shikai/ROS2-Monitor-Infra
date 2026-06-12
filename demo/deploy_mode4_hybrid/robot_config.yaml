@@ -1,0 +1,21 @@
+monitor:
+  output_dir: /output
+  session_id_prefix: hybrid_robot1
+topics:
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields: [twist.twist.linear.x]
+    exporters:
+      - type: mqtt
+        broker: mosquitto
+        topic_prefix: monitor/robot1/
+converters:
+  - type: custom.odom_speed_converter:OdomSpeedConverter
+    verdict:
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
+      exporters:
+        - type: stdout
+        - type: file
+          path: local_verdicts_{session_id}.jsonl

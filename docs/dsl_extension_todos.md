@@ -372,7 +372,7 @@ dispatcher's exporters (isolated from the global `exporters:` list).
   - All three `_register_topic/_register_service/_register_action`
     methods use `_export_for` for the collector's export hook.
   - `shutdown` closes the new converter and per-source dispatchers.
-- [test/Nav2_case1/config_case1.yaml](../test/Nav2_case1/config_case1.yaml):
+- [demo/nav2_compatible_local/full_nav2_config.yaml](../demo/nav2_compatible_local/full_nav2_config.yaml):
   added a worked example — `/cmd_vel` carries its own per-source
   `exporters:` block, writing to `<output_dir>/<session>_cmd_vel.jsonl`.
 - [test/unit/test_monitor_node_service_discovery.py](../test/unit/test_monitor_node_service_discovery.py):
@@ -433,7 +433,7 @@ custom converters can stay pure projection logic and skip the
   - Return type widened to `tuple[Exporter, Dispatcher]`.
 - [custom/nav2_case1/cmd_vel_speed_converter.py](../custom/nav2_case1/cmd_vel_speed_converter.py):
   source-name check removed; framework now handles it.
-- [test/Nav2_case1/config_case1.yaml](../test/Nav2_case1/config_case1.yaml):
+- [demo/nav2_compatible_local/full_nav2_config.yaml](../demo/nav2_compatible_local/full_nav2_config.yaml):
   the converter entry now carries `inputs: ["/cmd_vel"]`.
 - [test/unit/test_pipeline.py](../test/unit/test_pipeline.py): added
   three tests (positive filtering, empty-list rejected,

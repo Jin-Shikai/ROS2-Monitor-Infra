@@ -1,0 +1,34 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    volumes:
+      - ../deploy_mode2/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  robot_and_monitor:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on: [mosquitto]
+    volumes:
+      - ../../monitor:/monitor
+      - ../../custom:/monitor/custom
+      - ../common:/demo/common:ro
+      - ./robot_config.yaml:/demo/robot_config.yaml:ro
+      - ../../output/mode4/robot:/output
+    command: >
+      /bin/bash -lc
+      "source /opt/ros/kilted/setup.bash &&
+       python3 /demo/common/robot_simulator.py speed-limit-cycle --ros-args -r __node:=hybrid_robot &
+       python3 /monitor/monitor_node.py --config /demo/robot_config.yaml"
+
+  central_verifier:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    depends_on: [mosquitto]
+    volumes:
+      - ../../monitor:/monitor
+      - ../../custom:/monitor/custom
+      - ./verifier_config.yaml:/demo/verifier_config.yaml:ro
+      - ../../output/mode4/central:/output
+    command: python3 /monitor/verdict_runner.py --config /demo/verifier_config.yaml

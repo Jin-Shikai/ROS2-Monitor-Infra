@@ -1,0 +1,26 @@
+monitor: {output_dir: /output}
+verdict_runner:
+  source: {type: mqtt, broker: mosquitto, topic_filter: "monitor/#"}
+converters:
+  - type: custom.rule_based_converter:RuleBasedConverter
+    inputs: [/robot1/odom]
+    source_match: "^/robot1/odom$"
+    field_map: {speed: twist.twist.linear.x}
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: robot1_speed
+      field: speed
+      op: ">"
+      threshold: 0.30
+      exporters: [{type: stdout}, {type: file, path: "robot1_{session_id}.jsonl"}]
+  - type: custom.rule_based_converter:RuleBasedConverter
+    inputs: [/robot2/odom]
+    source_match: "^/robot2/odom$"
+    field_map: {speed: twist.twist.linear.x}
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: robot2_speed
+      field: speed
+      op: ">"
+      threshold: 0.30
+      exporters: [{type: stdout}, {type: file, path: "robot2_{session_id}.jsonl"}]

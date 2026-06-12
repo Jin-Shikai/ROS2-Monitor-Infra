@@ -290,6 +290,9 @@ verdict_runner:
 
 | Source | Field | Type | Required | Default | Notes |
 |---|---|---|---:|---|---|
+| `file` | `path` | string | yes | none | JSONL file containing serialized DataRecords. |
+| `file` | `interval_sec` | float | no | `0.0` | Delay between replayed records. |
+| `file` | `loop` | bool | no | `false` | Replay again after EOF. |
 | `mqtt` | `broker` | string | no | `"localhost"` | MQTT broker host. |
 | `mqtt` | `port` | int | no | `1883` | MQTT broker port. |
 | `mqtt` | `topic_filter` | string | no | `"monitor/#"` | MQTT subscription filter. |

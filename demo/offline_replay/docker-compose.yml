@@ -1,0 +1,32 @@
+services:
+  robot_and_recorder:
+    build: {context: ../.., dockerfile: Dockerfile}
+    volumes:
+      - ../../monitor:/monitor
+      - ../../custom:/monitor/custom
+      - ../common:/demo/common:ro
+      - ./recorder.yaml:/demo/recorder.yaml:ro
+      - ../../output/offline_replay:/output
+    command: >
+      /bin/bash -lc
+      "source /opt/ros/kilted/setup.bash &&
+       : > /output/recorded_live.jsonl &&
+       python3 /demo/common/robot_simulator.py speed-limit-cycle --ros-args -r __node:=offline_robot &
+       python3 /monitor/monitor_node.py -c /demo/recorder.yaml"
+    healthcheck:
+      test: ["CMD-SHELL", "test -s /output/recorded_live.jsonl"]
+      interval: 1s
+      timeout: 1s
+      retries: 20
+
+  verifier:
+    build: {context: ../.., dockerfile: Dockerfile}
+    depends_on:
+      robot_and_recorder:
+        condition: service_healthy
+    volumes:
+      - ../../monitor:/monitor
+      - ../../custom:/monitor/custom
+      - ./config.yaml:/demo/config.yaml:ro
+      - ../../output/offline_replay:/output
+    command: python3 /monitor/verdict_runner.py -c /demo/config.yaml

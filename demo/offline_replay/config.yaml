@@ -1,0 +1,14 @@
+monitor: {output_dir: /output}
+verdict_runner:
+  source:
+    type: file
+    path: /output/recorded_live.jsonl
+    interval_sec: 0.1
+    loop: true
+converters:
+  - type: custom.odom_speed_converter:OdomSpeedConverter
+    verdict:
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
+      exporters:
+        - {type: stdout}
+        - {type: file, path: "replay_{session_id}.jsonl"}

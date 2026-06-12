@@ -28,14 +28,21 @@ From the project root:
 docker compose -f demo/deploy_mode3/docker-compose.yml up --build
 ```
 
-## Feed it ROS2 data
+## Test behavior
 
-Run a ROS2 node publishing `/odom` as `nav_msgs/msg/Odometry` with
+The Compose case starts the `speed-limit-cycle` scenario beside the robot-side
+monitor. `/odom` speed alternates between `0.4` and `0.2 m/s`, and the remote
+verifier repeatedly emits violation and recovery. The broker is published on
+host port `2883` because Windows commonly reserves port `1883`.
+
+To use a real ROS2 node instead, remove the
+`python3 /demo/common/robot_simulator.py speed-limit-cycle ... &` line from the monitor service
+command and publish `/odom` with
 `ROS_DOMAIN_ID=0`, for example:
 
 ```bash
 source /opt/ros/kilted/setup.bash
-python3 test/fake_robot.py
+python3 demo/common/robot_simulator.py speed-limit-cycle
 ```
 
 The verifier writes verdict files under:

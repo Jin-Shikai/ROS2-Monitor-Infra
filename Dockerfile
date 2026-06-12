@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     ros-kilted-std-srvs \
     ros-kilted-action-msgs \
     ros-kilted-service-msgs \
+    ros-kilted-example-interfaces \
     ros-kilted-rosidl-runtime-py \
     && rm -rf /var/lib/apt/lists/*
 

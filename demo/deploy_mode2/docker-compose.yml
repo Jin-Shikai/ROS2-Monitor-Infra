@@ -20,11 +20,13 @@ services:
     volumes:
       - ../../monitor:/monitor
       - ../../custom:/monitor/custom
+      - ../common:/demo/common:ro
       - ../../demo/deploy_mode2:/demo/deploy_mode2:ro
       - ../../output/mode2/robot:/output/robot
     command: >
       /bin/bash -lc
       "source /opt/ros/kilted/setup.bash &&
+       python3 /demo/common/robot_simulator.py speed-limit-cycle --ros-args -r __node:=mode2_robot &
        python3 /monitor/monitor_node.py --config /demo/deploy_mode2/robot_config.yaml"
     stdin_open: true
     tty: true

@@ -11,10 +11,12 @@ from __future__ import annotations
 
 from plugins import resolve_plugin_class
 from source import Source
+from source_file import FileReplaySource
 from source_mqtt import MQTTSource
 
 
 SOURCE_REGISTRY: dict[str, type[Source]] = {
+    "file": FileReplaySource,
     "mqtt": MQTTSource,
 }
 

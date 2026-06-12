@@ -17,7 +17,7 @@ topics:
     exporters:
       - type: mqtt
         broker: 127.0.0.1
-        port: 1883
+        port: 2883
         topic_prefix: monitor/
         qos: 1
         max_queued_messages: 1000

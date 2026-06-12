@@ -1,0 +1,21 @@
+monitor: {output_dir: /tmp/robot2, session_id_prefix: local_robot2}
+topics:
+  - name: /robot2/odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields: [twist.twist.linear.x]
+converters:
+  - type: custom.rule_based_converter:RuleBasedConverter
+    inputs: [/robot2/odom]
+    source_match: "^/robot2/odom$"
+    field_map: {speed: twist.twist.linear.x}
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: robot2_local_speed
+      field: speed
+      op: ">"
+      threshold: 0.30
+      exporters:
+        - {type: stdout}
+        - {type: mqtt, broker: mosquitto, topic: local/robot2/speed}

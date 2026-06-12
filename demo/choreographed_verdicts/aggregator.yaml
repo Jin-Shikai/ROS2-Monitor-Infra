@@ -1,0 +1,14 @@
+monitor: {output_dir: /output}
+verdict_runner:
+  source:
+    type: custom.verdict_mqtt_source:VerdictMQTTSource
+    broker: mosquitto
+    topic_filter: local/#
+converters:
+  - type: custom.verdict_aggregation:LocalViolationCountConverter
+    verdict:
+      type: custom.verdict_aggregation:SimultaneousLocalViolationsVerdict
+      minimum_count: 2
+      exporters:
+        - {type: stdout}
+        - {type: file, path: "aggregate_{session_id}.jsonl"}

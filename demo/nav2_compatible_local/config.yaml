@@ -1,0 +1,36 @@
+monitor:
+  output_dir: /output
+  session_id_prefix: nav2_compatible
+
+topics:
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields: [pose.pose.position.x, pose.pose.position.y, twist.twist.linear.x]
+    exporters:
+      - type: file
+  - name: /cmd_vel
+    type: geometry_msgs/msg/Twist
+    transformers:
+      - type: FieldExtractor
+        fields: [linear.x, angular.z]
+    exporters:
+      - type: file
+
+converters:
+  - type: custom.rule_based_converter:RuleBasedConverter
+    inputs: [/cmd_vel]
+    source_match: "^/cmd_vel$"
+    field_map:
+      speed: linear.x
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: nav2_cmd_vel_speed_limit
+      field: speed
+      op: ">"
+      threshold: 0.30
+      exporters:
+        - type: stdout
+        - type: file
+          path: verdicts_{session_id}.jsonl

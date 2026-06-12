@@ -4,7 +4,7 @@ One property per package. The converter and verdict each live in their
 own module so the package layout reads like an outline of the property
 itself: "data shape" + "judgement logic".
 
-Wire-up (see test/Nav2_case1/config_case1.yaml):
+Wire-up (see demo/nav2_compatible_local/full_nav2_config.yaml):
 
     converters:
       - type: custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter
