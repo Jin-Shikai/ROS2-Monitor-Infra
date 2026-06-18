@@ -1,5 +1,9 @@
 # DSL Layer — Extension Notes & TODOs
 
+> Historical design and implementation notes. For the current normative
+> adaptation procedure, use
+> [dsl_adaptation_guide.md](dsl_adaptation_guide.md).
+
 Scope: design notes for evolving the DataConverter / VerdictService /
 verdict-output layer. Captures what already works today, the open
 extensibility gaps, and a reproducible playbook for adding new DSL

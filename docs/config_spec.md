@@ -1,8 +1,20 @@
 # Configuration Specification
 
-> Version: 1.1 - 2026-06-03
+> Version: 1.2 - 2026-06-15
 > Implementation: `monitor/config_model.py`
 > Default example: `monitor/config.yaml`
+
+This is the normative field reference for every ROS2-Monitor-Infra runtime
+YAML file. The inventory of concrete configuration files shipped by the
+project, including demo and external-tool configuration, is in
+[config_inventory.md](config_inventory.md).
+
+Value descriptions distinguish between:
+
+- **accepted by implementation**: values the current Python code can parse;
+- **supported values**: values with an implemented and tested meaning;
+- **recommended constraints**: narrower values that avoid invalid ROS2,
+  MQTT, or filesystem configuration.
 
 ## Overview
 
@@ -26,6 +38,21 @@ services currently require `module.path:ClassName`; transformers currently use
 the built-in names listed below. Sibling keys become constructor keyword
 arguments unless listed as framework-reserved fields in this document.
 
+### Unknown and Unsupported Fields
+
+- Unknown top-level fields and unknown fields under `monitor` are currently
+  ignored by the corresponding parsed model.
+- Unknown fields inside plugin-like blocks are passed as Python constructor
+  keyword arguments. They are valid only if the selected plugin constructor
+  accepts them; otherwise component construction fails and the component or
+  converter chain is skipped.
+- The tables below define the YAML-supported fields of built-in plugins.
+  Constructor-only dependency-injection arguments such as `client` and
+  callable arguments such as `serialize` are intentionally excluded because
+  ordinary YAML cannot construct the required Python objects.
+- YAML booleans should be unquoted `true` or `false`. A quoted string may be
+  converted by Python's `bool()` in an unexpected way.
+
 ## Top-Level Fields
 
 | Field | Type | Required | Default | Used by | Notes |
@@ -42,8 +69,8 @@ arguments unless listed as framework-reserved fields in this document.
 
 | Field | Type | Required | Default | Used by | Notes |
 |---|---|---:|---|---|---|
-| `output_dir` | string | no | `"./output"` | both | Base directory for relative file outputs. |
-| `session_id_prefix` | string | no | `""` | `monitor_node` | Prefix prepended to generated monitor session ids. |
+| `output_dir` | string path | no | `"./output"` | both | Base directory for relative file outputs. May be absolute or relative to the process working directory. The process must be able to create/write it. |
+| `session_id_prefix` | string | no | `""` | `monitor_node` | Prefix prepended to generated monitor session ids. Any string is accepted; use filesystem- and topic-safe characters because the value can appear in output names and evidence ids. |
 
 `verdict_runner` reads `monitor.output_dir` to resolve relative verdict and DSL
 archive paths. It generates its own verifier-side session id.
@@ -73,7 +100,7 @@ monitor:
 
 | Field | Type | Required | Default | Notes |
 |---|---|---:|---|---|
-| `qos` | int | no | `10` | QoS depth passed to `create_subscription()`. |
+| `qos` | positive int | no | `10` | QoS history depth passed to `create_subscription()`. The code converts it with `int()`; use values `>= 1`. A configured `0` is currently treated as omitted and becomes `10`. |
 
 Example:
 
@@ -111,7 +138,7 @@ must enable ROS2 service introspection for records to appear.
 |---|---|---:|---|---|
 | `name` | string | yes | none | Action name. |
 | `type` | string | yes | none | Action type. Runtime skips entries without it. |
-| `phases` | list of strings | no | `["feedback", "status"]` | Hidden action topics to subscribe to. Supported values: `feedback`, `status`. |
+| `phases` | non-empty list of strings | no | `["feedback", "status"]` | Hidden action topics to subscribe to. Supported values are exactly `feedback` and `status`; unknown values are ignored. An empty list currently also selects both defaults. |
 | `transformers` | list of `TransformerSpec` | no | `[]` | Per-action transformer chain. |
 | `exporters` | list of `ExporterSpec` | no | `[]` | Per-action DataRecord exporters. |
 
@@ -139,9 +166,9 @@ Each transformer entry is a `TransformerSpec`.
 
 | Transformer | Field | Type | Required | Default | Notes |
 |---|---|---|---:|---|---|
-| `FieldExtractor` | `fields` | list of strings | yes | none | Keeps selected fields and flattens nested values into dot-notation keys. |
-| `RateThrottler` | `max_rate_hz` | float | yes | none | Must be greater than zero. |
-| `OnChangeFilter` | `watch_fields` | list of strings | yes | none | Emits when watched field values change. |
+| `FieldExtractor` | `fields` | list of dot-path strings | yes | none | Keeps selected fields and flattens nested values into dot-notation keys. Missing paths are silently omitted. |
+| `RateThrottler` | `max_rate_hz` | number | yes | none | Converted to `float`; must be greater than zero. |
+| `OnChangeFilter` | `watch_fields` | list of dot-path strings | yes | none | Emits the first record, then emits only when the set of found watched values changes. Missing paths are allowed. |
 
 ## DataRecord Exporters
 
@@ -174,11 +201,11 @@ output, though converter chains still receive their records.
 | `file` | `flush_every` | int | no | `1` | Values lower than one are coerced to one. |
 | `file` | `filename_suffix` | string | no | global: `""`; per-source: sanitized source name | Example per-source suffix: `_cmd_vel`. |
 | `mqtt` | `broker` | string | no | `"localhost"` | MQTT broker host. |
-| `mqtt` | `port` | int | no | `1883` | MQTT broker port. |
+| `mqtt` | `port` | int | no | `1883` | MQTT broker port; use `1..65535`. |
 | `mqtt` | `topic_prefix` | string | no | `"monitor/"` | Data records publish to `<prefix><source_type>/<source_name>`. |
-| `mqtt` | `qos` | int | no | `1` | MQTT publish QoS. |
-| `mqtt` | `keepalive` | int | no | `60` | MQTT keepalive seconds. |
-| `mqtt` | `max_queued_messages` | int | no | `1000` | Passed to paho's queue limit. |
+| `mqtt` | `qos` | int enum | no | `1` | MQTT publish QoS: `0`, `1`, or `2`. |
+| `mqtt` | `keepalive` | non-negative int | no | `60` | MQTT keepalive seconds. |
+| `mqtt` | `max_queued_messages` | non-negative int | no | `1000` | Passed to paho's queue limit; `0` means unlimited in paho. |
 | `mqtt` | `publish_bookends` | bool | no | `true` | If false, skips `session_start` and `session_end`. |
 | `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
@@ -207,7 +234,7 @@ DataRecord -> DataConverter -> VerdictService -> Verdict exporters
 | Field | Type | Required | Default | Notes |
 |---|---|---:|---|---|
 | `type` | string | yes | none | `DataConverter` class as `module.path:ClassName`. Runtime skips entries with an empty or unresolvable type. |
-| `inputs` | list of strings | no | omitted, converter sees all records | Source-name filter applied before the converter. Empty lists are rejected. |
+| `inputs` | non-empty list of strings | no | omitted, converter sees all records | Exact `DataRecord.source_name` filter applied before the converter. Empty lists and non-string elements cause the chain to be skipped. |
 | `output` | string | no | omitted, no DSL archive | Optional JSONL archive path for DSL-ready records. Relative paths resolve against `monitor.output_dir`; `{session_id}` is substituted. |
 | `verdict` | `VerdictSpec` | yes | none | Verdict service and verdict exporters. |
 | other fields | any | depends on selected converter | none | Passed to the converter constructor. |
@@ -249,10 +276,10 @@ default `VerdictExporter`.
 | `stdout` | none | - | - | - | No constructor fields. |
 | `mqtt` | `topic` | string | yes | none | MQTT topic for verdict JSON strings. |
 | `mqtt` | `broker` | string | no | `"localhost"` | MQTT broker host. |
-| `mqtt` | `port` | int | no | `1883` | MQTT broker port. |
-| `mqtt` | `qos` | int | no | `1` | MQTT publish QoS. |
-| `mqtt` | `keepalive` | int | no | `60` | MQTT keepalive seconds. |
-| `mqtt` | `max_queued_messages` | int | no | `1000` | Passed to paho's queue limit. |
+| `mqtt` | `port` | int | no | `1883` | MQTT broker port; use `1..65535`. |
+| `mqtt` | `qos` | int enum | no | `1` | MQTT publish QoS: `0`, `1`, or `2`. |
+| `mqtt` | `keepalive` | non-negative int | no | `60` | MQTT keepalive seconds. |
+| `mqtt` | `max_queued_messages` | non-negative int | no | `1000` | Passed to paho's queue limit; `0` means unlimited in paho. |
 | `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
 All string kwargs under `verdict.exporters` support `{session_id}`
@@ -291,13 +318,13 @@ verdict_runner:
 | Source | Field | Type | Required | Default | Notes |
 |---|---|---|---:|---|---|
 | `file` | `path` | string | yes | none | JSONL file containing serialized DataRecords. |
-| `file` | `interval_sec` | float | no | `0.0` | Delay between replayed records. |
+| `file` | `interval_sec` | non-negative number | no | `0.0` | Delay between replayed records. Negative values are coerced to `0.0`. |
 | `file` | `loop` | bool | no | `false` | Replay again after EOF. |
 | `mqtt` | `broker` | string | no | `"localhost"` | MQTT broker host. |
-| `mqtt` | `port` | int | no | `1883` | MQTT broker port. |
+| `mqtt` | `port` | int | no | `1883` | MQTT broker port; use `1..65535`. |
 | `mqtt` | `topic_filter` | string | no | `"monitor/#"` | MQTT subscription filter. |
-| `mqtt` | `qos` | int | no | `1` | MQTT subscribe QoS. |
-| `mqtt` | `keepalive` | int | no | `60` | MQTT keepalive seconds. |
+| `mqtt` | `qos` | int enum | no | `1` | MQTT subscribe QoS: `0`, `1`, or `2`. |
+| `mqtt` | `keepalive` | non-negative int | no | `60` | MQTT keepalive seconds. |
 | `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
 ## Parsed Model Reference

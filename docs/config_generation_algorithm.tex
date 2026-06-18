@@ -1,0 +1,266 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=25mm]{geometry}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+% \title{Config Generator}
+% \author{ROS2-Monitor-Infra Design Document}
+% \date{2026-06-15}
+
+\begin{document}
+% \maketitle
+
+\section{Config Generator}
+
+The generator creates ROS2-Monitor-Infra runtime YAML from explicit user
+choices. The user does not manually write YAML files. Instead, the generator
+uses selected ROS2 resources, selected custom converter and verdict classes,
+and the selected deployment mode to produce the corresponding runtime YAML.
+
+\begin{enumerate}
+  \item discover visible ROS2 topics, services, and actions;
+  \item let the user select the resources to monitor;
+  \item let the user select custom converter and verdict classes;
+  \item combine user choices, deployment template, and selected classes;
+  \item write one or more runtime YAML files.
+\end{enumerate}
+
+\section{Generation Inputs}
+
+\begin{tabular}{@{}p{0.27\linewidth}p{0.66\linewidth}@{}}
+\toprule
+Input & Description \\
+\midrule
+ROS2 resources &
+Topics, services, and actions selected by the user from the live ROS2 graph. \\
+Converter class &
+A \texttt{DataConverter} class selected from the available classes under
+\texttt{custom/}. \\
+Verdict class &
+A \texttt{VerdictService} class selected from the available classes under
+\texttt{custom/}. \\
+Class parameters &
+Optional constructor parameters for the selected custom classes. \\
+Deployment mode &
+Integrated local, central over MQTT, hybrid, choreographed verdict
+aggregation, or offline replay. \\
+Transport settings &
+MQTT broker and topics, or replay-file path, when required by the chosen
+deployment mode. \\
+Output settings &
+Output directory, session prefix, raw-record output, and verdict exporters. \\
+Optional framework settings &
+Topic QoS, action phases, and optional built-in transformers.
+\\
+\bottomrule
+\end{tabular}
+
+\clearpage
+\section{Config Generation Algorithm}
+
+\begin{algorithm}[H]
+\caption{Generate runtime YAML}
+\begin{algorithmic}[1]
+\Require running ROS2 system and user choices
+\Ensure generated configuration files $C$
+\State $G \gets \Call{ScanROSResources}{}$
+\State \Call{PresentROSResources}{$G$}
+\State $S \gets \Call{SelectROSResources}{G}$
+\State $P \gets \Call{ScanCustomClasses}{\texttt{custom/}}$
+\State $(conv,verdict) \gets \Call{SelectCustomClasses}{P}$
+\State $A \gets \Call{CollectClassParameters}{conv,verdict}$
+\State $D \gets \Call{SelectDeploymentMode}{}$
+\State $O \gets \Call{SelectOutputsAndTransports}{D}$
+\State $C \gets \Call{CreateEmptyConfigs}{D,O}$
+\ForAll{resource $s$ in $S$}
+  \State $entry \gets \Call{MakeSourceEntry}{s.name,s.kind,s.type}$
+  \State \Call{ApplyOptionalFrameworkSettings}{entry,s}
+  \State \Call{AddSourceToConfigs}{C,entry,D}
+\EndFor
+\Statex
+\State $chain \gets \Call{MakeConverterChain}{conv,verdict,A}$
+\State $chain.inputs \gets$ names of selected resources in $S$
+\State \Call{AddChainToConfigs}{C,chain,D}
+\State \Call{ApplyDeploymentTemplate}{C,D,O}
+\State \Call{WriteYAMLFiles}{C}
+\State \Return $C$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Runtime Resource Scanning}
+
+\begin{algorithm}[H]
+\caption{Scan ROS2 resources}
+\begin{algorithmic}[1]
+\Ensure resource catalogue $G$
+\State $T \gets$ run \texttt{ros2 topic list -t}
+\State $V \gets$ run \texttt{ros2 service list -t}
+\State $A \gets$ run \texttt{ros2 action list -t}
+\State $G \gets \emptyset$
+\ForAll{topic $(name,type)$ in $T$}
+  \State add $(topic,name,type)$ to $G$
+\EndFor
+\ForAll{service $(name,type)$ in $V$}
+  \State add $(service,name,type)$ to $G$
+\EndFor
+\ForAll{action $(name,type)$ in $A$}
+  \State add $(action,name,type)$ to $G$
+\EndFor
+\State \Return sorted $G$
+\end{algorithmic}
+\end{algorithm}
+
+\clearpage
+\section{Configuration Assembly}
+
+The generated YAML is assembled from three parts: selected ROS2 resources,
+the selected monitoring classes, and the selected deployment template.
+
+\subsection{ROS2 resource entries}
+
+Each selected ROS2 resource is copied into the corresponding runtime YAML
+section:
+
+\begin{itemize}
+  \item selected topics become entries under \texttt{topics};
+  \item selected services become entries under \texttt{services};
+  \item selected actions become entries under \texttt{actions}.
+\end{itemize}
+
+\begin{verbatim}
+monitor:
+  output_dir: <selected output directory>
+  session_id_prefix: <selected session prefix>
+
+topics:
+  - name: /selected/topic
+    type: package/msg/Message
+    qos: <optional QoS>
+
+services:
+  - name: /selected/service
+    type: package/srv/Service
+
+actions:
+  - name: /selected/action
+    type: package/action/Action
+    phases: [feedback, status]
+\end{verbatim}
+
+\subsection{Monitoring chain}
+
+The selected converter and verdict classes are written into the
+\texttt{converters} section:
+
+\begin{verbatim}
+converters:
+  - type: custom.my_case.converter:MyConverter
+    inputs: [/selected/topic]
+    <converter parameters>
+    verdict:
+      type: custom.my_case.verdict:MyVerdict
+      <verdict parameters>
+\end{verbatim}
+
+The generator inserts the selected resource names into \texttt{inputs}. The
+custom converter decides how to interpret the resulting records.
+
+\subsection{Class parameters}
+
+Constructor parameters selected for the converter are written next to the
+converter \texttt{type}. Parameters selected for the verdict service are
+written inside the nested \texttt{verdict} block:
+
+\begin{verbatim}
+converters:
+  - type: custom.rule_based_converter:RuleBasedConverter
+    source_match: "^/odom$"
+    field_map:
+      speed: twist.twist.linear.x
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: speed_limit
+      field: speed
+      op: ">"
+      threshold: 0.3
+\end{verbatim}
+
+\subsection{Resource-to-chain binding}
+
+The \texttt{inputs} field binds selected ROS2 resources to the selected
+converter. It is a source-name filter, not a semantic description of the
+property. For a multi-resource converter, multiple selected resources can be
+listed:
+
+\begin{verbatim}
+converters:
+  - type: custom.fleet_distance:FleetDistanceConverter
+    inputs: [/robot1/odom, /robot2/odom]
+    robot_a: /robot1
+    robot_b: /robot2
+    verdict:
+      type: custom.fleet_distance:MinimumFleetDistanceVerdict
+      minimum_distance: 1.0
+\end{verbatim}
+
+\subsection{Deployment wiring}
+
+The deployment template adds the communication and output blocks required by
+the selected architecture. For example, a central MQTT deployment adds an MQTT
+exporter on the robot side and an MQTT source on the verifier side:
+
+\begin{verbatim}
+# robot-side config
+exporters:
+  - type: mqtt
+    broker: <selected broker>
+    topic_prefix: <selected topic prefix>
+
+# verifier-side config
+verdict_runner:
+  source:
+    type: mqtt
+    broker: <selected broker>
+    topic_filter: <selected topic filter>
+\end{verbatim}
+
+For local deployment, this wiring can be omitted because the selected sources
+and monitoring chain live in the same runtime configuration.
+
+\section{Deployment Output Patterns}
+
+\begin{tabular}{@{}p{0.22\linewidth}p{0.28\linewidth}p{0.42\linewidth}@{}}
+\toprule
+Mode & Generated files & Main YAML sections \\
+\midrule
+Integrated local &
+\texttt{config.yaml} &
+\texttt{monitor}, selected \texttt{topics/services/actions},
+\texttt{converters}. \\
+Central over MQTT &
+\texttt{robot\_config.yaml}, \texttt{verifier\_config.yaml} &
+Robot file: selected resources and MQTT \texttt{exporters}.
+Verifier file: \texttt{verdict\_runner.source} and \texttt{converters}. \\
+Hybrid &
+\texttt{robot\_config.yaml}, \texttt{verifier\_config.yaml} &
+Robot file: selected resources, local \texttt{converters}, and MQTT
+\texttt{exporters}. Verifier file: MQTT source and central
+\texttt{converters}. \\
+Choreographed &
+\texttt{robotN.yaml}, \texttt{aggregator.yaml} &
+Robot files: selected local resources and local verdict exporters.
+Aggregator file: verdict source and aggregation \texttt{converters}. \\
+Offline replay &
+\texttt{recorder.yaml}, \texttt{replay.yaml} &
+Recorder file: selected resources and file exporter.
+Replay file: file source and \texttt{converters}. \\
+\bottomrule
+\end{tabular}
+
+These patterns are templates. Concrete paths, MQTT topics, and exporter
+settings are filled from the selected transport and output settings.
+
+\end{document}
