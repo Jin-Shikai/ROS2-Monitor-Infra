@@ -6,87 +6,142 @@
 \usepackage{booktabs}
 \usepackage{hyperref}
 
-% \title{Config Generator}
-% \author{ROS2-Monitor-Infra Design Document}
-% \date{2026-06-15}
-
 \begin{document}
-% \maketitle
 
 \section{Config Generator}
 
-The generator creates ROS2-Monitor-Infra runtime YAML from explicit user
-choices. The user does not manually write YAML files. Instead, the generator
-uses selected ROS2 resources, selected custom converter and verdict classes,
-and the selected deployment mode to produce the corresponding runtime YAML.
+The generator creates ROS2-Monitor-Infra runtime YAML from a JSON generation
+request. The request is produced after resource, class, transport, and
+placement choices have been made. It explicitly describes the runtime
+topology, so the generator derives the YAML files from runtimes and links.
 
 \begin{enumerate}
   \item discover visible ROS2 topics, services, and actions;
-  \item let the user select the resources to monitor;
-  \item let the user select custom converter and verdict classes;
-  \item combine user choices, deployment template, and selected classes;
-  \item write one or more runtime YAML files.
+  \item select the resources to monitor;
+  \item select custom converter and verdict classes;
+  \item describe runtime locations and links in a JSON request;
+  \item project the JSON request into one or more runtime YAML files.
 \end{enumerate}
 
-\section{Generation Inputs}
+\section{Generation Request JSON}
 
-\begin{tabular}{@{}p{0.27\linewidth}p{0.66\linewidth}@{}}
+The JSON request is an intermediate representation between user choices and
+runtime YAML. It separates reusable monitoring elements from deployment
+topology.
+
+\begin{tabular}{@{}p{0.20\linewidth}p{0.73\linewidth}@{}}
 \toprule
-Input & Description \\
+Section & Meaning \\
 \midrule
-ROS2 resources &
-Topics, services, and actions selected by the user from the live ROS2 graph. \\
-Converter class &
-A \texttt{DataConverter} class selected from the available classes under
-\texttt{custom/}. \\
-Verdict class &
-A \texttt{VerdictService} class selected from the available classes under
-\texttt{custom/}. \\
-Class parameters &
-Optional constructor parameters for the selected custom classes. \\
-Deployment mode &
-Integrated local, central over MQTT, hybrid, choreographed verdict
-aggregation, or offline replay. \\
-Transport settings &
-MQTT broker and topics, or replay-file path, when required by the chosen
-deployment mode. \\
-Output settings &
-Output directory, session prefix, raw-record output, and verdict exporters. \\
-Optional framework settings &
-Topic QoS, action phases, and optional built-in transformers.
-\\
+\texttt{observations} &
+ROS2 resources to observe. Each item is a topic, service, or action with a
+stable id, ROS name, interface type, and optional framework settings. \\
+\texttt{monitors} &
+Monitoring chains. Each item contains one converter class, one verdict class,
+their parameters, and the observation or monitor ids it consumes. \\
+\texttt{runtimes} &
+Generated runtime files. Each runtime declares which observations it captures,
+which monitors it hosts, and where its output is written. \\
+\texttt{links} &
+Typed edges between runtimes. A link declares source runtime, target runtime,
+payload type, transport, and carried observations or monitors. \\
 \bottomrule
 \end{tabular}
+
+\subsection{Abstract schema}
+
+\begin{verbatim}
+{
+  "observations": [
+    {
+      "id": "<observation id>",
+      "kind": "topic | service | action",
+      "name": "<ROS2 name>",
+      "type": "<ROS2 interface type>",
+      "transformers": [],
+      "qos": "<optional>",
+      "phases": "<optional>"
+    }
+  ],
+
+  "monitors": [
+    {
+      "id": "<monitor id>",
+      "converter": {
+        "type": "<module.path:ClassName>",
+        "params": {}
+      },
+      "verdict": {
+        "type": "<module.path:ClassName>",
+        "params": {}
+      },
+      "consumes": ["<observation id | monitor id>"]
+    }
+  ],
+
+  "runtimes": [
+    {
+      "id": "<runtime id>",
+      "file": "<output yaml file>",
+      "output": {
+        "output_dir": "<path>",
+        "session_id_prefix": "<prefix>"
+      },
+      "captures": ["<observation id>"],
+      "hosts": ["<monitor id>"]
+    }
+  ],
+
+  "links": [
+    {
+      "id": "<link id>",
+      "from": "<runtime id>",
+      "to": "<runtime id>",
+      "payload": "records | verdicts",
+      "transport": {
+        "type": "mqtt | file",
+        "<setting>": "<value>"
+      },
+      "carries": ["<observation id | monitor id>"]
+    }
+  ]
+}
+\end{verbatim}
 
 \clearpage
 \section{Config Generation Algorithm}
 
 \begin{algorithm}[H]
-\caption{Generate runtime YAML}
+\caption{Generate runtime YAML from JSON}
 \begin{algorithmic}[1]
-\Require running ROS2 system and user choices
-\Ensure generated configuration files $C$
-\State $G \gets \Call{ScanROSResources}{}$
-\State \Call{PresentROSResources}{$G$}
-\State $S \gets \Call{SelectROSResources}{G}$
-\State $P \gets \Call{ScanCustomClasses}{\texttt{custom/}}$
-\State $(conv,verdict) \gets \Call{SelectCustomClasses}{P}$
-\State $A \gets \Call{CollectClassParameters}{conv,verdict}$
-\State $D \gets \Call{SelectDeploymentMode}{}$
-\State $O \gets \Call{SelectOutputsAndTransports}{D}$
-\State $C \gets \Call{CreateEmptyConfigs}{D,O}$
-\ForAll{resource $s$ in $S$}
-  \State $entry \gets \Call{MakeSourceEntry}{s.name,s.kind,s.type}$
-  \State \Call{ApplyOptionalFrameworkSettings}{entry,s}
-  \State \Call{AddSourceToConfigs}{C,entry,D}
+\Require generation request $J$
+\Ensure generated YAML files $F$
+\State $F \gets \emptyset$
+\ForAll{runtime $R$ in $J.\text{runtimes}$}
+  \State $Y \gets \Call{NewYAML}{}$
+  \State $Y.\text{monitor} \gets R.\text{output}$
+  \ForAll{observation id $o$ in $R.\text{captures}$}
+    \State $obs \gets J.\text{observations}[o]$
+    \State $entry \gets \Call{MakeSourceEntry}{obs}$
+    \State add $entry$ to $Y[obs.\text{kind}]$
+  \EndFor
+  \ForAll{incoming link $e$ to $R$}
+    \State $Y.\text{verdict\_runner.source} \gets \Call{MakeSource}{e.\text{transport},e.\text{payload}}$
+  \EndFor
+  \ForAll{monitor id $m$ in $R.\text{hosts}$}
+    \State $mon \gets J.\text{monitors}[m]$
+    \State $chain \gets \Call{MakeConverterChain}{mon}$
+    \State $chain.\text{inputs} \gets \Call{ResolveInputs}{mon.\text{consumes},J,R}$
+    \State $chain.\text{verdict.exporters} \gets \Call{ResolveVerdictExporters}{m,R,J}$
+    \State add $chain$ to $Y.\text{converters}$
+  \EndFor
+  \ForAll{outgoing link $e$ from $R$ where $e.\text{payload}=\text{records}$}
+    \State \Call{AttachRecordExporter}{Y,e}
+  \EndFor
+  \State $F[R.\text{file}] \gets Y$
 \EndFor
-\Statex
-\State $chain \gets \Call{MakeConverterChain}{conv,verdict,A}$
-\State $chain.inputs \gets$ names of selected resources in $S$
-\State \Call{AddChainToConfigs}{C,chain,D}
-\State \Call{ApplyDeploymentTemplate}{C,D,O}
-\State \Call{WriteYAMLFiles}{C}
-\State \Return $C$
+\State \Call{WriteYAMLFiles}{F}
+\State \Return $F$
 \end{algorithmic}
 \end{algorithm}
 
@@ -114,88 +169,271 @@ Topic QoS, action phases, and optional built-in transformers.
 \end{algorithm}
 
 \clearpage
-\section{Configuration Assembly}
+\section{Projection Rules}
 
-The generated YAML is assembled from three parts: selected ROS2 resources,
-the selected monitoring classes, and the selected deployment template.
+\subsection{Observations}
 
-\subsection{ROS2 resource entries}
-
-Each selected ROS2 resource is copied into the corresponding runtime YAML
-section:
+Each captured observation becomes a source entry in the runtime that captures
+it:
 
 \begin{itemize}
-  \item selected topics become entries under \texttt{topics};
-  \item selected services become entries under \texttt{services};
-  \item selected actions become entries under \texttt{actions}.
+  \item \texttt{topic} observations become entries under \texttt{topics};
+  \item \texttt{service} observations become entries under \texttt{services};
+  \item \texttt{action} observations become entries under \texttt{actions}.
+\end{itemize}
+
+\subsection{Monitors}
+
+Each hosted monitor becomes one \texttt{converters} entry. Converter class,
+verdict class, and parameters are copied from the JSON request. The
+\texttt{inputs} field is resolved from the monitor's \texttt{consumes} ids.
+For observations, it becomes the selected ROS2 source names. For aggregation
+monitors, it refers to incoming verdict records.
+
+\subsection{Links}
+
+Links produce inter-runtime wiring:
+
+\begin{itemize}
+  \item outgoing \texttt{records} links add DataRecord exporters to the
+        producing runtime;
+  \item incoming \texttt{records} links add \texttt{verdict\_runner.source}
+        to the consuming runtime;
+  \item outgoing \texttt{verdicts} links add verdict exporters to the carried
+        hosted monitors;
+  \item incoming \texttt{verdicts} links are consumed by aggregation monitors
+        through a verdict-aware source.
 \end{itemize}
 
 \begin{verbatim}
+# record link: producing runtime
+exporters:
+  - type: <link.transport.type>
+    <link.transport settings>
+
+# record link: consuming runtime
+verdict_runner:
+  source:
+    type: <link.transport.type>
+    <link.transport settings>
+\end{verbatim}
+
+\clearpage
+\section{Concrete Examples}
+
+\subsection{Traditional}
+
+\begin{verbatim}
+JSON request:
+{
+  "observations": [
+    {"id": "odom", "kind": "topic", "name": "/odom",
+     "type": "nav_msgs/msg/Odometry"}
+  ],
+  "monitors": [
+    {"id": "speed", "converter": {"type": "custom.odom_speed_converter:OdomSpeedConverter",
+     "params": {}}, "verdict": {"type": "custom.odom_speed_verdict:OdomSpeedVerdict",
+     "params": {}}, "consumes": ["odom"]}
+  ],
+  "runtimes": [
+    {"id": "local", "file": "config.yaml",
+     "output": {"output_dir": "/output", "session_id_prefix": "local"},
+     "captures": ["odom"], "hosts": ["speed"]}
+  ],
+  "links": []
+}
+
+Generated config.yaml:
 monitor:
-  output_dir: <selected output directory>
-  session_id_prefix: <selected session prefix>
+  output_dir: /output
+  session_id_prefix: local
 
 topics:
-  - name: /selected/topic
-    type: package/msg/Message
-    qos: <optional QoS>
+  - name: /odom
+    type: nav_msgs/msg/Odometry
 
-services:
-  - name: /selected/service
-    type: package/srv/Service
-
-actions:
-  - name: /selected/action
-    type: package/action/Action
-    phases: [feedback, status]
-\end{verbatim}
-
-\subsection{Monitoring chain}
-
-The selected converter and verdict classes are written into the
-\texttt{converters} section:
-
-\begin{verbatim}
 converters:
-  - type: custom.my_case.converter:MyConverter
-    inputs: [/selected/topic]
-    <converter parameters>
+  - type: custom.odom_speed_converter:OdomSpeedConverter
+    inputs: [/odom]
     verdict:
-      type: custom.my_case.verdict:MyVerdict
-      <verdict parameters>
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
+      exporters:
+        - type: stdout
 \end{verbatim}
 
-The generator inserts the selected resource names into \texttt{inputs}. The
-custom converter decides how to interpret the resulting records.
-
-\subsection{Class parameters}
-
-Constructor parameters selected for the converter are written next to the
-converter \texttt{type}. Parameters selected for the verdict service are
-written inside the nested \texttt{verdict} block:
+\subsection{Decentralised}
 
 \begin{verbatim}
+JSON request:
+{
+  "observations": [
+    {"id": "odom", "kind": "topic", "name": "/odom",
+     "type": "nav_msgs/msg/Odometry"},
+    {"id": "cmd", "kind": "topic", "name": "/cmd_vel",
+     "type": "geometry_msgs/msg/Twist"}
+  ],
+  "monitors": [
+    {"id": "odom_speed", "converter": {"type":
+     "custom.odom_speed_converter:OdomSpeedConverter", "params": {}},
+     "verdict": {"type": "custom.odom_speed_verdict:OdomSpeedVerdict",
+     "params": {}}, "consumes": ["odom"]},
+    {"id": "cmd_speed", "converter": {"type":
+     "custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter",
+     "params": {}}, "verdict": {"type":
+     "custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict",
+     "params": {}}, "consumes": ["cmd"]}
+  ],
+  "runtimes": [
+    {"id": "capture", "file": "capture.yaml",
+     "output": {"output_dir": "/output/capture", "session_id_prefix": "capture"},
+     "captures": ["odom", "cmd"], "hosts": []},
+    {"id": "verifier_a", "file": "verifier_a.yaml",
+     "output": {"output_dir": "/output/a", "session_id_prefix": "a"},
+     "captures": [], "hosts": ["odom_speed"]},
+    {"id": "verifier_b", "file": "verifier_b.yaml",
+     "output": {"output_dir": "/output/b", "session_id_prefix": "b"},
+     "captures": [], "hosts": ["cmd_speed"]}
+  ],
+  "links": [
+    {"id": "raw_a", "from": "capture", "to": "verifier_a", "payload": "records",
+     "transport": {"type": "mqtt", "broker": "mosquitto",
+     "topic_prefix": "shared/odom/", "topic_filter": "shared/odom/#"},
+     "carries": ["odom"]},
+    {"id": "raw_b", "from": "capture", "to": "verifier_b", "payload": "records",
+     "transport": {"type": "mqtt", "broker": "mosquitto",
+     "topic_prefix": "shared/cmd/", "topic_filter": "shared/cmd/#"},
+     "carries": ["cmd"]}
+  ]
+}
+
+Generated capture.yaml:
+monitor:
+  output_dir: /output/capture
+  session_id_prefix: capture
+
+topics:
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    exporters:
+      - type: mqtt
+        broker: mosquitto
+        topic_prefix: shared/odom/
+  - name: /cmd_vel
+    type: geometry_msgs/msg/Twist
+    exporters:
+      - type: mqtt
+        broker: mosquitto
+        topic_prefix: shared/cmd/
+
+Generated verifier_a.yaml:
+monitor:
+  output_dir: /output/a
+
+verdict_runner:
+  source:
+    type: mqtt
+    broker: mosquitto
+    topic_filter: shared/odom/#
+
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
-    source_match: "^/odom$"
-    field_map:
-      speed: twist.twist.linear.x
+  - type: custom.odom_speed_converter:OdomSpeedConverter
+    inputs: [/odom]
     verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
-      property_id: speed_limit
-      field: speed
-      op: ">"
-      threshold: 0.3
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
+      exporters:
+        - type: stdout
+
+Generated verifier_b.yaml:
+monitor:
+  output_dir: /output/b
+
+verdict_runner:
+  source:
+    type: mqtt
+    broker: mosquitto
+    topic_filter: shared/cmd/#
+
+converters:
+  - type: custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter
+    inputs: [/cmd_vel]
+    verdict:
+      type: custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict
+      exporters:
+        - type: stdout
 \end{verbatim}
 
-\subsection{Resource-to-chain binding}
-
-The \texttt{inputs} field binds selected ROS2 resources to the selected
-converter. It is a source-name filter, not a semantic description of the
-property. For a multi-resource converter, multiple selected resources can be
-listed:
+\subsection{Orchestrated}
 
 \begin{verbatim}
+JSON request:
+{
+  "observations": [
+    {"id": "r1_odom", "kind": "topic", "name": "/robot1/odom",
+     "type": "nav_msgs/msg/Odometry"},
+    {"id": "r2_odom", "kind": "topic", "name": "/robot2/odom",
+     "type": "nav_msgs/msg/Odometry"}
+  ],
+  "monitors": [
+    {"id": "distance", "converter": {"type": "custom.fleet_distance:FleetDistanceConverter",
+     "params": {"robot_a": "/robot1", "robot_b": "/robot2"}},
+     "verdict": {"type": "custom.fleet_distance:MinimumFleetDistanceVerdict",
+     "params": {"minimum_distance": 1.0}}, "consumes": ["r1_odom", "r2_odom"]}
+  ],
+  "runtimes": [
+    {"id": "robot1", "file": "robot1.yaml",
+     "output": {"output_dir": "/output/r1", "session_id_prefix": "r1"},
+     "captures": ["r1_odom"], "hosts": []},
+    {"id": "robot2", "file": "robot2.yaml",
+     "output": {"output_dir": "/output/r2", "session_id_prefix": "r2"},
+     "captures": ["r2_odom"], "hosts": []},
+    {"id": "verifier", "file": "verifier.yaml",
+     "output": {"output_dir": "/output/verifier", "session_id_prefix": "verifier"},
+     "captures": [], "hosts": ["distance"]}
+  ],
+  "links": [
+    {"id": "r1_raw", "from": "robot1", "to": "verifier", "payload": "records",
+     "transport": {"type": "mqtt", "broker": "mosquitto",
+     "topic_prefix": "fleet/", "topic_filter": "fleet/#"}, "carries": ["r1_odom"]},
+    {"id": "r2_raw", "from": "robot2", "to": "verifier", "payload": "records",
+     "transport": {"type": "mqtt", "broker": "mosquitto",
+     "topic_prefix": "fleet/", "topic_filter": "fleet/#"}, "carries": ["r2_odom"]}
+  ]
+}
+
+Generated robot1.yaml:
+monitor:
+  output_dir: /output/r1
+  session_id_prefix: r1
+topics:
+  - name: /robot1/odom
+    type: nav_msgs/msg/Odometry
+exporters:
+  - type: mqtt
+    broker: mosquitto
+    topic_prefix: fleet/
+
+Generated robot2.yaml:
+monitor:
+  output_dir: /output/r2
+  session_id_prefix: r2
+topics:
+  - name: /robot2/odom
+    type: nav_msgs/msg/Odometry
+exporters:
+  - type: mqtt
+    broker: mosquitto
+    topic_prefix: fleet/
+
+Generated verifier.yaml:
+monitor:
+  output_dir: /output/verifier
+
+verdict_runner:
+  source:
+    type: mqtt
+    broker: mosquitto
+    topic_filter: fleet/#
+
 converters:
   - type: custom.fleet_distance:FleetDistanceConverter
     inputs: [/robot1/odom, /robot2/odom]
@@ -204,63 +442,126 @@ converters:
     verdict:
       type: custom.fleet_distance:MinimumFleetDistanceVerdict
       minimum_distance: 1.0
+      exporters:
+        - type: stdout
 \end{verbatim}
 
-\subsection{Deployment wiring}
-
-The deployment template adds the communication and output blocks required by
-the selected architecture. For example, a central MQTT deployment adds an MQTT
-exporter on the robot side and an MQTT source on the verifier side:
+\subsection{Choreographed}
 
 \begin{verbatim}
-# robot-side config
-exporters:
-  - type: mqtt
-    broker: <selected broker>
-    topic_prefix: <selected topic prefix>
+JSON request:
+{
+  "observations": [
+    {"id": "r1_odom", "kind": "topic", "name": "/robot1/odom",
+     "type": "nav_msgs/msg/Odometry"},
+    {"id": "r2_odom", "kind": "topic", "name": "/robot2/odom",
+     "type": "nav_msgs/msg/Odometry"}
+  ],
+  "monitors": [
+    {"id": "r1_local", "converter": {"type":
+     "custom.rule_based_converter:RuleBasedConverter", "params": {
+     "source_match": "^/robot1/odom$", "field_map": {"speed": "twist.twist.linear.x"}}},
+     "verdict": {"type": "custom.threshold_verdict:ThresholdVerdict",
+     "params": {"property_id": "robot1_speed", "field": "speed",
+     "op": ">", "threshold": 0.3}}, "consumes": ["r1_odom"]},
+    {"id": "r2_local", "converter": {"type":
+     "custom.rule_based_converter:RuleBasedConverter", "params": {
+     "source_match": "^/robot2/odom$", "field_map": {"speed": "twist.twist.linear.x"}}},
+     "verdict": {"type": "custom.threshold_verdict:ThresholdVerdict",
+     "params": {"property_id": "robot2_speed", "field": "speed",
+     "op": ">", "threshold": 0.3}}, "consumes": ["r2_odom"]},
+    {"id": "aggregate", "converter": {"type":
+     "custom.verdict_aggregation:LocalViolationCountConverter", "params": {}},
+     "verdict": {"type":
+     "custom.verdict_aggregation:SimultaneousLocalViolationsVerdict",
+     "params": {"minimum_count": 2}}, "consumes": ["r1_local", "r2_local"]}
+  ],
+  "runtimes": [
+    {"id": "robot1", "file": "robot1.yaml",
+     "output": {"output_dir": "/output/r1", "session_id_prefix": "r1"},
+     "captures": ["r1_odom"], "hosts": ["r1_local"]},
+    {"id": "robot2", "file": "robot2.yaml",
+     "output": {"output_dir": "/output/r2", "session_id_prefix": "r2"},
+     "captures": ["r2_odom"], "hosts": ["r2_local"]},
+    {"id": "aggregator", "file": "aggregator.yaml",
+     "output": {"output_dir": "/output/agg", "session_id_prefix": "agg"},
+     "captures": [], "hosts": ["aggregate"]}
+  ],
+  "links": [
+    {"id": "v1", "from": "robot1", "to": "aggregator", "payload": "verdicts",
+     "transport": {"type": "mqtt", "broker": "mosquitto",
+     "topic": "local/robot1/speed", "topic_filter": "local/#"},
+     "carries": ["r1_local"]},
+    {"id": "v2", "from": "robot2", "to": "aggregator", "payload": "verdicts",
+     "transport": {"type": "mqtt", "broker": "mosquitto",
+     "topic": "local/robot2/speed", "topic_filter": "local/#"},
+     "carries": ["r2_local"]}
+  ]
+}
 
-# verifier-side config
+Generated robot1.yaml:
+monitor:
+  output_dir: /output/r1
+  session_id_prefix: r1
+topics:
+  - name: /robot1/odom
+    type: nav_msgs/msg/Odometry
+converters:
+  - type: custom.rule_based_converter:RuleBasedConverter
+    inputs: [/robot1/odom]
+    source_match: "^/robot1/odom$"
+    field_map: {speed: twist.twist.linear.x}
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: robot1_speed
+      field: speed
+      op: ">"
+      threshold: 0.3
+      exporters:
+        - type: mqtt
+          broker: mosquitto
+          topic: local/robot1/speed
+
+Generated robot2.yaml:
+monitor:
+  output_dir: /output/r2
+  session_id_prefix: r2
+topics:
+  - name: /robot2/odom
+    type: nav_msgs/msg/Odometry
+converters:
+  - type: custom.rule_based_converter:RuleBasedConverter
+    inputs: [/robot2/odom]
+    source_match: "^/robot2/odom$"
+    field_map: {speed: twist.twist.linear.x}
+    verdict:
+      type: custom.threshold_verdict:ThresholdVerdict
+      property_id: robot2_speed
+      field: speed
+      op: ">"
+      threshold: 0.3
+      exporters:
+        - type: mqtt
+          broker: mosquitto
+          topic: local/robot2/speed
+
+Generated aggregator.yaml:
+monitor:
+  output_dir: /output/agg
+
 verdict_runner:
   source:
-    type: mqtt
-    broker: <selected broker>
-    topic_filter: <selected topic filter>
+    type: custom.verdict_mqtt_source:VerdictMQTTSource
+    broker: mosquitto
+    topic_filter: local/#
+
+converters:
+  - type: custom.verdict_aggregation:LocalViolationCountConverter
+    verdict:
+      type: custom.verdict_aggregation:SimultaneousLocalViolationsVerdict
+      minimum_count: 2
+      exporters:
+        - type: stdout
 \end{verbatim}
-
-For local deployment, this wiring can be omitted because the selected sources
-and monitoring chain live in the same runtime configuration.
-
-\section{Deployment Output Patterns}
-
-\begin{tabular}{@{}p{0.22\linewidth}p{0.28\linewidth}p{0.42\linewidth}@{}}
-\toprule
-Mode & Generated files & Main YAML sections \\
-\midrule
-Integrated local &
-\texttt{config.yaml} &
-\texttt{monitor}, selected \texttt{topics/services/actions},
-\texttt{converters}. \\
-Central over MQTT &
-\texttt{robot\_config.yaml}, \texttt{verifier\_config.yaml} &
-Robot file: selected resources and MQTT \texttt{exporters}.
-Verifier file: \texttt{verdict\_runner.source} and \texttt{converters}. \\
-Hybrid &
-\texttt{robot\_config.yaml}, \texttt{verifier\_config.yaml} &
-Robot file: selected resources, local \texttt{converters}, and MQTT
-\texttt{exporters}. Verifier file: MQTT source and central
-\texttt{converters}. \\
-Choreographed &
-\texttt{robotN.yaml}, \texttt{aggregator.yaml} &
-Robot files: selected local resources and local verdict exporters.
-Aggregator file: verdict source and aggregation \texttt{converters}. \\
-Offline replay &
-\texttt{recorder.yaml}, \texttt{replay.yaml} &
-Recorder file: selected resources and file exporter.
-Replay file: file source and \texttt{converters}. \\
-\bottomrule
-\end{tabular}
-
-These patterns are templates. Concrete paths, MQTT topics, and exporter
-settings are filled from the selected transport and output settings.
 
 \end{document}
