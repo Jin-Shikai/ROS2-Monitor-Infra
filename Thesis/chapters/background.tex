@@ -1,0 +1,281 @@
+\chapter{Background}\label{chapter:background}
+
+This chapter explains the main concepts used in this thesis. It first
+introduces ROS~2 and its communication methods. It then explains runtime
+monitoring, the main tasks of a monitoring infrastructure, configuration, and
+deployment choices.
+
+\section{ROS 2 Applications}
+
+\subsection{Nodes and the ROS Graph}
+
+ROS~2 is a software platform for building robotic applications. It provides
+communication, discovery, build tools, and many reusable
+packages~\cite{macenski2022ros2}. ROS~2 is not an operating system such as
+Linux. Instead, it runs above the operating system and helps software
+components work together.
+
+A ROS~2 application is usually divided into \emph{nodes}. Each node has a
+focused task. For example, one node may publish camera data, another node may
+plan a route, and another node may control the motors. The active nodes and
+their communication links form the \emph{ROS graph}. Nodes can run on the same
+computer or on different computers.
+
+ROS~2 communication uses defined message types. A type describes the fields in
+a message, service, or action. Client libraries such as \texttt{rclcpp} and
+\texttt{rclpy} provide the matching C++ and Python APIs. Type information is
+also important for monitoring. A monitor needs the correct type before it can
+read and understand captured data.
+
+The ROS graph makes monitoring easier in some ways because a new monitoring
+node can often join the graph without changing the original application. The
+same modularity also spreads the behaviour of the full robot over many nodes,
+so a monitor must select useful interfaces and keep enough context to connect
+related events.
+
+\subsection{Topics}
+
+Topics provide publish-subscribe communication. A publisher sends typed
+messages to a topic name. Any number of subscribers can receive these messages.
+The publisher does not need to know the subscribers directly. Topics are often
+used for sensor data, robot state, movement commands, and
+diagnostics~\cite{ros2interfaces,ros2topics}.
+
+A monitor can observe a topic by creating an extra subscription. This is a
+simple and passive method because the original communication path does not need
+to change. Common ROS~2 tools such as \texttt{ros2 topic echo} and
+\texttt{ros2 bag record} work in this way.
+
+Topic monitoring still requires several choices. Some topics publish large
+messages or publish at a high rate, while a monitor may only need a few fields
+or a subset of the messages. It must also use a compatible Quality of Service
+setting, and messages from different publishers may arrive in a different order
+from the order in which they were sent.
+
+\subsection{Services}
+
+Services provide request-response communication. A client sends a request to a
+named service, and a server returns a response. Services are normally used for
+short operations that need a clear result~\cite{ros2interfaces}.
+
+An unrelated node cannot observe a normal service call by creating another
+client. ROS~2 therefore provides \emph{service introspection}. When
+introspection is enabled, the client or server publishes event messages. These
+events can contain metadata, request data, and response
+data~\cite{ros2serviceintrospection}.
+
+A monitor can subscribe to the event topic and create records for requests and
+responses. This allows passive observation, but introspection must first be
+enabled by the application. The monitor must also keep metadata that connects a
+response to the correct request.
+
+\subsection{Actions}
+
+Actions are used for tasks that take time to complete. An action client sends a
+goal to an action server. While the goal is running, the server can send
+feedback. The client can cancel the goal, and the server later returns a result.
+Navigation and robot manipulation are common
+examples~\cite{ros2interfaces,ros2actions}.
+
+An action is built from hidden topics and services. Goal, result, and
+cancellation communication use services. Feedback and status use
+topics~\cite{ros2actions}. This makes action monitoring more difficult than
+normal topic monitoring.
+
+A monitor can directly subscribe to action feedback and status. Observing
+goals, results, and cancellations also requires service introspection. The
+monitor should present these events under the logical action name instead of
+forcing later components to understand all hidden ROS~2 names.
+
+\subsection{Discovery, Middleware, and Quality of Service}
+
+ROS~2 commonly uses Data Distribution Service (DDS) middleware for
+communication. DDS provides distributed discovery, so ROS~2 does not need the
+central master used in ROS~1~\cite{macenski2022ros2}. Nodes can discover the
+names and types of visible topics and services.
+
+Discovery can help a monitor find a message type automatically, but it is not a
+complete snapshot of the system. Discovery takes time, and the graph can change
+while the application is running, so a monitor should not assume that every
+source is already visible at startup.
+
+ROS~2 also provides Quality of Service (QoS) settings. These settings control
+reliability, stored history, durability, deadlines, and other communication
+behaviour~\cite{ros2qos}. A monitoring subscriber needs compatible settings.
+Otherwise, it may receive no messages or lose data under high load.
+
+\section{Runtime Monitoring and Runtime Verification}
+
+\subsection{Main Terms}
+
+Runtime monitoring means observing a system while it runs. It can be used for
+many purposes, including operational diagnosis, error detection, security, and
+requirements checking~\cite{rabiser2019domain}.
+
+Runtime verification is a related technique. It compares an observed execution
+with a specification~\cite{leucker2009brief}. It can show whether the observed
+behaviour follows or breaks a property; it does not normally prove that every
+possible future execution will be correct.
+
+This thesis uses the following terms:
+
+\begin{description}
+    \item[System under monitoring] The ROS~2 application being observed.
+
+    \item[Observation or event] One captured runtime event, such as a topic
+    message or service request.
+
+    \item[Trace] A sequence of observations used for later checking.
+
+    \item[Property] A rule or expected condition.
+
+    \item[Monitor] A component that observes the system or checks properties.
+
+    \item[Verdict] The result of a property check.
+\end{description}
+
+\subsection{Online and Offline Monitoring}
+
+Online monitoring processes data while the system is running. It can report
+problems quickly and can support immediate feedback. The design question is
+where this monitoring logic should run and which observations need to be
+processed online.
+
+Offline monitoring checks recorded data after the run has finished. It cannot
+react immediately, but the same data can be replayed many times and checked
+with checkers that are easier to run outside the robot application.
+
+\subsection{Passive and Active Monitoring}
+
+A passive monitor observes and reports. It does not change the behaviour of the
+application. An active monitor can respond to a problem, for example by
+blocking a message or starting a recovery action.
+
+\subsection{Centralized and Distributed Monitoring}
+
+In a centralized setup, observations are sent to one main checking component.
+Keeping the checking state in one place simplifies the design, although the
+central component can become a bottleneck or a single point of failure.
+
+In a distributed setup, observation or checking work runs in several places.
+This can place monitoring logic closer to the data source or closer to a
+verifier, but it introduces questions about message ordering, clocks, network
+boundaries, and failures~\cite{francalanza2018distributed}.
+
+\section{Main Monitoring Tasks}
+
+A monitoring system usually performs several different
+tasks~\cite{rabiser2019domain}. Keeping these tasks separate makes the
+infrastructure easier to configure and extend.
+
+\subsection{Collecting Data}
+
+The first task is to obtain data from the running system. In ROS~2, this can
+mean subscribing to topics, reading service events, observing action feedback,
+or using lower-level tracing tools.
+
+Each method has different limits. Normal subscriptions are easy to add, but
+they only show what the monitor receives. Service introspection needs support
+from the client or server. Lower-level tracing can show detailed execution
+information but may not include the application meaning of a message.
+
+\subsection{Processing Data}
+
+Raw data is not always ready for checking. A monitor may need to select fields,
+rename values, add timestamps, or connect events to a session. It may also need
+to reduce the amount of data.
+
+\subsection{Routing and Storage}
+
+After processing, data must be sent to the correct destination. One record may
+be written to a file, sent through MQTT, and passed to a checking component.
+These outputs should not require changes to the collector.
+
+Storage also supports later analysis. A stable record format makes it easier to
+replay a run or compare results from different checking tools.
+
+\subsection{Checking and Verdicts}
+
+Checking decides whether observed data follows an expected property. Different
+tools need different input formats. A simple threshold checker may need one
+number, while a temporal-logic checker may need a sequence of timestamped
+values.
+
+\subsection{Using the Results}
+
+A verdict is only useful when it reaches the right user or component. It may be
+printed during development, stored in a file, sent to a dashboard, or passed to
+another service.
+
+\section{Variability and Configuration}
+
+\subsection{Feature-Oriented Domain Analysis}
+
+Monitoring systems share many common tasks, but their exact needs differ.
+Feature-Oriented Domain Analysis (FODA) represents these common and variable
+choices as features~\cite{kang1990foda}. A feature model can show required,
+optional, and alternative choices and can also describe rules between them.
+
+\subsection{Configuration and Plugins}
+
+Configuration allows users to change monitoring behaviour without editing the
+framework code. A monitoring configuration may describe what should be
+observed, how raw observations should be processed, where data should be sent,
+and which checking components should receive it.
+
+Plugins handle choices that cannot be fully described by simple values. They
+allow a framework to delegate project-specific processing, checking, or output
+behaviour to separately developed components.
+
+Configuration errors are still possible. A wrong topic type, field path, or
+plugin name can stop the monitor. Clear validation and error messages are
+therefore important parts of a configurable system.
+
+\section{Deployment and Transport}
+
+\subsection{Integrated Monitoring}
+
+In the integrated setup, collection, processing, checking, and output run
+together. This setup is simple and does not need a network connection between
+the monitor and verifier. It is useful for local development and smaller
+systems.
+
+The price of this simplicity is tighter coupling: collection and checking share
+the same runtime context, so checker-specific failures or incompatible plugin
+behaviour can affect the full monitoring process.
+
+\subsection{Split Monitoring}
+
+In the split setup, a robot-side process collects and processes observations. A
+separate verifier receives the records and performs checking. This keeps
+ROS~2-specific collection close to the robot while placing checker-specific
+logic in a separate process.
+
+This setup introduces a network boundary. Records may be delayed, lost, or
+received in a different order. The verifier also needs enough information in
+each record to understand its source and session.
+
+\subsection{MQTT Transport}
+
+MQTT is a publish-subscribe messaging protocol. Publishers send messages to
+named topics through a broker, and subscribers receive messages from the topics
+they select. MQTT is commonly used because it is simple and has wide tool
+support. MQTT~5.0 is an OASIS standard, and the protocol defines a broker-based
+model in which clients publish messages to topic names instead of connecting
+directly to each other~\cite{mqtt5spec}.
+
+This broker model fits the split monitoring deployment used in this thesis. The
+robot-side monitor publishes serialized data records to a configured MQTT topic
+or topic prefix. The verifier subscribes to that topic filter and receives the
+records without needing a ROS~2 dependency or a direct connection to the robot
+process. Verdicts can also be published to a separate MQTT topic, which keeps
+runtime data and checking results distinct.
+
+MQTT also gives a configurable delivery trade-off through Quality of Service
+(QoS) levels. QoS~0 sends a message at most once and is useful when occasional
+loss is acceptable. QoS~1 retries until the broker acknowledges the message,
+which can duplicate records and therefore requires record identifiers to make
+duplicates recognizable. QoS~2 adds a stronger exactly-once exchange at the
+expense of a more involved protocol exchange. The infrastructure keeps the
+session and record identifier inside each data record so that MQTT transport
+does not have to carry the semantic identity of an observation.

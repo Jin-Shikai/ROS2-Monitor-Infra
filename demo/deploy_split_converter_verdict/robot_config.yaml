@@ -1,0 +1,21 @@
+# Robot host — publishes raw DataRecords over MQTT (same as deploy_mode2).
+# Run with: python monitor/monitor_node.py -c demo/deploy_split_converter_verdict/robot_config.yaml
+monitor:
+  output_dir: /output/robot
+  session_id_prefix: robot1
+
+topics:
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - twist.twist.linear.x
+      - type: RateThrottler
+        max_rate_hz: 5.0
+    exporters:
+      - type: mqtt
+        broker: 127.0.0.1
+        port: 1883
+        topic_prefix: monitor/
+        qos: 1

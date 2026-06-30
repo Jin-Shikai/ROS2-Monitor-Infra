@@ -1,0 +1,77 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    network_mode: host
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    restart: unless-stopped
+
+  # Robot host: bundled scenario robot + ROS2 collector + DataRecord publisher.
+  monitor_node:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    network_mode: host
+    depends_on:
+      - mosquitto
+    environment:
+      - ROS_DOMAIN_ID=0
+      - ROS_DISTRO=kilted
+      - MONITOR_CONFIG=/demo/deploy_split_converter_verdict/robot_config.yaml
+    volumes:
+      - ../../monitor:/monitor
+      - ../../custom:/monitor/custom
+      - ../common:/demo/common:ro
+      - ../../demo/deploy_split_converter_verdict:/demo/deploy_split_converter_verdict:ro
+    command: >
+      /bin/bash -lc
+      "source /opt/ros/kilted/setup.bash &&
+       python3 /demo/common/robot_simulator.py speed-limit-cycle --ros-args -r __node:=split_robot &
+       python3 /monitor/monitor_node.py --config /demo/deploy_split_converter_verdict/robot_config.yaml"
+    stdin_open: true
+    tty: true
+
+  # Converter host: subscribe raw DataRecords, run converters, publish DSL records.
+  split_converter:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    network_mode: host
+    depends_on:
+      - mosquitto
+    environment:
+      - MONITOR_CONFIG=/demo/deploy_split_converter_verdict/split_config.yaml
+      - SPLIT_RUNNER_LOG=INFO
+    volumes:
+      - ../../monitor:/monitor
+      - ../../custom:/monitor/custom
+      - ../../demo/deploy_split_converter_verdict:/demo/deploy_split_converter_verdict:ro
+    command: >
+      /bin/bash -lc
+      "python3 /monitor/split_runner.py --role converter
+       --config /demo/deploy_split_converter_verdict/split_config.yaml"
+    stdin_open: true
+    tty: true
+
+  # Verdict host: subscribe DSL records, run verdict services, emit verdicts.
+  split_verdict:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    network_mode: host
+    depends_on:
+      - mosquitto
+    environment:
+      - MONITOR_CONFIG=/demo/deploy_split_converter_verdict/split_config.yaml
+      - SPLIT_RUNNER_LOG=INFO
+    volumes:
+      - ../../monitor:/monitor
+      - ../../custom:/monitor/custom
+      - ../../demo/deploy_split_converter_verdict:/demo/deploy_split_converter_verdict:ro
+      - ../../output/split/verifier:/output/verifier
+    command: >
+      /bin/bash -lc
+      "python3 /monitor/split_runner.py --role verdict
+       --config /demo/deploy_split_converter_verdict/split_config.yaml"
+    stdin_open: true
+    tty: true

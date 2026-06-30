@@ -18,12 +18,13 @@ Value descriptions distinguish between:
 
 ## Overview
 
-The configuration is a YAML document consumed by two entrypoints:
+The configuration is a YAML document consumed by these entrypoints:
 
 | Entrypoint | Reads |
 |---|---|
 | `monitor/monitor_node.py` | `monitor`, `topics`, `services`, `actions`, `exporters`, `converters` |
 | `monitor/verdict_runner.py` | `monitor.output_dir`, `verdict_runner.source`, `converters` |
+| `monitor/split_runner.py` | `monitor.output_dir`, `verdict_runner.source` (converter/filter roles), `converters` incl. `converters[*].dsl_transport` (converter/verdict roles) and `converters[*].record_transport` (filter role) |
 
 Plugin-like blocks share this shape:
 
@@ -237,6 +238,8 @@ DataRecord -> DataConverter -> VerdictService -> Verdict exporters
 | `inputs` | non-empty list of strings | no | omitted, converter sees all records | Exact `DataRecord.source_name` filter applied before the converter. Empty lists and non-string elements cause the chain to be skipped. |
 | `output` | string | no | omitted, no DSL archive | Optional JSONL archive path for DSL-ready records. Relative paths resolve against `monitor.output_dir`; `{session_id}` is substituted. |
 | `verdict` | `VerdictSpec` | yes | none | Verdict service and verdict exporters. |
+| `dsl_transport` | mapping | no | omitted, in-process | Read only by `split_runner --role converter`/`verdict` (see [`split_runner`](#split_runner)). Names the MQTT topic that joins the converter and verdict halves when they run on separate hosts. Ignored by `monitor_node` and `verdict_runner`, which always run the chain in-process. |
+| `record_transport` | mapping | no | omitted | Read only by `split_runner --role filter` (see [`split_runner`](#split_runner)). Names the file or MQTT carrier a `data_filter` converter republishes `DataRecord`s through, so it can feed a downstream converter on another host. Ignored by every other entrypoint. |
 | other fields | any | depends on selected converter | none | Passed to the converter constructor. |
 
 Example:
@@ -327,16 +330,103 @@ verdict_runner:
 | `mqtt` | `keepalive` | non-negative int | no | `60` | MQTT keepalive seconds. |
 | `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
+## `split_runner`
+
+`monitor/split_runner.py` runs the converter half and the verdict half of one
+or more chains as **separate processes**, joined by an MQTT DSL-record
+transport. `verdict_runner` always runs both halves in-process; `split_runner`
+is the entrypoint that lets them live on different hosts.
+
+It reuses the same YAML; the converter half and the verdict half each read only
+what they need, so the same file can be deployed to both hosts. Select the half
+with `--role`:
+
+| `--role` | Reads | Behavior |
+|---|---|---|
+| `converter` | `verdict_runner.source`, `converters[*].{type, inputs, dsl_transport, kwargs}` | Consumes DataRecords from `verdict_runner.source`, runs each converter, and publishes its DSL records to that converter's `dsl_transport` topic. |
+| `verdict` | `monitor.output_dir`, `converters[*].{dsl_transport, output, verdict}` | Subscribes to each converter's `dsl_transport` topic and runs the paired verdict stage (`VerdictService` + verdict exporters). |
+| `filter` | `verdict_runner.source`, `converters[*].{type, inputs, record_transport, kwargs}` | Consumes DataRecords from `verdict_runner.source`, runs each converter, and **republishes DataRecords** through that converter's `record_transport`. This is the converter→converter seam: a `data_filter` converter (one that returns a `DataRecord`, not a DSL dict) feeds a downstream converter on another host, which reads the same carrier as an ordinary source. |
+
+A converter without a `dsl_transport` block is skipped by `--role converter` /
+`--role verdict`; one without a `record_transport` block is skipped by
+`--role filter`. Use `verdict_runner` for in-process chains.
+
+### `dsl_transport` fields
+
+The transported payload is the converter's DSL-ready record; see
+[dsl_record_spec.md](dsl_record_spec.md) for its schema.
+
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `topic` | string | yes | none | MQTT topic carrying this chain's DSL records. Use a distinct topic per converter so each verdict stage receives only its own records. |
+| `broker` | string | no | `"localhost"` | MQTT broker host. |
+| `port` | int | no | `1883` | MQTT broker port; use `1..65535`. |
+| `qos` | int enum | no | `1` | MQTT publish/subscribe QoS: `0`, `1`, or `2`. |
+| `keepalive` | non-negative int | no | `60` | MQTT keepalive seconds. |
+
+### `record_transport` fields
+
+Read only by `--role filter`. The transported payload is a `DataRecord` (the
+same wire form as a monitor feed), so a `data_filter` converter can chain into a
+downstream converter. The `kind` selects the carrier; the downstream host reads
+the same namespace with an ordinary `mqtt` or `file` source.
+
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `kind` | string | no | `"mqtt"` | Carrier: `mqtt` or `file`. |
+| `topic_prefix` | string | `kind=mqtt`: yes | none | MQTT topic prefix the filtered DataRecords are republished under (e.g. `filtered/`). Use a namespace distinct from the upstream feed. Records publish to `<topic_prefix><source_type>/<source_name>`; the downstream `mqtt` source uses `topic_filter: <topic_prefix>#`. |
+| `output_dir` | string | `kind=file`: yes | none | Directory the filtered DataRecords are appended to as JSONL. The downstream `file` source reads `<output_dir>/<session_id>.jsonl`. |
+| `session_id` | string | `kind=file`: yes | none | Stem of the shared JSONL file. |
+| `broker` / `port` / `qos` / `keepalive` | — | no | mqtt defaults | MQTT connection fields (`kind=mqtt` only). |
+
+`monitor/config_gen.py` fills these from a `records` link between two converters,
+choosing `mqtt` or `file` from the link's `transport.kind` and deriving a shared
+namespace from the link id so the filter output and the downstream source always
+agree. DSL links remain MQTT-only (there is no file-based DSL transport); the
+generator rejects `kind: file` on a `dsl` link with an explicit error.
+
+Example (one file, deployed to both the converter and verdict hosts):
+
+```yaml
+monitor:
+  output_dir: /output/verifier
+
+verdict_runner:
+  source:                       # read by --role converter
+    type: mqtt
+    broker: 127.0.0.1
+    topic_filter: monitor/#
+
+converters:
+  - type: custom.odom_speed_converter:OdomSpeedConverter
+    dsl_transport:              # the seam between the two hosts
+      broker: 127.0.0.1
+      topic: dsl/odom_speed
+    verdict:                    # run by --role verdict
+      type: custom.odom_speed_verdict:OdomSpeedVerdict
+      exporters:
+        - type: stdout
+        - type: file
+          path: verdicts_{session_id}.jsonl
+```
+
+Run (`demo/deploy_split_converter_verdict` is the worked example):
+
+```bash
+python monitor/split_runner.py --role verdict   -c <config>
+python monitor/split_runner.py --role converter -c <config>
+```
+
 ## Parsed Model Reference
 
 | Dataclass | Source YAML | Defaults |
 |---|---|---|
 | `MonitorConfig` | Full YAML for `monitor_node` | See top-level and `monitor` tables. |
-| `RunnerConfig` | Full YAML for `verdict_runner` | `output_dir="./output"`, `converters=[]`, `source=None`. |
+| `RunnerConfig` | Full YAML for `verdict_runner` and `split_runner` | `output_dir="./output"`, `converters=[]`, `source=None`. |
 | `MonitoredSourceSpec` | Entries under `topics`, `services`, `actions` | `transformers=[]`, `exporters=[]`, `qos=None`, `phases=None`. |
 | `TransformerSpec` | Entries under source `transformers` | `kwargs={}`, `raw={}`. |
 | `ExporterSpec` | DataRecord exporters and verdict exporters | `kwargs={}`, `raw={}`. |
-| `ConverterSpec` | Entries under `converters` | `inputs=None`, `output=None`. |
+| `ConverterSpec` | Entries under `converters` | `inputs=None`, `output=None`, `dsl_transport=None`, `record_transport=None`. |
 | `VerdictSpec` | Nested `verdict` blocks | `exporters=[]`. |
 | `SourceSpec` | `verdict_runner.source` | `kwargs={}`, `raw={}`. |
 

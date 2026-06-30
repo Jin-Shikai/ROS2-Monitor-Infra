@@ -1,0 +1,58 @@
+\begin{titlepage}
+\begin{center}
+\includegraphics[height=2.7cm]{figures/TUe-logo-descriptor-line-scarlet-rgb}\\
+%\LARGE
+%Eindhoven University of Technology \\
+\Large
+\mbox{}Eindhoven University of Technology\\
+\large
+\mbox{}\department\\
+\normalsize
+\mbox{}\group
+
+\vspace*{9cm}
+
+\setlength{\TPHorizModule}{1mm}
+\setlength{\TPVertModule}{\TPHorizModule}
+% Set the Paragraph Indent to zero, so the first line is not Indented
+% Back-up the current value so it can be put back at the end of the title page
+\newlength{\backupparindent}
+\setlength{\backupparindent}{\parindent}
+\setlength{\parindent}{0mm}			
+% Begins a textbox at 72 mm from the left of the edge of the paper and 89 mm from the top
+% The width of the textbox is 95 mm (167 - 72 mm)
+% The height of the box cannot be defined, so it is your task to keep the text not too long
+\begin{textblock}{150}(30,88)
+    \vspace*{1mm}
+    \huge
+    \sffamily\textbf{\doctitle \\}
+    \Large
+    \vspace*{5mm}
+    \normalfont\textit{\docsubtitle}\\
+    \vspace*{10mm}
+    \Large\sffamily
+    \me\\
+    \normalsize\itshape
+    \email\\
+\end{textblock}
+
+\normalsize
+\textbf{Supervisor:}\\
+\begin{tabular}{r}
+    \sffamily\mbox{}\firstCommitteeMember\\
+    \mbox{}\secondCommitteeMember\\
+    \mbox{}\thirdCommitteeMember\\
+\end{tabular}
+
+\vspace*{4.5cm}
+%\docdate \\
+\normalsize\sffamily
+\placeMonthYear\\
+
+\vfill
+
+% Put the Paragraph Indent back to its original value
+\setlength{\parindent}{\backupparindent}
+\end{center}
+\end{titlepage} 
+\normalsize

@@ -1,0 +1,154 @@
+<mxfile host="Electron" agent="Codex">
+  <diagram id="uml-class-diagram" name="Page-1">
+    <mxGraphModel dx="1408" dy="830" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1460" pageHeight="820" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontFamily=Arial;fontSize=12;fontStyle=1;fontSize=16;" value="UML Class Diagram for Host Runtime Link JSON" vertex="1">
+          <mxGeometry height="28" width="500" x="480" y="16" as="geometry" />
+        </mxCell>
+        <mxCell id="request" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;GenerationRequest&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ hosts: [host]&lt;br&gt;+ links: [link]&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="85" width="320" x="570" y="55" as="geometry" />
+        </mxCell>
+        <mxCell id="host" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;Host&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ id&lt;br&gt;+ runtimes: [runtime]&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="95" width="230" x="85" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="link" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;Link&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ id&lt;br&gt;+ from_host: id&lt;br&gt;+ to_host: id&lt;br&gt;+ from_runtime: id&lt;br&gt;+ to_runtime: id&lt;br&gt;+ payload: records | dsl&lt;br&gt;+ transport&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="155" width="250" x="1120" y="210" as="geometry" />
+        </mxCell>
+        <mxCell id="runtime" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; background-color: rgb(247, 247, 247);&quot;&gt;&lt;b&gt;&amp;nbsp; &amp;nbsp; &amp;nbsp; Runtime&amp;nbsp; &amp;nbsp; &amp;nbsp;&amp;nbsp;&lt;/b&gt;&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;&amp;nbsp; &amp;nbsp; &amp;nbsp;+ id&lt;br&gt;&amp;nbsp; &amp;nbsp; &amp;nbsp;+ kind: ros2 | monitor | converter | verdict_service&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="98" width="320" x="520" y="207" as="geometry" />
+        </mxCell>
+        <mxCell id="transport" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;Transport&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ kind: TransportKind&lt;br&gt;+ parameter&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="85" width="250" x="1120" y="485" as="geometry" />
+        </mxCell>
+        <mxCell id="transport_kind" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tr&gt;&lt;td style=&quot;height:32px;text-align:center;font-weight:bold;background-color:#f7f7f7;&quot;&gt;TransportKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top:1px solid #222222;text-align:left;vertical-align:top;padding:8px 10px;&quot;&gt;mqtt&lt;br&gt;file&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="95" width="170" x="1160" y="645" as="geometry" />
+        </mxCell>
+        <mxCell id="ros2" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;ROS2&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ sources: [source]&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="115" width="220" x="70" y="381" as="geometry" />
+        </mxCell>
+        <mxCell id="monitor" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;Monitor&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ subscribe: [source]&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="119" width="220" x="330" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="converter" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;Converter&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ converter&lt;br&gt;+ class_path&lt;br&gt;+ input_from: [id]&lt;br&gt;+ output_to: [id]&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="120" width="230" x="590" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="verdict_service" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;VerdictService&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ class_path&lt;br&gt;+ input_from: [id]&lt;br&gt;+ output_to: [id]&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="120" width="230" x="855" y="380" as="geometry" />
+        </mxCell>
+        <mxCell id="source" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td style=&quot;height: 32px; text-align: center; font-weight: bold; background-color: rgb(247, 247, 247);&quot;&gt;Source&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top: 1px solid rgb(34, 34, 34); text-align: left; vertical-align: top; padding: 8px 10px;&quot;&gt;+ id&lt;br&gt;+ source_kind: SourceKind&lt;br&gt;+ name&lt;br&gt;+ interface&lt;br&gt;&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="150" width="220" x="70" y="610" as="geometry" />
+        </mxCell>
+        <mxCell id="source_kind" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tr&gt;&lt;td style=&quot;height:32px;text-align:center;font-weight:bold;background-color:#f7f7f7;&quot;&gt;SourceKind&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top:1px solid #222222;text-align:left;vertical-align:top;padding:8px 10px;&quot;&gt;topic&lt;br&gt;service&lt;br&gt;action&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="110" width="160" x="325" y="630" as="geometry" />
+        </mxCell>
+        <mxCell id="data_filter" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tr&gt;&lt;td style=&quot;height:32px;text-align:center;font-weight:bold;background-color:#f7f7f7;&quot;&gt;DataFilter&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top:1px solid #222222;text-align:left;vertical-align:top;padding:8px 10px;&quot;&gt;+ converter: data_filter&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="75" width="190" x="520" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="dsl_converter" parent="1" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#222222;fontFamily=Arial;fontSize=12;align=center;verticalAlign=middle;" value="&lt;table style=&quot;width:100%;height:100%;border-collapse:collapse;&quot;&gt;&lt;tr&gt;&lt;td style=&quot;height:32px;text-align:center;font-weight:bold;background-color:#f7f7f7;&quot;&gt;DslConverter&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td style=&quot;border-top:1px solid #222222;text-align:left;vertical-align:top;padding:8px 10px;&quot;&gt;+ converter: dsl_converter&lt;/td&gt;&lt;/tr&gt;&lt;/table&gt;" vertex="1">
+          <mxGeometry height="72.5" width="190" x="740" y="660" as="geometry" />
+        </mxCell>
+        <mxCell id="e_request_host" edge="1" parent="1" source="request" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;startArrow=diamond;startFill=1;endArrow=none;" target="host" value="">
+          <mxGeometry relative="1" x="-0.0385" y="40" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="650" y="160" />
+              <mxPoint x="200" y="160" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_request_link" edge="1" parent="1" source="request" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;startArrow=diamond;startFill=1;endArrow=none;" target="link" value="">
+          <mxGeometry relative="1" x="-0.0101" y="-10" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="810" y="160" />
+              <mxPoint x="1245" y="160" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m_host_many" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontFamily=Arial;fontSize=12;" value="0..*" vertex="1">
+          <mxGeometry height="20" width="48" x="190" y="178" as="geometry" />
+        </mxCell>
+        <mxCell id="m_link_many" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontFamily=Arial;fontSize=12;" value="0..*" vertex="1">
+          <mxGeometry height="20" width="48" x="1240" y="178" as="geometry" />
+        </mxCell>
+        <mxCell id="e_host_runtime" edge="1" parent="1" source="host" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;startArrow=diamond;startFill=1;endArrow=none;" target="runtime" value="">
+          <mxGeometry relative="1" x="0.0244" y="-10" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="370" y="250" />
+              <mxPoint x="370" y="250" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="m_host_one" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontFamily=Arial;fontSize=12;" value="1" vertex="1">
+          <mxGeometry height="20" width="30" x="315" y="235" as="geometry" />
+        </mxCell>
+        <mxCell id="m_runtime_many" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontFamily=Arial;fontSize=12;" value="0..*" vertex="1">
+          <mxGeometry height="20" width="45" x="485" y="235" as="geometry" />
+        </mxCell>
+        <mxCell id="e_link_transport" edge="1" parent="1" source="link" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;startArrow=diamond;startFill=1;endArrow=none;" target="transport" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_transport_kind" edge="1" parent="1" source="transport" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;endArrow=none;" target="transport_kind" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_ros2_runtime" edge="1" parent="1" source="ros2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;endArrow=block;endFill=0;" target="runtime" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="180" y="335" />
+              <mxPoint x="645" y="335" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_monitor_runtime" edge="1" parent="1" source="monitor" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;endArrow=block;endFill=0;" target="runtime" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="440" y="335" />
+              <mxPoint x="645" y="335" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_converter_runtime" edge="1" parent="1" source="converter" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;endArrow=block;endFill=0;" target="runtime" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="705" y="335" />
+              <mxPoint x="645" y="335" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_verdict_runtime" edge="1" parent="1" source="verdict_service" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;endArrow=block;endFill=0;" target="runtime" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="970" y="335" />
+              <mxPoint x="645" y="335" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_ros2_source" edge="1" parent="1" source="ros2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;startArrow=diamond;startFill=1;endArrow=none;" target="source" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_source_kind" edge="1" parent="1" source="source" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;endArrow=none;" target="source_kind" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_datafilter_converter" edge="1" parent="1" source="data_filter" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;endArrow=block;endFill=0;" target="converter" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="610" y="565" />
+              <mxPoint x="710" y="565" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_dslconverter_converter" edge="1" parent="1" source="dsl_converter" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#222222;fontFamily=Arial;fontSize=12;endArrow=block;endFill=0;" target="converter" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="810" y="565" />
+              <mxPoint x="710" y="565" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

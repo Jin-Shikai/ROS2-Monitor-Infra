@@ -1,0 +1,81 @@
+{
+  "hosts": [
+    {
+      "id": "robot",
+      "runtimes": [
+        {
+          "id": "ros2_robot",
+          "kind": "ros2",
+          "sources": [
+            {
+              "id": "odom",
+              "source_kind": "topic",
+              "name": "/odom",
+              "interface": "nav_msgs/msg/Odometry"
+            }
+          ]
+        },
+        {
+          "id": "monitor_robot",
+          "kind": "monitor",
+          "subscribe": ["odom"]
+        }
+      ]
+    },
+    {
+      "id": "converter_host",
+      "runtimes": [
+        {
+          "id": "speed_filter",
+          "kind": "converter",
+          "converter": "dsl_converter",
+          "class_path": "custom.speed_aggregate_filter:SpeedAggregateFilter",
+          "input_from": ["odom"],
+          "output_to": "speed_record",
+          "components": ["twist.twist.linear.x", "twist.twist.linear.y"],
+          "output_field": "speed",
+          "property_id": "linear_speed"
+        }
+      ]
+    },
+    {
+      "id": "verdict_host",
+      "runtimes": [
+        {
+          "id": "speed_verdict",
+          "kind": "verdict_service",
+          "class_path": "custom.threshold_verdict:ThresholdVerdict",
+          "input_from": ["speed_record"],
+          "output_to": [
+            {"kind": "stdout"},
+            {"kind": "file", "path": "verdicts_{session_id}.jsonl"}
+          ],
+          "property_id": "linear_speed",
+          "field": "speed",
+          "op": ">",
+          "threshold": 0.3
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "id": "raw_records",
+      "from_host": "robot",
+      "to_host": "converter_host",
+      "from_runtime": "monitor_robot",
+      "to_runtime": "speed_filter",
+      "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1883, "qos": 1}
+    },
+    {
+      "id": "dsl_records",
+      "from_host": "converter_host",
+      "to_host": "verdict_host",
+      "from_runtime": "speed_filter",
+      "to_runtime": "speed_verdict",
+      "payload": "dsl",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1883, "qos": 1, "topic": "dsl/odom_speed"}
+    }
+  ]
+}

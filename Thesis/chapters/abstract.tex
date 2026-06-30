@@ -1,0 +1,40 @@
+\section*{Abstract}\label{chapter:abstract}
+\thispagestyle{fancy}
+\begingroup
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.45em}
+
+Robot Operating System 2 (ROS~2) is widely used to build robotic applications.
+A ROS~2 application often contains many nodes that communicate through topics,
+services, and actions. This makes the application flexible, but it can also make
+its runtime behaviour difficult to understand. Existing monitoring solutions
+often focus on one communication type, one monitoring method, or one deployment
+setup. Developers therefore need to write extra monitoring code for each new
+application.
+
+In this thesis, I present a configurable monitoring infrastructure for ROS~2
+applications. I built it as a reusable foundation for collecting, processing,
+routing, checking, and exporting runtime data from heterogeneous ROS~2
+interfaces. The infrastructure observes topics, service events, and action
+feedback and status, and converts these different observations into a common
+record format. Each record includes the observed data and useful context, such
+as its source, time, session, and identifier.
+
+Users describe the monitoring setup in YAML configuration files. They can
+select data sources, reduce or filter data, choose outputs, and connect
+property-specific checking components. The prototype I implemented also
+supports plugins, so new data converters, verdict services, input sources, and
+output exporters can be added without changing the monitoring core.
+
+The infrastructure runs in two ways. In the integrated setup, data collection
+and checking run together. In the split setup, data is collected near the robot
+and sent to a separate verifier. The concrete prototype supports file and MQTT
+transport and provides processing steps such as field selection, rate limiting,
+and change filtering.
+
+I exercised the prototype through unit tests, Docker Compose deployments,
+offline replay, multi-robot examples, and a Navigation~2 case study. Across
+these scenarios, the same record format and plugin-based processing chain
+connected ROS~2 topics, service events, and action progress to reusable
+checking components in both integrated and split deployments.
+\endgroup
