@@ -7,6 +7,19 @@
 chain from a YAML spec. Used by both the ROS2 monitor side (`MonitorNode`)
 and the verdict-side runner (`verdict_runner`). This module is deliberately
 free of rclpy imports so it can run on a verdict box without ROS2 installed.
+
+The chain is built from two composable halves so the converter and the
+verdict service can optionally run in *separate* processes/hosts:
+
+  * `build_converter_stage` — the `ConverterExporter` that turns DataRecords
+    into DSL-ready records and forwards them to a downstream Dispatcher.
+  * `build_verdict_stage`   — the `dsl_dispatcher` that consumes DSL-ready
+    records and runs the `VerdictExporter` + verdict exporters.
+
+`build_converter_chain` simply wires the two together in-process. To split
+them across hosts, point the converter stage's downstream at a transport
+Exporter (see `dsl_transport`) and feed the verdict stage from a transport
+Source — that is exactly what `split_runner` does.
 """
 
 from __future__ import annotations
@@ -94,26 +107,26 @@ def _build_verdict_dispatcher(
     return dispatcher
 
 
-def build_converter_chain(
+def build_verdict_stage(
     spec: ConverterSpec,
     output_dir: str,
     session_id: str,
     logger: Any,
-) -> tuple[Exporter, Dispatcher] | None:
-    """Build one DSL chain from a YAML spec entry.
+) -> tuple[Dispatcher, Dispatcher] | None:
+    """Build the verdict half of a DSL chain.
 
-    Returns the `ConverterExporter` (to be registered on the raw
-    DataRecord dispatcher) plus the `Dispatcher[Verdict]` carrying the
-    chain's verdict exporters — caller closes it on shutdown. Returns
-    None if the spec is malformed or any class fails to resolve.
+    Returns `(dsl_dispatcher, verdict_dispatcher)`:
+      * `dsl_dispatcher` — a `Dispatcher[Any]` that consumes DSL-ready
+        records (those a paired converter produces) and runs the
+        `VerdictExporter`. Feed it from an in-process `ConverterExporter`
+        *or* from a transport Source carrying DSL records across hosts.
+      * `verdict_dispatcher` — the `Dispatcher[Verdict]` of this chain's
+        verdict exporters; caller closes it on shutdown.
 
-    The `logger` parameter accepts either an rclpy logger or a stdlib
-    `logging.Logger` — only `.info()` and `.error()` are called.
+    Returns None if the verdict section is missing or any class fails to
+    resolve / instantiate.
     """
-    converter_type = spec.type
-    if not converter_type:
-        logger.error(f"Converter spec missing 'type'; skipping: {spec.raw}")
-        return None
+    converter_type = spec.type or "?"
 
     verdict_spec = spec.verdict
     if verdict_spec is None or not verdict_spec.type:
@@ -121,17 +134,6 @@ def build_converter_chain(
             f"Converter '{converter_type}' must include a 'verdict' "
             f"section with a 'type'; skipping."
         )
-        return None
-
-    try:
-        conv_cls = resolve_converter_class(converter_type)
-    except (KeyError, ImportError, AttributeError, TypeError, ValueError) as ex:
-        logger.error(f"Cannot resolve converter '{converter_type}': {ex}")
-        return None
-    try:
-        converter = conv_cls(**spec.kwargs)
-    except Exception as ex:
-        logger.error(f"Failed to build converter '{converter_type}': {ex}")
         return None
 
     try:
@@ -175,6 +177,48 @@ def build_converter_chain(
             )
         )
 
+    logger.info(
+        f"Verdict stage enabled: {converter_type} -> {verdict_spec.type} "
+        f"({verdict_dispatcher.size} verdict exporter(s))"
+    )
+    return dsl_dispatcher, verdict_dispatcher
+
+
+def build_converter_stage(
+    spec: ConverterSpec,
+    downstream: Dispatcher,
+    logger: Any,
+) -> Exporter | None:
+    """Build the converter half of a DSL chain.
+
+    Returns the `ConverterExporter` (optionally wrapped by the `inputs:`
+    source filter) to register on the raw DataRecord dispatcher. It converts
+    each DataRecord into a DSL-ready record and forwards it to `downstream`.
+
+    `downstream` is whatever consumes DSL records: the in-process
+    `dsl_dispatcher` from `build_verdict_stage` (combined deployment) or a
+    `Dispatcher[Any]` wrapping a transport Exporter that ships DSL records to
+    a remote verdict host (split deployment). It must be a `Dispatcher`
+    because `ConverterExporter` flushes/closes it via `flush_all`/`close_all`.
+
+    Returns None if the spec is malformed or the converter fails to resolve.
+    """
+    converter_type = spec.type
+    if not converter_type:
+        logger.error(f"Converter spec missing 'type'; skipping: {spec.raw}")
+        return None
+
+    try:
+        conv_cls = resolve_converter_class(converter_type)
+    except (KeyError, ImportError, AttributeError, TypeError, ValueError) as ex:
+        logger.error(f"Cannot resolve converter '{converter_type}': {ex}")
+        return None
+    try:
+        converter = conv_cls(**spec.kwargs)
+    except Exception as ex:
+        logger.error(f"Failed to build converter '{converter_type}': {ex}")
+        return None
+
     inputs = spec.inputs
     if inputs is not None:
         if not isinstance(inputs, list) or not all(isinstance(s, str) for s in inputs):
@@ -190,16 +234,47 @@ def build_converter_chain(
             )
             return None
         outer: Exporter = _SourceFilteredExporter(
-            ConverterExporter(converter, dsl_dispatcher),
+            ConverterExporter(converter, downstream),
             allowed_sources=set(inputs),
         )
         input_note = f" inputs={inputs}"
     else:
-        outer = ConverterExporter(converter, dsl_dispatcher)
+        outer = ConverterExporter(converter, downstream)
         input_note = " inputs=<all>"
 
-    logger.info(
-        f"Converter chain enabled: {converter_type} -> {verdict_spec.type}"
-        f"{input_note} ({verdict_dispatcher.size} verdict exporter(s))"
-    )
+    logger.info(f"Converter stage enabled: {converter_type}{input_note}")
+    return outer
+
+
+def build_converter_chain(
+    spec: ConverterSpec,
+    output_dir: str,
+    session_id: str,
+    logger: Any,
+) -> tuple[Exporter, Dispatcher] | None:
+    """Build one in-process DSL chain (converter + verdict) from a YAML spec.
+
+    Returns the `ConverterExporter` (to be registered on the raw DataRecord
+    dispatcher) plus the `Dispatcher[Verdict]` carrying the chain's verdict
+    exporters — caller closes it on shutdown. Returns None if the spec is
+    malformed or any class fails to resolve.
+
+    This is just the in-process composition of `build_verdict_stage` and
+    `build_converter_stage`; to run the two halves on separate hosts, call
+    those builders directly (see `split_runner`).
+
+    The `logger` parameter accepts either an rclpy logger or a stdlib
+    `logging.Logger` — only `.info()` and `.error()` are called.
+    """
+    stage = build_verdict_stage(spec, output_dir, session_id, logger)
+    if stage is None:
+        return None
+    dsl_dispatcher, verdict_dispatcher = stage
+
+    outer = build_converter_stage(spec, dsl_dispatcher, logger)
+    if outer is None:
+        dsl_dispatcher.close_all()
+        verdict_dispatcher.close_all()
+        return None
+
     return outer, verdict_dispatcher

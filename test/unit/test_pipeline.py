@@ -15,8 +15,12 @@ import pytest
 
 from config_model import ConverterSpec
 from data_record import DataRecord
-from exporter import Dispatcher
-from pipeline import build_converter_chain
+from exporter import Dispatcher, Exporter
+from pipeline import (
+    build_converter_chain,
+    build_converter_stage,
+    build_verdict_stage,
+)
 
 
 @pytest.fixture
@@ -207,6 +211,72 @@ def test_inputs_wrong_type_rejected(logger, tmp_path):
     }
     spec = ConverterSpec.from_dict(spec)
     assert build_converter_chain(spec, str(tmp_path), "S", logger) is None
+
+
+def test_converter_stage_feeds_arbitrary_downstream(logger):
+    """The converter half can run detached from the verdict half: it forwards
+    DSL records to *any* downstream Dispatcher (here a capturing one standing
+    in for a network transport)."""
+    captured: list = []
+
+    class _Capture(Exporter):
+        def export(self, record) -> None:
+            captured.append(record)
+
+    downstream: Dispatcher = Dispatcher(label="capture")
+    downstream.add(_Capture())
+
+    spec = ConverterSpec.from_dict({
+        "type": "custom.rule_based_converter:RuleBasedConverter",
+        "source_match": "^/odom$",
+        "field_map": {"velocity": "twist.twist.linear.x"},
+        "property_id": "speed",
+    })
+    outer = build_converter_stage(spec, downstream, logger)
+    assert outer is not None
+
+    raw: Dispatcher = Dispatcher(label="raw")
+    raw.add(outer)
+    raw.export(DataRecord.from_topic_msg(
+        session_id="S", topic_name="/odom",
+        msg_type="nav_msgs/msg/Odometry",
+        data={"twist.twist.linear.x": 0.4}, seq=1,
+    ))
+
+    assert len(captured) == 1
+    assert captured[0]["velocity"] == 0.4
+    assert captured[0]["_property_id"] == "speed"
+
+
+def test_verdict_stage_consumes_transported_dsl_record(logger, tmp_path):
+    """The verdict half can run from a DSL record alone (as if it arrived over
+    a transport), with no converter in the process."""
+    spec = ConverterSpec.from_dict({
+        "type": "custom.rule_based_converter:RuleBasedConverter",
+        "verdict": {
+            "type": "custom.threshold_verdict:ThresholdVerdict",
+            "property_id": "speed",
+            "field": "velocity",
+            "op": ">",
+            "threshold": 0.2,
+            "sustain_sec": 0.0,
+            "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
+        },
+    })
+    stage = build_verdict_stage(spec, str(tmp_path), "S", logger)
+    assert stage is not None
+    dsl_dispatcher, verdict_dispatcher = stage
+
+    # Hand the verdict stage a DSL record directly — the shape a converter on
+    # another host would have published.
+    dsl_dispatcher.export({"velocity": 0.4, "_property_id": "speed", "_timestamp": 1.0})
+    verdict_dispatcher.close_all()
+    dsl_dispatcher.close_all()
+
+    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
+    assert len(out) == 1
+    assert '"property_id": "speed"' in out[0]
+    assert '"result": false' in out[0]
 
 
 def test_unknown_verdict_exporter_type_returns_none(logger, tmp_path):

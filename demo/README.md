@@ -4,6 +4,7 @@
 |---|---|
 | `deploy_mode1` | Traditional robot-side all-in-one |
 | `deploy_mode2` | Orchestrated split monitor/verifier on host network |
+| `deploy_split_converter_verdict` | Three-host split: collector \| converter \| verdict |
 | `deploy_mode3` | Orchestrated split network topology |
 | `nav2_compatible_local` | Nav2-interface-compatible local monitoring |
 | `deploy_mode4_hybrid` | Local and central verification in parallel |

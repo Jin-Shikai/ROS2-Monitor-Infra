@@ -88,6 +88,8 @@ class ConverterSpec:
     verdict: VerdictSpec | None
     inputs: list[str] | None = None
     output: str | None = None
+    dsl_transport: dict[str, Any] | None = None
+    record_transport: dict[str, Any] | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -95,7 +97,10 @@ class ConverterSpec:
         raw = dict(data or {})
         kwargs = {
             k: v for k, v in raw.items()
-            if k not in {"type", "verdict", "output", "inputs"}
+            if k not in {
+                "type", "verdict", "output", "inputs",
+                "dsl_transport", "record_transport",
+            }
         }
         return cls(
             type=str(raw.get("type", "")),
@@ -103,6 +108,8 @@ class ConverterSpec:
             verdict=VerdictSpec.from_dict(raw.get("verdict")),
             inputs=raw.get("inputs"),
             output=raw.get("output"),
+            dsl_transport=raw.get("dsl_transport"),
+            record_transport=raw.get("record_transport"),
             raw=raw,
         )
 

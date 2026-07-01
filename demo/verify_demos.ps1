@@ -7,6 +7,7 @@ $ErrorActionPreference = "Stop"
 $cases = @(
     @{ Name = "deploy_mode1"; Pattern = "odom_speed_limit" },
     @{ Name = "deploy_mode2"; Pattern = "odom_speed_limit" },
+    @{ Name = "deploy_split_converter_verdict"; Pattern = "odom_speed_limit" },
     @{ Name = "nav2_compatible_local"; Pattern = "nav2_cmd_vel_speed_limit" },
     @{ Name = "deploy_mode3"; Pattern = "odom_speed_limit" },
     @{ Name = "deploy_mode4_hybrid"; Pattern = "odom_speed_limit" },
