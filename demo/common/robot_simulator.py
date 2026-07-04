@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Small ROS2 publisher for self-contained deployment demos.
 
-Each named scenario has fixed, visible semantics and changes phase every
+Each named scenario has fixed, visible input values and changes phase every
 three seconds. ROS names and namespaces are set with normal ROS remapping
 arguments, for example:
 
@@ -69,20 +69,17 @@ class DemoRobot(Node):
 def scenario_state(scenario: str, phase: int) -> tuple[float, float, float, str]:
     if scenario == "speed-limit-cycle":
         speed = 0.4 if phase == 0 else 0.2
-        state = "VIOLATION" if phase == 0 else "CLEAR"
-        return speed, 0.2, 0.0, f"{state}: /odom speed = {speed:.1f} m/s"
+        return speed, 0.2, 0.0, f"PUBLISH: /odom speed = {speed:.1f} m/s"
 
     if scenario == "cmd-velocity-cycle":
-        speed = 0.45 if phase == 0 else 0.2
-        state = "VIOLATION" if phase == 0 else "CLEAR"
-        return 0.2, speed, 0.0, f"{state}: /cmd_vel speed = {speed:.2f} m/s"
+        speed = 1.85 if phase == 0 else 0.2
+        return 0.2, speed, 0.0, f"PUBLISH: /cmd_vel linear.x = {speed:.2f} m/s"
 
     if scenario == "stationary-origin":
-        return 0.0, 0.0, 0.0, "REFERENCE: robot remains at x = 0.0 m"
+        return 0.0, 0.0, 0.0, "PUBLISH: robot x = 0.0 m"
 
     distance = 0.5 if phase == 0 else 1.5
-    state = "VIOLATION" if phase == 0 else "CLEAR"
-    return 0.0, 0.0, distance, f"{state}: distance from origin = {distance:.1f} m"
+    return 0.0, 0.0, distance, f"PUBLISH: robot x = {distance:.1f} m"
 
 
 def main() -> None:

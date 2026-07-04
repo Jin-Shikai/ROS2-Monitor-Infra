@@ -22,8 +22,9 @@ robot, then verifies the resulting file in a separate process.
 
 Shared demo fixtures live under `demo/common/`. `robot_simulator.py` provides
 four fixed, named scenarios rather than a collection of behavior switches.
-Each monitored property repeatedly alternates between violation and recovery,
-so the logs remain active and the test meaning is visible.
+Each synthetic robot repeatedly alternates input values around the configured
+property thresholds, so monitor-generated verdict logs remain active and the
+test meaning is visible.
 
 Run the self-contained suite from PowerShell:
 

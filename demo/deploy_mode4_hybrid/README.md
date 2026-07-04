@@ -8,5 +8,6 @@ docker compose -f demo/deploy_mode4_hybrid/docker-compose.yml up --build
 ```
 
 The `speed-limit-cycle` scenario alternates `/odom` speed every three seconds.
-Expected result: matching violation and recovery verdicts continue to appear
-in both `robot_and_monitor` and `central_verifier` logs.
+The robot only publishes values; expected monitor result: matching violation
+and recovery verdicts continue to appear in both `robot_and_monitor` and
+`central_verifier` logs.

@@ -32,7 +32,7 @@ services:
     tty: true
 
   # Converter host: subscribe raw DataRecords, run converters, publish DSL records.
-  split_converter:
+  converter_host:
     build:
       context: ../..
       dockerfile: Dockerfile
@@ -40,21 +40,21 @@ services:
     depends_on:
       - mosquitto
     environment:
-      - MONITOR_CONFIG=/demo/deploy_split_converter_verdict/split_config.yaml
-      - SPLIT_RUNNER_LOG=INFO
+      - MONITOR_CONFIG=/demo/deploy_split_converter_verdict/converter_config.yaml
+      - NODE_RUNNER_LOG=INFO
     volumes:
       - ../../monitor:/monitor
       - ../../custom:/monitor/custom
       - ../../demo/deploy_split_converter_verdict:/demo/deploy_split_converter_verdict:ro
     command: >
       /bin/bash -lc
-      "python3 /monitor/split_runner.py --role converter
-       --config /demo/deploy_split_converter_verdict/split_config.yaml"
+      "python3 /monitor/node_runner.py
+       --config /demo/deploy_split_converter_verdict/converter_config.yaml"
     stdin_open: true
     tty: true
 
   # Verdict host: subscribe DSL records, run verdict services, emit verdicts.
-  split_verdict:
+  verdict_host:
     build:
       context: ../..
       dockerfile: Dockerfile
@@ -62,8 +62,8 @@ services:
     depends_on:
       - mosquitto
     environment:
-      - MONITOR_CONFIG=/demo/deploy_split_converter_verdict/split_config.yaml
-      - SPLIT_RUNNER_LOG=INFO
+      - MONITOR_CONFIG=/demo/deploy_split_converter_verdict/verdict_config.yaml
+      - NODE_RUNNER_LOG=INFO
     volumes:
       - ../../monitor:/monitor
       - ../../custom:/monitor/custom
@@ -71,7 +71,7 @@ services:
       - ../../output/split/verifier:/output/verifier
     command: >
       /bin/bash -lc
-      "python3 /monitor/split_runner.py --role verdict
-       --config /demo/deploy_split_converter_verdict/split_config.yaml"
+      "python3 /monitor/node_runner.py
+       --config /demo/deploy_split_converter_verdict/verdict_config.yaml"
     stdin_open: true
     tty: true

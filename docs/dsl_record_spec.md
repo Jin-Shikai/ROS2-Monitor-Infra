@@ -2,8 +2,8 @@
 
 > Version: 1.0 — 2026-06-29
 > Producer: `DataConverter.convert()` (`monitor/converter.py`)
-> Consumers: `VerdictService.evaluate()` (`monitor/verdict.py`), the optional
-> `converters[*].output` archive, and the split transport (`monitor/dsl_transport.py`)
+> Consumers: `VerdictService.evaluate()` (`monitor/verdict.py`) and the dsl
+> transport endpoints (`monitor/dsl_transport.py`)
 
 ## Overview
 
@@ -24,10 +24,12 @@ Returning `None` from `convert()` drops the record (wrong source, missing
 field, nothing to evaluate); see `ConverterExporter` in `monitor/converter.py`.
 
 This record is normally an in-process object handed straight to the verdict
-stage. When the converter and verdict run on different hosts
-(`split_runner`, see [config_spec.md](config_spec.md#split_runner)), it is
-serialized to JSON, sent over MQTT, and parsed back into a dict on the verdict
-host — so the schema here is also the **wire contract** for that split.
+stage. When the converter and verdict run on different hosts (a dsl
+`outputs:` endpoint on one side, a dsl `inputs:` endpoint on the other; see
+[config_spec.md](config_spec.md#transport-endpoints-inputs--outputs)), it is
+serialized to JSON, sent over MQTT or a shared JSONL file, and parsed back
+into a dict on the verdict host — so the schema here is also the **wire
+contract** for that split.
 
 ---
 
@@ -130,6 +132,8 @@ named for what the verdict service reads. The verdict service's configured
 | `custom.odom_speed_converter:OdomSpeedConverter` | `speed` |
 | `custom.nav2_case1...:CmdVelSpeedConverter` | `speed` |
 | `custom.fleet_distance:FleetDistanceConverter` | `distance` |
+| `custom.relative_speed:RelativeSpeedConverter` | `relative_speed` |
+| `custom.stale_watchdog:StaleWatchdogConverter` | `silent_sec` (self-scheduled) |
 
 ---
 
@@ -154,9 +158,9 @@ upstream `record_id` format.
 
 | Path | Serialization |
 |---|---|
-| In-process (`monitor_node`, `verdict_runner`) | None — the dict object is passed directly to the verdict stage. |
-| `converters[*].output` archive | `FileExporter` writes one JSON line per record (`record.to_json()` if present, else `json.dumps(record, default=str)`). |
-| Cross-host (`split_runner` via `dsl_transport`) | `DslRecordMQTTExporter` publishes `json.dumps(record, default=str, ensure_ascii=False)`; `DslRecordMQTTSource` parses it back with `json.loads` into a dict. |
+| In-process (`monitor_node`, `node_runner`) | None — the dict object is passed directly to the verdict stage. |
+| dsl `file` endpoint (archive or cross-host link) | `DslRecordFileExporter` writes one JSON line per record; `DslRecordFileSource` parses lines back with `json.loads` (optionally tailing with `follow: true`). |
+| dsl `mqtt` endpoint (cross-host link) | `DslRecordMQTTExporter` publishes `json.dumps(record, default=str, ensure_ascii=False)`; `DslRecordMQTTSource` parses it back with `json.loads` into a dict. |
 
 Implications for cross-host splits:
 
@@ -167,8 +171,8 @@ Implications for cross-host splits:
   read them back.
 - Tuples become arrays, dict keys become strings, etc. (standard JSON
   semantics).
-- One MQTT topic carries one chain's records; give each converter a distinct
-  `dsl_transport.topic` so every verdict stage receives only its own records.
+- One MQTT topic (or file) carries one link's records; give each dsl output a
+  distinct `topic`/`path` so every verdict stage receives only its own records.
 
 ---
 

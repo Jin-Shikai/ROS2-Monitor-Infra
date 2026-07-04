@@ -61,10 +61,16 @@ exporters:
   - type: file
 
 converters:
-  - type: custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter
-    inputs: ["/cmd_vel"]
-    verdict:
-      type: custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict
-      exporters:
-        - type: file
-          path: verdicts_{session_id}.jsonl
+  - id: cmd_vel_speed
+    type: custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter
+
+verdict_services:
+  - id: cmd_vel_check
+    type: custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict
+    exporters:
+      - type: file
+        path: verdicts_{session_id}.jsonl
+
+links:
+  - {from: "source:/cmd_vel", to: "converter:cmd_vel_speed"}
+  - {from: "converter:cmd_vel_speed", to: "verdict:cmd_vel_check"}

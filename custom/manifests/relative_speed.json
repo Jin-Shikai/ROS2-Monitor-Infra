@@ -1,0 +1,39 @@
+{
+  "id": "relative_speed",
+  "kind": "converter",
+  "name": "Relative Speed Converter",
+  "class_path": "custom.relative_speed:RelativeSpeedConverter",
+  "params": [
+    {
+      "key": "robot_a",
+      "label": "Robot A namespace",
+      "type": "string",
+      "required": true,
+      "default": "/robot1"
+    },
+    {
+      "key": "robot_b",
+      "label": "Robot B namespace",
+      "type": "string",
+      "required": true,
+      "default": "/robot2"
+    },
+    {
+      "key": "components",
+      "label": "Velocity components",
+      "type": "json",
+      "required": false,
+      "default": [
+        "twist.twist.linear.x",
+        "twist.twist.linear.y"
+      ]
+    },
+    {
+      "key": "property_id",
+      "label": "Property ID",
+      "type": "string",
+      "required": false,
+      "default": "fleet_relative_speed"
+    }
+  ]
+}

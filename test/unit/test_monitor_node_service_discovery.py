@@ -14,6 +14,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from config_model import MonitoredSourceSpec
+
+pytest.importorskip("rclpy")
+
 import monitor_node
 from monitor_node import MonitorNode
 

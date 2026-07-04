@@ -30,3 +30,31 @@ def test_file_replay_source_reads_jsonl(tmp_path):
         time.sleep(0.01)
     source.stop()
     assert out.items[0].source_name == "/odom"
+
+
+def test_file_replay_source_follow_reads_appended_records(tmp_path):
+    import time
+    from data_record import DataRecord
+
+    path = tmp_path / "records.jsonl"
+    record = DataRecord.from_topic_msg(
+        session_id="S", topic_name="/odom", msg_type="m", data={"v": 1}, seq=1,
+    )
+
+    received = []
+
+    class Sink:
+        def export(self, r):
+            received.append(r)
+
+    source = FileReplaySource(path=str(path), follow=True, poll_sec=0.05)
+    source.start(Sink())
+    try:
+        path.write_text(record.to_json() + "\n")
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and not received:
+            time.sleep(0.02)
+    finally:
+        source.stop()
+    assert len(received) == 1
+    assert received[0].source_name == "/odom"

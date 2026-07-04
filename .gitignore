@@ -18,3 +18,5 @@ demo*
 CLAUDE*
 
 output/
+.DS_Store
+generated/

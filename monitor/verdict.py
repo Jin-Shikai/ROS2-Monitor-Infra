@@ -22,9 +22,10 @@ user-defined) are configured per YAML.
 
 from __future__ import annotations
 
+import json
+import threading
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-import json
 from typing import Any
 
 from exporter import Exporter, StdoutExporter
@@ -81,12 +82,16 @@ class VerdictExporter(Exporter[Any]):
     ):
         self.service = service
         self.exporter = exporter or StdoutExporter[Verdict](label="Verdict")
+        # A stateful service may be fed by several converter chains (and their
+        # timer threads); serialize evaluate() calls.
+        self._lock = threading.Lock()
 
     def export(self, record: Any) -> None:
-        verdict = self.service.evaluate(record)
-        if verdict is not None:
-            _attach_correlation(verdict, record)
-            self.exporter.export(verdict)
+        with self._lock:
+            verdict = self.service.evaluate(record)
+            if verdict is not None:
+                _attach_correlation(verdict, record)
+                self.exporter.export(verdict)
 
 
 def _attach_correlation(verdict: Verdict, record: Any) -> None:

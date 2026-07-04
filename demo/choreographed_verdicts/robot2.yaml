@@ -6,16 +6,19 @@ topics:
       - type: FieldExtractor
         fields: [twist.twist.linear.x]
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
-    inputs: [/robot2/odom]
-    source_match: "^/robot2/odom$"
-    field_map: {speed: twist.twist.linear.x}
-    verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
+  - id: robot2_speed
+    type: custom.rule_based_converter:RuleBasedConverter
+    params:
+      source_match: "^/robot2/odom$"
+      field_map: {speed: twist.twist.linear.x}
       property_id: robot2_local_speed
-      field: speed
-      op: ">"
-      threshold: 0.30
-      exporters:
-        - {type: stdout}
-        - {type: mqtt, broker: mosquitto, topic: local/robot2/speed}
+verdict_services:
+  - id: robot2_check
+    type: custom.threshold_verdict:ThresholdVerdict
+    params: {property_id: robot2_local_speed, field: speed, op: ">", threshold: 0.30}
+    exporters:
+      - {type: stdout}
+      - {type: mqtt, broker: mosquitto, topic: local/robot2/speed}
+links:
+  - {from: "source:/robot2/odom", to: "converter:robot2_speed"}
+  - {from: "converter:robot2_speed", to: "verdict:robot2_check"}

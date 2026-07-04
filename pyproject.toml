@@ -12,7 +12,7 @@ dependencies = [
 
 [tool.pytest.ini_options]
 testpaths = ["test/unit"]
-pythonpath = ["monitor"]
+pythonpath = ["monitor", "."]
 addopts = "-ra"
 
 [tool.pyright]

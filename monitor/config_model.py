@@ -1,4 +1,4 @@
-"""Typed YAML configuration shapes used by the monitor and verdict runner."""
+"""Typed YAML configuration shapes used by monitor_node and node_runner."""
 
 from __future__ import annotations
 
@@ -46,11 +46,31 @@ class TransformerSpec(PluginSpec):
 
 
 @dataclass(frozen=True)
-class SourceSpec(PluginSpec):
+class EndpointSpec:
+    """One inbound (`inputs:`) or outbound (`outputs:`) transport endpoint.
+
+    `payload` selects the wire format: `records` carries DataRecords, `dsl`
+    carries converter-produced DSL records. `type` is a built-in transport
+    name (mqtt, file) or `module.path:ClassName`.
+    """
+
+    id: str
+    payload: str
+    type: str
+    kwargs: dict[str, Any] = field(default_factory=dict)
+    raw: dict[str, Any] = field(default_factory=dict)
+
     @classmethod
-    def from_dict(cls, data: dict[str, Any] | None) -> "SourceSpec":
-        type_name, kwargs, raw = _plugin_parts(data)
-        return cls(type=type_name, kwargs=kwargs, raw=raw)
+    def from_dict(cls, data: dict[str, Any] | None, index: int = 0) -> "EndpointSpec":
+        raw = dict(data or {})
+        reserved = {"id", "payload", "type"}
+        return cls(
+            id=str(raw.get("id") or f"endpoint_{index}"),
+            payload=str(raw.get("payload", "records")),
+            type=str(raw.get("type", "")),
+            kwargs={k: v for k, v in raw.items() if k not in reserved},
+            raw=raw,
+        )
 
 
 @dataclass(frozen=True)
@@ -58,6 +78,7 @@ class VerdictSpec:
     type: str
     kwargs: dict[str, Any]
     exporters: list[ExporterSpec]
+    id: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -65,18 +86,22 @@ class VerdictSpec:
         if not data:
             return None
         raw = dict(data)
+        params_raw = raw.get("params")
+        params = params_raw if isinstance(params_raw, dict) else {}
         exporters = [
             ExporterSpec.from_dict(e)
             for e in list(raw.get("exporters") or [])
         ]
         kwargs = {
             k: v for k, v in raw.items()
-            if k not in {"type", "exporters"}
+            if k not in {"id", "type", "params", "exporters"}
         }
+        kwargs.update(params)
         return cls(
             type=str(raw.get("type", "")),
             kwargs=kwargs,
             exporters=exporters,
+            id=str(raw.get("id")) if raw.get("id") is not None else None,
             raw=raw,
         )
 
@@ -85,31 +110,43 @@ class VerdictSpec:
 class ConverterSpec:
     type: str
     kwargs: dict[str, Any]
-    verdict: VerdictSpec | None
+    id: str | None = None
     inputs: list[str] | None = None
-    output: str | None = None
-    dsl_transport: dict[str, Any] | None = None
-    record_transport: dict[str, Any] | None = None
     raw: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "ConverterSpec":
         raw = dict(data or {})
+        params_raw = raw.get("params")
+        params = params_raw if isinstance(params_raw, dict) else {}
         kwargs = {
             k: v for k, v in raw.items()
-            if k not in {
-                "type", "verdict", "output", "inputs",
-                "dsl_transport", "record_transport",
-            }
+            if k not in {"id", "type", "params", "inputs"}
         }
+        kwargs.update(params)
         return cls(
             type=str(raw.get("type", "")),
             kwargs=kwargs,
-            verdict=VerdictSpec.from_dict(raw.get("verdict")),
+            id=str(raw.get("id")) if raw.get("id") is not None else None,
             inputs=raw.get("inputs"),
-            output=raw.get("output"),
-            dsl_transport=raw.get("dsl_transport"),
-            record_transport=raw.get("record_transport"),
+            raw=raw,
+        )
+
+
+@dataclass(frozen=True)
+class RuntimeLinkSpec:
+    from_ref: str
+    to_ref: str
+    id: str | None = None
+    raw: dict[str, Any] = field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> "RuntimeLinkSpec":
+        raw = dict(data or {})
+        return cls(
+            from_ref=str(raw.get("from") or raw.get("from_ref") or ""),
+            to_ref=str(raw.get("to") or raw.get("to_ref") or ""),
+            id=str(raw.get("id")) if raw.get("id") is not None else None,
             raw=raw,
         )
 
@@ -144,6 +181,30 @@ class MonitoredSourceSpec:
         )
 
 
+def _graph_fields(raw: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "converters": [
+            ConverterSpec.from_dict(c)
+            for c in list(raw.get("converters") or [])
+        ],
+        "verdict_services": [
+            v for v in (
+                VerdictSpec.from_dict(s)
+                for s in list(raw.get("verdict_services") or [])
+            )
+            if v is not None
+        ],
+        "links": [
+            RuntimeLinkSpec.from_dict(l)
+            for l in list(raw.get("links") or [])
+        ],
+        "outputs": [
+            EndpointSpec.from_dict(o, index)
+            for index, o in enumerate(list(raw.get("outputs") or []), start=1)
+        ],
+    }
+
+
 @dataclass
 class MonitorConfig:
     raw: dict[str, Any]
@@ -154,6 +215,9 @@ class MonitorConfig:
     actions: list[MonitoredSourceSpec] = field(default_factory=list)
     exporters: list[ExporterSpec] = field(default_factory=list)
     converters: list[ConverterSpec] = field(default_factory=list)
+    verdict_services: list[VerdictSpec] = field(default_factory=list)
+    links: list[RuntimeLinkSpec] = field(default_factory=list)
+    outputs: list[EndpointSpec] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "MonitorConfig":
@@ -179,10 +243,7 @@ class MonitorConfig:
                 ExporterSpec.from_dict(e)
                 for e in list(raw.get("exporters") or [])
             ],
-            converters=[
-                ConverterSpec.from_dict(c)
-                for c in list(raw.get("converters") or [])
-            ],
+            **_graph_fields(raw),
         )
 
     @classmethod
@@ -194,22 +255,23 @@ class MonitorConfig:
 @dataclass
 class RunnerConfig:
     output_dir: str
-    converters: list[ConverterSpec]
-    source: SourceSpec | None = None
+    inputs: list[EndpointSpec] = field(default_factory=list)
+    converters: list[ConverterSpec] = field(default_factory=list)
+    verdict_services: list[VerdictSpec] = field(default_factory=list)
+    links: list[RuntimeLinkSpec] = field(default_factory=list)
+    outputs: list[EndpointSpec] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "RunnerConfig":
         raw = dict(data or {})
         monitor = raw.get("monitor", {}) or {}
-        runner = raw.get("verdict_runner", {}) or {}
-        source_raw = runner.get("source")
         return cls(
             output_dir=monitor.get("output_dir", "./output"),
-            converters=[
-                ConverterSpec.from_dict(c)
-                for c in list(raw.get("converters") or [])
+            inputs=[
+                EndpointSpec.from_dict(i, index)
+                for index, i in enumerate(list(raw.get("inputs") or []), start=1)
             ],
-            source=SourceSpec.from_dict(source_raw) if source_raw else None,
+            **_graph_fields(raw),
         )
 
     @classmethod

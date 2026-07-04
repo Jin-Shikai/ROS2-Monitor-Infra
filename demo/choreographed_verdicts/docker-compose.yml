@@ -32,4 +32,4 @@ services:
       - ../../custom:/monitor/custom
       - ./aggregator.yaml:/demo/aggregator.yaml:ro
       - ../../output/choreographed:/output
-    command: python3 /monitor/verdict_runner.py -c /demo/aggregator.yaml
+    command: python3 /monitor/node_runner.py -c /demo/aggregator.yaml

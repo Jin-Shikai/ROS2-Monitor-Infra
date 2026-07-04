@@ -32,4 +32,4 @@ services:
       - ../../custom:/monitor/custom
       - ./verifier.yaml:/demo/verifier.yaml:ro
       - ../../output/multi_robot_orchestrated:/output
-    command: python3 /monitor/verdict_runner.py -c /demo/verifier.yaml
+    command: python3 /monitor/node_runner.py -c /demo/verifier.yaml

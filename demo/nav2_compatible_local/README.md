@@ -13,7 +13,8 @@ For a broader real-Nav2 setup including `/amcl_pose`, `/plan`, and
 docker compose -f demo/nav2_compatible_local/docker-compose.yml up --build
 ```
 
-The `cmd-velocity-cycle` scenario alternates `/cmd_vel` between `0.45` and
-`0.2 m/s` every three seconds. Expected result: repeating
+The `cmd-velocity-cycle` scenario alternates `/cmd_vel` between `1.85` and
+`0.2 m/s` every three seconds. The robot only publishes values; expected
+monitor result: repeating
 `nav2_cmd_vel_speed_limit` violation and recovery verdicts in stdout and
 `output/nav2_compatible_local/verdicts_*.jsonl`.

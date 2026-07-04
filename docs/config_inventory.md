@@ -11,7 +11,7 @@ every configurable field have documented values and meaning:
 - the concrete configuration files were not inventoried;
 - several fields had a type but no supported-value or validity constraints;
 - constructor arguments of the project-shipped `custom.*` plugins were absent;
-- DSL adaptation existed only inside a long design/TODO document;
+- DSL adaptation previously existed only inside a long design note;
 - no algorithm described how runtime YAML could be generated.
 
 After this audit, the documentation set is:
@@ -56,7 +56,8 @@ All files in this table use the schema in [config_spec.md](config_spec.md).
 | `demo/deploy_mode2/robot_config.yaml` | Robot-side collection and MQTT export using host networking. |
 | `demo/deploy_mode2/verifier_config.yaml` | Central MQTT ingestion and verdict evaluation using host networking. |
 | `demo/deploy_split_converter_verdict/robot_config.yaml` | Robot-side collection and MQTT export for the three-host converter/verdict split. |
-| `demo/deploy_split_converter_verdict/split_config.yaml` | Shared `split_runner` config: `--role converter` publishes DSL records, `--role verdict` consumes them. |
+| `demo/deploy_split_converter_verdict/converter_config.yaml` | Converter-host `node_runner` config: records input, converter, dsl output. |
+| `demo/deploy_split_converter_verdict/verdict_config.yaml` | Verdict-host `node_runner` config: dsl input routed to the verdict service. |
 | `demo/deploy_mode3/robot_config.yaml` | Robot-side collection and MQTT export through a published broker port. |
 | `demo/deploy_mode3/verifier_config.yaml` | Central MQTT ingestion and verdict evaluation through the Compose network. |
 | `demo/deploy_mode4_hybrid/robot_config.yaml` | Hybrid deployment's robot-side local evaluation and raw export. |
@@ -92,9 +93,18 @@ them. A constructor error causes that chain to be skipped.
 | same | `require_all` | bool | no | `false` | If true, drop a record when any mapped field is missing; otherwise drop only when none are found. |
 | `custom.fleet_distance:FleetDistanceConverter` | `robot_a` | ROS namespace string | yes | none | First robot namespace; trailing slash is removed. |
 | same | `robot_b` | ROS namespace string | yes | none | Second robot namespace; trailing slash is removed. |
+| `custom.relative_speed:RelativeSpeedConverter` | `robot_a` | ROS namespace string | yes | none | First robot namespace; joins `<robot>/odom` streams. |
+| same | `robot_b` | ROS namespace string | yes | none | Second robot namespace. |
+| same | `components` | list of dot-path strings | no | odom planar velocity | Velocity components compared between the robots. |
+| same | `property_id` | string | no | `fleet_relative_speed` | `_property_id` tag on emitted records. |
+| `custom.stale_watchdog:StaleWatchdogConverter` | `timeout_sec` | number `> 0` | yes | none | Silence duration after which the watchdog emits; uses the converter lifecycle (`start`/`stop`) with its own timer thread. |
+| same | `property_id` | string | no | `source_liveness` | `_property_id` tag on emitted records. |
+| same | `check_interval_sec` | number `> 0` | no | `timeout_sec / 4` | Timer poll interval. |
 | `custom.verdict_aggregation:LocalViolationCountConverter` | none | - | - | - | Counts currently violating local-verdict sources. |
 | `custom.odom_speed_converter:OdomSpeedConverter` | none | - | - | - | Fixed demo converter for `/odom` and `twist.twist.linear.x`. |
 | `custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter` | none | - | - | - | Extracts `twist.linear.x`; normally paired with `inputs: ["/cmd_vel"]`. |
+| `custom.demo1_velocity_converter:Demo1VelocityConverter` | `speed_path` | dot-path string | no | `linear.x` | Demo dashboard converter field to read. |
+| same | `output_field` | string | no | `speed` | DSL record key to write. |
 
 ### Verdict Services
 
@@ -109,6 +119,11 @@ them. A constructor error causes that chain to be skipped.
 | `custom.verdict_aggregation:SimultaneousLocalViolationsVerdict` | `minimum_count` | integer; `>= 1` recommended | no | `2` | Violation occurs when at least this many local sources violate. |
 | `custom.odom_speed_verdict:OdomSpeedVerdict` | none | - | - | - | Fixed demo limit: `/odom` speed greater than `0.30 m/s`. |
 | `custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict` | none | - | - | - | Fixed demo limit: command speed greater than `0.30 m/s`. |
+| `custom.demo1_speeding_check:Demo1SpeedingCheck` | `check` | string key present in the DSL record | no | `speed` | DSL field this demo verdict reads. |
+| same | `op` | one of `>`, `>=`, `<`, `<=`, `==`, `!=` | no | `>` | Comparison operator. |
+| same | `value` | number convertible to float | no | `0.5` | Right-hand comparison value. |
+| same | `property_id` | string | no | `demo1_speeding` | Identifier written into emitted verdicts. |
+| same | `emit_recovery` | bool | no | `true` | Whether to emit a passing verdict when the condition clears. |
 
 ### Custom Sources
 
@@ -126,13 +141,11 @@ them. A constructor error causes that chain to be skipped.
   values are accepted during YAML parsing and fail only while components are
   constructed or started.
 - `monitor.session_id_prefix` may appear in a verifier-only file, but
-  `RunnerConfig` ignores it and `verdict_runner` generates its own session id.
+  `RunnerConfig` ignores it and `node_runner` generates its own session id.
 - `actions[*].phases` silently ignores unsupported strings.
 - The generation algorithm's core projection is implemented in
   `monitor/config_gen.py`: it maps a deployment JSON request (hosts / runtimes /
-  links) onto the runtime YAML parsed by `MonitorConfig` / `RunnerConfig`. Plugin
-  class references and constructor arguments are currently carried explicitly in
-  the request. A small machine-readable manifest per `custom/` package and a
-  generated JSON Schema remain future work — the manifest would let the
-  generator discover those plugin class paths and constructor arguments
-  automatically instead of having them written into each request.
+  links) onto the runtime YAML parsed by `MonitorConfig` / `RunnerConfig`.
+  Dashboard plugin metadata is described by the machine-readable manifests under
+  `custom/manifests/`; generated runtime YAML still carries explicit class paths
+  and constructor arguments for reproducibility.

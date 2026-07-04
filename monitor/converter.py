@@ -1,21 +1,23 @@
 """Data Converter layer — framework abstractions only.
 
-A DataConverter turns a DataRecord into a DSL-ready record (any type) suitable
-for a paired VerdictService. The framework supplies only the abstract base
-class and the transport adapter (`ConverterExporter`). Real DSL converters
-(LTL, STL, CTL, ...) live outside the framework — see `custom/` for example
-implementations and the YAML config form (`module.path:ClassName`).
+A DataConverter turns a DataRecord into either a DSL-ready record (any type,
+consumed by a VerdictService) or a derived DataRecord (consumed by a
+downstream converter). The framework supplies only the abstract base class
+and the transport adapter (`ConverterExporter`). Real converters live outside
+the framework — see `custom/` for example implementations and the YAML config
+form (`module.path:ClassName`).
 
-ConverterExporter is the bridge that lets a Converter participate in the
-generic Dispatcher transport layer:
-
-  Dispatcher[DataRecord] -> ConverterExporter -> Dispatcher[Any] -> VerdictExporter
+Besides the reactive `convert()` path, a converter may override
+`start(emit)` / `stop()` to produce records on its own schedule (timers,
+windows, watchdogs). `emit` accepts the same values `convert()` may return
+and is safe to call from any thread.
 """
 
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Callable
 
 from data_record import DataRecord
 from exporter import Dispatcher, Exporter
@@ -23,7 +25,7 @@ from plugins import resolve_plugin_class
 
 
 class DataConverter(ABC):
-    """Convert a DataRecord into a DSL-ready record.
+    """Convert a DataRecord into a DSL-ready record or a derived DataRecord.
 
     Return None to drop the record (e.g. it doesn't match this converter's
     source filter, or it lacks required fields).
@@ -34,30 +36,50 @@ class DataConverter(ABC):
     @abstractmethod
     def convert(self, record: DataRecord) -> Any | None: ...
 
+    def start(self, emit: Callable[[Any], None]) -> None:
+        """Called once after wiring. Override and keep `emit` to produce
+        records outside the `convert()` callback (timers, watchdogs)."""
+
+    def stop(self) -> None:
+        """Called once on shutdown. Override to cancel timers/threads."""
+
 
 class ConverterExporter(Exporter[DataRecord]):
     """Adapter: presents a (DataConverter + downstream Dispatcher) pair as an
-    Exporter[DataRecord], so it can be plugged into the raw dispatcher.
+    Exporter, so it can be plugged into the raw record dispatcher.
 
     Session bookend records (`session_start` / `session_end`) are skipped.
+    `convert()` calls and self-scheduled `emit()` calls are serialized by one
+    lock, so converter state and this chain's downstream never see concurrent
+    access.
     """
 
     def __init__(self, converter: DataConverter, downstream: Dispatcher):
         self.converter = converter
         self.downstream = downstream
+        self._lock = threading.Lock()
+        self.converter.start(self._emit)
 
-    def export(self, record: DataRecord) -> None:
-        if record._type != "data":
-            return
-        result = self.converter.convert(record)
+    def _emit(self, result: Any) -> None:
         if result is None:
             return
-        self.downstream.export(result)
+        with self._lock:
+            self.downstream.export(result)
+
+    def export(self, record: Any) -> None:
+        if isinstance(record, DataRecord) and record._type != "data":
+            return
+        with self._lock:
+            result = self.converter.convert(record)
+            if result is None:
+                return
+            self.downstream.export(result)
 
     def flush(self) -> None:
         self.downstream.flush_all()
 
     def close(self) -> None:
+        self.converter.stop()
         self.downstream.close_all()
 
 

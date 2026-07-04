@@ -1,0 +1,32 @@
+{
+  "id": "speed_aggregate_filter",
+  "kind": "converter",
+  "name": "Speed Aggregate Filter",
+  "class_path": "custom.speed_aggregate_filter:SpeedAggregateFilter",
+  "params": [
+    {
+      "key": "components",
+      "label": "Components",
+      "type": "json",
+      "required": false,
+      "default": [
+        "twist.twist.linear.x",
+        "twist.twist.linear.y"
+      ]
+    },
+    {
+      "key": "output_field",
+      "label": "Output field",
+      "type": "string",
+      "required": false,
+      "default": "speed"
+    },
+    {
+      "key": "property_id",
+      "label": "Property ID",
+      "type": "string",
+      "required": false,
+      "default": "linear_speed"
+    }
+  ]
+}

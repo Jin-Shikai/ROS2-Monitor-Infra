@@ -32,7 +32,7 @@ services:
     stdin_open: true
     tty: true
 
-  verdict_runner:
+  node_runner:
     build:
       context: ../..
       dockerfile: Dockerfile
@@ -48,6 +48,6 @@ services:
       - ../../output/mode3/verifier:/output/verifier
     command: >
       /bin/bash -lc
-      "python3 /monitor/verdict_runner.py --config /demo/deploy_mode3/verifier_config.yaml"
+      "python3 /monitor/node_runner.py --config /demo/deploy_mode3/verifier_config.yaml"
     stdin_open: true
     tty: true

@@ -1,6 +1,6 @@
 # Configuration Specification
 
-> Version: 1.2 - 2026-06-15
+> Version: 2.0 - 2026-07-04
 > Implementation: `monitor/config_model.py`
 > Default example: `monitor/config.yaml`
 
@@ -20,11 +20,16 @@ Value descriptions distinguish between:
 
 The configuration is a YAML document consumed by these entrypoints:
 
-| Entrypoint | Reads |
-|---|---|
-| `monitor/monitor_node.py` | `monitor`, `topics`, `services`, `actions`, `exporters`, `converters` |
-| `monitor/verdict_runner.py` | `monitor.output_dir`, `verdict_runner.source`, `converters` |
-| `monitor/split_runner.py` | `monitor.output_dir`, `verdict_runner.source` (converter/filter roles), `converters` incl. `converters[*].dsl_transport` (converter/verdict roles) and `converters[*].record_transport` (filter role) |
+| Entrypoint | Reads | Needs ROS2 |
+|---|---|---|
+| `monitor/monitor_node.py` | `monitor`, `topics`, `services`, `actions`, `exporters`, `converters`, `verdict_services`, `outputs`, `links` | yes |
+| `monitor/node_runner.py` | `monitor.output_dir`, `inputs`, `converters`, `verdict_services`, `outputs`, `links` | no |
+
+`monitor_node` collects records from the ROS graph; `node_runner` receives
+them (or DSL records) through `inputs:` endpoints. Both run the same
+evaluation graph, so what a host does is decided entirely by its YAML — a
+single `node_runner` process can be a filter relay, a converter half, a
+verdict half, or any mix.
 
 Plugin-like blocks share this shape:
 
@@ -33,11 +38,13 @@ type: short_name_or_module.path:ClassName
 ...: plugin constructor kwargs
 ```
 
-The exact `type` format depends on the block: exporters and sources accept
-short built-in names or `module.path:ClassName`; converters and verdict
-services currently require `module.path:ClassName`; transformers currently use
-the built-in names listed below. Sibling keys become constructor keyword
+The exact `type` format depends on the block: exporters, sources, and
+transport endpoints accept short built-in names or `module.path:ClassName`;
+converters and verdict services require `module.path:ClassName`; transformers
+use the built-in names listed below. Sibling keys become constructor keyword
 arguments unless listed as framework-reserved fields in this document.
+Converter and verdict blocks prefer an explicit `params:` mapping for
+constructor kwargs.
 
 ### Unknown and Unsupported Fields
 
@@ -45,8 +52,8 @@ arguments unless listed as framework-reserved fields in this document.
   ignored by the corresponding parsed model.
 - Unknown fields inside plugin-like blocks are passed as Python constructor
   keyword arguments. They are valid only if the selected plugin constructor
-  accepts them; otherwise component construction fails and the component or
-  converter chain is skipped.
+  accepts them; otherwise component construction fails and the component is
+  skipped.
 - The tables below define the YAML-supported fields of built-in plugins.
   Constructor-only dependency-injection arguments such as `client` and
   callable arguments such as `serialize` are intentionally excluded because
@@ -63,8 +70,11 @@ arguments unless listed as framework-reserved fields in this document.
 | `services` | list of `MonitoredSourceSpec` | no | `[]` | `monitor_node` | Service event collectors. |
 | `actions` | list of `MonitoredSourceSpec` | no | `[]` | `monitor_node` | Action feedback/status collectors. |
 | `exporters` | list of `ExporterSpec` | no | `[]` | `monitor_node` | Global DataRecord exporters. |
-| `verdict_runner` | mapping | yes for `verdict_runner`, no for `monitor_node` | `{}` | `verdict_runner` | Must contain `source` when running `verdict_runner`. |
-| `converters` | list of `ConverterSpec` | no | `[]` | both | Converter/verdict chains. Required in practice when verdict evaluation is expected. |
+| `inputs` | list of `EndpointSpec` | yes for `node_runner` | `[]` | `node_runner` | Inbound transport endpoints. |
+| `converters` | list of `ConverterSpec` | no | `[]` | both | Converter nodes. |
+| `verdict_services` | list of `VerdictSpec` | no | `[]` | both | Verdict-service nodes. |
+| `outputs` | list of `EndpointSpec` | no | `[]` | both | Outbound transport endpoints. |
+| `links` | list of link mappings | no | `[]` | both | Graph edges (see [`links`](#links)). |
 
 ## `monitor`
 
@@ -73,8 +83,8 @@ arguments unless listed as framework-reserved fields in this document.
 | `output_dir` | string path | no | `"./output"` | both | Base directory for relative file outputs. May be absolute or relative to the process working directory. The process must be able to create/write it. |
 | `session_id_prefix` | string | no | `""` | `monitor_node` | Prefix prepended to generated monitor session ids. Any string is accepted; use filesystem- and topic-safe characters because the value can appear in output names and evidence ids. |
 
-`verdict_runner` reads `monitor.output_dir` to resolve relative verdict and DSL
-archive paths. It generates its own verifier-side session id.
+`node_runner` reads `monitor.output_dir` to resolve relative verdict and DSL
+paths. It generates its own runner-side session id.
 
 Example:
 
@@ -123,13 +133,6 @@ topics:
 
 Services use only the common source fields.
 
-| Field | Type | Required | Default | Notes |
-|---|---|---:|---|---|
-| `name` | string | yes | none | Service name. |
-| `type` | string | no | discovered if active | Service type. |
-| `transformers` | list of `TransformerSpec` | no | `[]` | Per-service transformer chain. |
-| `exporters` | list of `ExporterSpec` | no | `[]` | Per-service DataRecord exporters. |
-
 The monitor subscribes to `/<service_name>/_service_event`; the service server
 must enable ROS2 service introspection for records to appear.
 
@@ -140,8 +143,6 @@ must enable ROS2 service introspection for records to appear.
 | `name` | string | yes | none | Action name. |
 | `type` | string | yes | none | Action type. Runtime skips entries without it. |
 | `phases` | non-empty list of strings | no | `["feedback", "status"]` | Hidden action topics to subscribe to. Supported values are exactly `feedback` and `status`; unknown values are ignored. An empty list currently also selects both defaults. |
-| `transformers` | list of `TransformerSpec` | no | `[]` | Per-action transformer chain. |
-| `exporters` | list of `ExporterSpec` | no | `[]` | Per-action DataRecord exporters. |
 
 Example:
 
@@ -155,8 +156,6 @@ actions:
 ## Transformers
 
 Each transformer entry is a `TransformerSpec`.
-
-### `TransformerSpec`
 
 | Field | Type | Required | Default | Notes |
 |---|---|---:|---|---|
@@ -184,7 +183,7 @@ global `exporters`.
 If there are no global exporters and no source-level exporters, `monitor_node`
 creates a default file exporter. If there is at least one source-level exporter
 and no global exporters, sources without their own exporters have no DataRecord
-output, though converter chains still receive their records.
+output, though the evaluation graph still receives their records.
 
 ### `ExporterSpec`
 
@@ -210,62 +209,186 @@ output, though converter chains still receive their records.
 | `mqtt` | `publish_bookends` | bool | no | `true` | If false, skips `session_start` and `session_end`. |
 | `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
-Example:
+## Evaluation Graph
 
-```yaml
-topics:
-  - name: /odom
-    type: nav_msgs/msg/Odometry
-    exporters:
-      - type: mqtt
-        broker: 127.0.0.1
-        port: 1883
-```
-
-## `converters`
-
-Each converter entry builds one independent chain:
+The runtime shape separates component configuration from routing. Nodes are
+declared under `inputs`, `converters`, `verdict_services`, and `outputs`;
+`links` wires them:
 
 ```text
-DataRecord -> DataConverter -> VerdictService -> Verdict exporters
+source:<DataRecord.source_name> -> converter:<id>     record selection
+input:<id>                      -> verdict:<id>       inbound dsl feed
+input:<id>                      -> output:<id>        dsl relay / archive
+converter:<id>                  -> converter:<id>     in-process chaining
+converter:<id>                  -> verdict:<id>       in-process evaluation
+converter:<id>                  -> output:<id>        outbound transport
 ```
+
+A converter can receive multiple sources and can fan out to multiple verdict
+services, downstream converters, and outputs. A stateful verdict service is
+instantiated once even if multiple converters (or inputs) feed it.
+`converter -> converter` links must not form a cycle; a cycle fails the whole
+graph with an error.
+
+A converter that only appears as the target of `converter -> converter` links
+(and declares no `source:` link or `inputs:` filter) is *chained-only*: it
+receives records exclusively from its upstream converter, not from the shared
+record stream.
 
 ### `ConverterSpec`
 
 | Field | Type | Required | Default | Notes |
 |---|---|---:|---|---|
+| `id` | string | yes for graph wiring | falls back to `type` | Stable node id referenced by links as `converter:<id>`. |
 | `type` | string | yes | none | `DataConverter` class as `module.path:ClassName`. Runtime skips entries with an empty or unresolvable type. |
-| `inputs` | non-empty list of strings | no | omitted, converter sees all records | Exact `DataRecord.source_name` filter applied before the converter. Empty lists and non-string elements cause the chain to be skipped. |
-| `output` | string | no | omitted, no DSL archive | Optional JSONL archive path for DSL-ready records. Relative paths resolve against `monitor.output_dir`; `{session_id}` is substituted. |
-| `verdict` | `VerdictSpec` | yes | none | Verdict service and verdict exporters. |
-| `dsl_transport` | mapping | no | omitted, in-process | Read only by `split_runner --role converter`/`verdict` (see [`split_runner`](#split_runner)). Names the MQTT topic that joins the converter and verdict halves when they run on separate hosts. Ignored by `monitor_node` and `verdict_runner`, which always run the chain in-process. |
-| `record_transport` | mapping | no | omitted | Read only by `split_runner --role filter` (see [`split_runner`](#split_runner)). Names the file or MQTT carrier a `data_filter` converter republishes `DataRecord`s through, so it can feed a downstream converter on another host. Ignored by every other entrypoint. |
-| other fields | any | depends on selected converter | none | Passed to the converter constructor. |
+| `params` | mapping | no | `{}` | Constructor kwargs for the converter. |
+| `inputs` | non-empty list of strings | no | derived from `source:*` links; omitted = all records | Exact `DataRecord.source_name` filter. `source:*` links take precedence when present. |
+| other fields | any | depends on selected converter | none | Also accepted as constructor kwargs; `params` is preferred. |
+
+A converter class may implement the optional lifecycle
+(`start(emit)` / `stop()`) to emit records on its own schedule in addition to
+the reactive `convert()` path — see
+[dsl_adaptation_guide.md](dsl_adaptation_guide.md).
+
+### `VerdictSpec` / `verdict_services`
+
+| Field | Type | Required | Default | Notes |
+|---|---|---:|---|---|
+| `id` | string | yes for graph wiring | falls back to `type` | Stable node id referenced by links as `verdict:<id>`. |
+| `type` | string | yes | none | `VerdictService` class as `module.path:ClassName`. Runtime skips entries with an empty or unresolvable type. |
+| `params` | mapping | no | `{}` | Constructor kwargs for the verdict service. |
+| `exporters` | list of `ExporterSpec` | no | `[]`, which means stdout fallback | Verdict output exporters. |
+| other fields | any | depends on selected verdict service | none | Also accepted as constructor kwargs; `params` is preferred. |
+
+### `links`
+
+| Field | Type | Required | Notes |
+|---|---|---:|---|
+| `id` | string | no | Human/debug identifier. |
+| `from` | string | yes | `source:<source_name>`, `input:<id>`, or `converter:<id>`. |
+| `to` | string | yes | `converter:<id>`, `verdict:<id>`, or `output:<id>`. |
 
 Example:
 
 ```yaml
 converters:
-  - type: custom.odom_speed_converter:OdomSpeedConverter
-    verdict:
-      type: custom.odom_speed_verdict:OdomSpeedVerdict
-      exporters:
-        - type: stdout
-        - type: file
-          path: verdicts_{session_id}.jsonl
+  - id: demo1-velocity-converter
+    type: custom.demo1_velocity_converter:Demo1VelocityConverter
+    params:
+      speed_path: linear.x
+
+verdict_services:
+  - id: demo1-speeding-check
+    type: custom.demo1_speeding_check:Demo1SpeedingCheck
+    params:
+      check: speed
+      op: ">"
+      value: 0.5
+    exporters:
+      - type: stdout
+      - type: file
+        path: verdicts_{session_id}.jsonl
+
+links:
+  - from: source:/cmd_vel
+    to: converter:demo1-velocity-converter
+  - from: converter:demo1-velocity-converter
+    to: verdict:demo1-speeding-check
 ```
 
-### `VerdictSpec`
+## Transport Endpoints (`inputs` / `outputs`)
+
+An `EndpointSpec` names one inbound or outbound transport. The `payload`
+selects the wire format, the `type` the carrier.
 
 | Field | Type | Required | Default | Notes |
 |---|---|---:|---|---|
-| `type` | string | yes | none | `VerdictService` class as `module.path:ClassName`. Runtime skips chains with an empty or unresolvable type. |
-| `exporters` | list of `ExporterSpec` | no | `[]`, which means stdout fallback | Verdict output exporters. |
-| other fields | any | depends on selected verdict service | none | Passed to the verdict service constructor. |
+| `id` | string | recommended | `endpoint_<n>` | Referenced by links as `input:<id>` / `output:<id>`. |
+| `payload` | string | no | `"records"` | `records` (DataRecords) or `dsl` (converter output). |
+| `type` | string | yes | none (outputs default: dsl→`mqtt`, records→`file`) | Built-in carrier name or `module.path:ClassName`. |
+| other fields | any | carrier-specific | see below | Passed to the carrier constructor. `{session_id}` is substituted in string kwargs of outputs. |
+
+Routing semantics:
+
+- **records inputs** all fan into the shared record stream; converters select
+  from it by source name. They are not link targets.
+- **dsl inputs** must be routed explicitly with `input:<id> -> verdict:<id>`
+  (or `-> output:<id>` for a relay/archive).
+- **outputs** receive whatever the linked converter (or input) emits: use
+  `payload: dsl` for converters returning DSL dicts, `payload: records` for
+  filter converters returning DataRecords.
+
+### Built-In Carrier Fields
+
+Records endpoints use the DataRecord transports:
+
+| Direction | Carrier | Field | Type | Required | Default | Notes |
+|---|---|---|---|---:|---|---|
+| input | `mqtt` | `broker` / `port` / `topic_filter` / `qos` / `keepalive` / `client_id` | — | no | `localhost` / `1883` / `monitor/#` / `1` / `60` / `""` | MQTT subscription. |
+| input | `file` | `path` | string | yes | none | JSONL file of serialized DataRecords. |
+| input | `file` | `interval_sec` | non-negative number | no | `0.0` | Delay between replayed records. |
+| input | `file` | `loop` | bool | no | `false` | Replay again after EOF. |
+| input | `file` | `follow` | bool | no | `false` | Keep reading appended lines (live cross-host file link). |
+| output | `mqtt` | same as DataRecord `mqtt` exporter | — | no | — | Records publish to `<topic_prefix><source_type>/<source_name>`. |
+| output | `file` | same as DataRecord `file` exporter | — | no | framework defaults | Appends `<output_dir>/<session_id><suffix>.jsonl`. |
+
+DSL endpoints use the DSL-record transports (payload schema in
+[dsl_record_spec.md](dsl_record_spec.md)):
+
+| Direction | Carrier | Field | Type | Required | Default | Notes |
+|---|---|---|---|---:|---|---|
+| both | `mqtt` | `topic` | string | yes | none | Single MQTT topic carrying the DSL records. Use a distinct topic per link. |
+| both | `mqtt` | `broker` / `port` / `qos` / `keepalive` / `client_id` | — | no | mqtt defaults | Connection settings. |
+| output | `file` | `path` | string | yes | none | JSONL path; relative paths resolve against `monitor.output_dir`. |
+| output | `file` | `flush_every` | int | no | `1` | Values lower than one are coerced to one. |
+| input | `file` | `path` | string | yes | none | JSONL path to read. |
+| input | `file` | `interval_sec` / `loop` / `follow` | — | no | `0.0` / `false` / `false` | Replay pacing / tail semantics, as for records. |
+
+Example (converter host and verdict host, joined by one MQTT topic):
+
+```yaml
+# converter host
+inputs:
+  - id: robot_feed
+    type: mqtt
+    topic_filter: monitor/#
+converters:
+  - id: odom_speed
+    type: custom.odom_speed_converter:OdomSpeedConverter
+outputs:
+  - id: dsl_out
+    payload: dsl
+    type: mqtt
+    topic: dsl/odom_speed
+links:
+  - {from: "converter:odom_speed", to: "output:dsl_out"}
+```
+
+```yaml
+# verdict host
+inputs:
+  - id: dsl_in
+    payload: dsl
+    type: mqtt
+    topic: dsl/odom_speed
+verdict_services:
+  - id: odom_speed_check
+    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    exporters:
+      - type: stdout
+links:
+  - {from: "input:dsl_in", to: "verdict:odom_speed_check"}
+```
+
+Run both with:
+
+```bash
+python monitor/node_runner.py -c <config>
+```
 
 ## Verdict Exporters
 
-Verdict exporters are declared under `converters[*].verdict.exporters`.
+Verdict exporters are declared under `verdict_services[*].exporters`.
 
 If `exporters` is omitted or empty, verdicts are printed to stdout by the
 default `VerdictExporter`.
@@ -285,150 +408,27 @@ default `VerdictExporter`.
 | `mqtt` | `max_queued_messages` | non-negative int | no | `1000` | Passed to paho's queue limit; `0` means unlimited in paho. |
 | `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
 
-All string kwargs under `verdict.exporters` support `{session_id}`
+All string kwargs under verdict exporters support `{session_id}`
 substitution. This session id is:
 
 | Runtime | `{session_id}` value |
 |---|---|
-| `monitor_node` integrated mode | Monitor session id. |
-| `verdict_runner` split mode | Verifier runner session id. |
-
-## `verdict_runner`
-
-| Field | Type | Required | Default | Notes |
-|---|---|---:|---|---|
-| `source` | `SourceSpec` | yes when running `verdict_runner` | none | Inbound DataRecord transport. |
-
-Example:
-
-```yaml
-verdict_runner:
-  source:
-    type: mqtt
-    broker: 127.0.0.1
-    topic_filter: monitor/#
-```
-
-### `SourceSpec`
-
-| Field | Type | Required | Default | Notes |
-|---|---|---:|---|---|
-| `type` | string | yes | none | Built-in source name or `module.path:ClassName`. `verdict_runner` exits if missing or unresolvable. |
-| other fields | any | depends on selected source | source-specific | Passed to the source constructor. |
-
-### Built-In Source Fields
-
-| Source | Field | Type | Required | Default | Notes |
-|---|---|---|---:|---|---|
-| `file` | `path` | string | yes | none | JSONL file containing serialized DataRecords. |
-| `file` | `interval_sec` | non-negative number | no | `0.0` | Delay between replayed records. Negative values are coerced to `0.0`. |
-| `file` | `loop` | bool | no | `false` | Replay again after EOF. |
-| `mqtt` | `broker` | string | no | `"localhost"` | MQTT broker host. |
-| `mqtt` | `port` | int | no | `1883` | MQTT broker port; use `1..65535`. |
-| `mqtt` | `topic_filter` | string | no | `"monitor/#"` | MQTT subscription filter. |
-| `mqtt` | `qos` | int enum | no | `1` | MQTT subscribe QoS: `0`, `1`, or `2`. |
-| `mqtt` | `keepalive` | non-negative int | no | `60` | MQTT keepalive seconds. |
-| `mqtt` | `client_id` | string | no | `""` | MQTT client id. |
-
-## `split_runner`
-
-`monitor/split_runner.py` runs the converter half and the verdict half of one
-or more chains as **separate processes**, joined by an MQTT DSL-record
-transport. `verdict_runner` always runs both halves in-process; `split_runner`
-is the entrypoint that lets them live on different hosts.
-
-It reuses the same YAML; the converter half and the verdict half each read only
-what they need, so the same file can be deployed to both hosts. Select the half
-with `--role`:
-
-| `--role` | Reads | Behavior |
-|---|---|---|
-| `converter` | `verdict_runner.source`, `converters[*].{type, inputs, dsl_transport, kwargs}` | Consumes DataRecords from `verdict_runner.source`, runs each converter, and publishes its DSL records to that converter's `dsl_transport` topic. |
-| `verdict` | `monitor.output_dir`, `converters[*].{dsl_transport, output, verdict}` | Subscribes to each converter's `dsl_transport` topic and runs the paired verdict stage (`VerdictService` + verdict exporters). |
-| `filter` | `verdict_runner.source`, `converters[*].{type, inputs, record_transport, kwargs}` | Consumes DataRecords from `verdict_runner.source`, runs each converter, and **republishes DataRecords** through that converter's `record_transport`. This is the converter→converter seam: a `data_filter` converter (one that returns a `DataRecord`, not a DSL dict) feeds a downstream converter on another host, which reads the same carrier as an ordinary source. |
-
-A converter without a `dsl_transport` block is skipped by `--role converter` /
-`--role verdict`; one without a `record_transport` block is skipped by
-`--role filter`. Use `verdict_runner` for in-process chains.
-
-### `dsl_transport` fields
-
-The transported payload is the converter's DSL-ready record; see
-[dsl_record_spec.md](dsl_record_spec.md) for its schema.
-
-| Field | Type | Required | Default | Notes |
-|---|---|---:|---|---|
-| `topic` | string | yes | none | MQTT topic carrying this chain's DSL records. Use a distinct topic per converter so each verdict stage receives only its own records. |
-| `broker` | string | no | `"localhost"` | MQTT broker host. |
-| `port` | int | no | `1883` | MQTT broker port; use `1..65535`. |
-| `qos` | int enum | no | `1` | MQTT publish/subscribe QoS: `0`, `1`, or `2`. |
-| `keepalive` | non-negative int | no | `60` | MQTT keepalive seconds. |
-
-### `record_transport` fields
-
-Read only by `--role filter`. The transported payload is a `DataRecord` (the
-same wire form as a monitor feed), so a `data_filter` converter can chain into a
-downstream converter. The `kind` selects the carrier; the downstream host reads
-the same namespace with an ordinary `mqtt` or `file` source.
-
-| Field | Type | Required | Default | Notes |
-|---|---|---:|---|---|
-| `kind` | string | no | `"mqtt"` | Carrier: `mqtt` or `file`. |
-| `topic_prefix` | string | `kind=mqtt`: yes | none | MQTT topic prefix the filtered DataRecords are republished under (e.g. `filtered/`). Use a namespace distinct from the upstream feed. Records publish to `<topic_prefix><source_type>/<source_name>`; the downstream `mqtt` source uses `topic_filter: <topic_prefix>#`. |
-| `output_dir` | string | `kind=file`: yes | none | Directory the filtered DataRecords are appended to as JSONL. The downstream `file` source reads `<output_dir>/<session_id>.jsonl`. |
-| `session_id` | string | `kind=file`: yes | none | Stem of the shared JSONL file. |
-| `broker` / `port` / `qos` / `keepalive` | — | no | mqtt defaults | MQTT connection fields (`kind=mqtt` only). |
-
-`monitor/config_gen.py` fills these from a `records` link between two converters,
-choosing `mqtt` or `file` from the link's `transport.kind` and deriving a shared
-namespace from the link id so the filter output and the downstream source always
-agree. DSL links remain MQTT-only (there is no file-based DSL transport); the
-generator rejects `kind: file` on a `dsl` link with an explicit error.
-
-Example (one file, deployed to both the converter and verdict hosts):
-
-```yaml
-monitor:
-  output_dir: /output/verifier
-
-verdict_runner:
-  source:                       # read by --role converter
-    type: mqtt
-    broker: 127.0.0.1
-    topic_filter: monitor/#
-
-converters:
-  - type: custom.odom_speed_converter:OdomSpeedConverter
-    dsl_transport:              # the seam between the two hosts
-      broker: 127.0.0.1
-      topic: dsl/odom_speed
-    verdict:                    # run by --role verdict
-      type: custom.odom_speed_verdict:OdomSpeedVerdict
-      exporters:
-        - type: stdout
-        - type: file
-          path: verdicts_{session_id}.jsonl
-```
-
-Run (`demo/deploy_split_converter_verdict` is the worked example):
-
-```bash
-python monitor/split_runner.py --role verdict   -c <config>
-python monitor/split_runner.py --role converter -c <config>
-```
+| `monitor_node` | Monitor session id. |
+| `node_runner` | Runner session id. |
 
 ## Parsed Model Reference
 
 | Dataclass | Source YAML | Defaults |
 |---|---|---|
 | `MonitorConfig` | Full YAML for `monitor_node` | See top-level and `monitor` tables. |
-| `RunnerConfig` | Full YAML for `verdict_runner` and `split_runner` | `output_dir="./output"`, `converters=[]`, `source=None`. |
+| `RunnerConfig` | Full YAML for `node_runner` | `output_dir="./output"`, all lists empty. |
 | `MonitoredSourceSpec` | Entries under `topics`, `services`, `actions` | `transformers=[]`, `exporters=[]`, `qos=None`, `phases=None`. |
 | `TransformerSpec` | Entries under source `transformers` | `kwargs={}`, `raw={}`. |
 | `ExporterSpec` | DataRecord exporters and verdict exporters | `kwargs={}`, `raw={}`. |
-| `ConverterSpec` | Entries under `converters` | `inputs=None`, `output=None`, `dsl_transport=None`, `record_transport=None`. |
-| `VerdictSpec` | Nested `verdict` blocks | `exporters=[]`. |
-| `SourceSpec` | `verdict_runner.source` | `kwargs={}`, `raw={}`. |
+| `EndpointSpec` | Entries under `inputs` and `outputs` | `payload="records"`, `kwargs={}`. |
+| `ConverterSpec` | Entries under `converters` | `inputs=None`. |
+| `VerdictSpec` | Entries under `verdict_services` | `exporters=[]`. |
+| `RuntimeLinkSpec` | Entries under `links` | `id=None`. |
 
 Each plugin spec retains:
 
@@ -453,14 +453,21 @@ topics:
       - type: file
 
 converters:
-  - type: custom.odom_speed_converter:OdomSpeedConverter
-    verdict:
-      type: custom.odom_speed_verdict:OdomSpeedVerdict
-      exporters:
-        - type: stdout
+  - id: odom_speed
+    type: custom.odom_speed_converter:OdomSpeedConverter
+
+verdict_services:
+  - id: odom_speed_check
+    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    exporters:
+      - type: stdout
+
+links:
+  - {from: "source:/odom", to: "converter:odom_speed"}
+  - {from: "converter:odom_speed", to: "verdict:odom_speed_check"}
 ```
 
-### Split Monitor / Verdict Runner
+### Split Monitor / Node Runner
 
 Robot-side monitor:
 
@@ -483,17 +490,23 @@ Verifier-side runner:
 monitor:
   output_dir: ./output/verifier
 
-verdict_runner:
-  source:
+inputs:
+  - id: robot_feed
     type: mqtt
     broker: broker.local
     topic_filter: monitor/robot1/#
 
 converters:
-  - type: custom.odom_speed_converter:OdomSpeedConverter
-    verdict:
-      type: custom.odom_speed_verdict:OdomSpeedVerdict
-      exporters:
-        - type: file
-          path: verdicts_{session_id}.jsonl
+  - id: odom_speed
+    type: custom.odom_speed_converter:OdomSpeedConverter
+
+verdict_services:
+  - id: odom_speed_check
+    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    exporters:
+      - type: file
+        path: verdicts_{session_id}.jsonl
+
+links:
+  - {from: "converter:odom_speed", to: "verdict:odom_speed_check"}
 ```

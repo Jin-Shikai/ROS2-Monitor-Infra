@@ -1,26 +1,16 @@
-"""Unit tests for monitor/pipeline.py — extracted DSL chain builder.
-
-These tests cover DSL chain construction plus a verdict-runner-side smoke
-test that drives a complete chain with a `Dispatcher[DataRecord]` standing
-in for the MonitorNode raw dispatcher.
-"""
+"""Unit tests for monitor/pipeline.py — the runtime graph builder."""
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
-from typing import Any, cast
 
 import pytest
 
-from config_model import ConverterSpec
+from config_model import ConverterSpec, EndpointSpec, RuntimeLinkSpec, VerdictSpec
 from data_record import DataRecord
-from exporter import Dispatcher, Exporter
-from pipeline import (
-    build_converter_chain,
-    build_converter_stage,
-    build_verdict_stage,
-)
+from pipeline import build_graph, build_verdict_stage
 
 
 @pytest.fixture
@@ -28,271 +18,218 @@ def logger():
     return logging.getLogger("test_pipeline")
 
 
-def test_missing_type_returns_none(logger, tmp_path):
-    spec = ConverterSpec.from_dict({})
-    assert build_converter_chain(spec, str(tmp_path), "sid", logger) is None
+def _converter(data: dict) -> ConverterSpec:
+    return ConverterSpec.from_dict(data)
 
 
-def test_missing_verdict_section_returns_none(logger, tmp_path):
-    spec = {"type": "custom.rule_based_converter:RuleBasedConverter"}
-    spec = ConverterSpec.from_dict(spec)
-    assert build_converter_chain(spec, str(tmp_path), "sid", logger) is None
+def _verdict(data: dict) -> VerdictSpec:
+    spec = VerdictSpec.from_dict(data)
+    assert spec is not None
+    return spec
 
 
-def test_unresolvable_converter_returns_none(logger, tmp_path):
-    spec = {
-        "type": "no.such.module:Nope",
-        "verdict": {"type": "custom.threshold_verdict:ThresholdVerdict"},
-    }
-    spec = ConverterSpec.from_dict(spec)
-    assert build_converter_chain(spec, str(tmp_path), "sid", logger) is None
+def _links(*pairs: tuple[str, str]) -> list[RuntimeLinkSpec]:
+    return [RuntimeLinkSpec.from_dict({"from": f, "to": t}) for f, t in pairs]
+
+
+def _odom_record(value: float, seq: int = 1, topic: str = "/odom") -> DataRecord:
+    return DataRecord.from_topic_msg(
+        session_id="S", topic_name=topic, msg_type="nav_msgs/msg/Odometry",
+        data={"twist.twist.linear.x": value}, seq=seq,
+    )
+
+
+SPEED_CONVERTER = {
+    "id": "c1",
+    "type": "custom.speed_aggregate_filter:SpeedAggregateFilter",
+    "params": {"components": ["twist.twist.linear.x"], "output_field": "speed",
+               "property_id": "p"},
+}
+
+THRESHOLD_VERDICT = {
+    "id": "v1",
+    "type": "custom.threshold_verdict:ThresholdVerdict",
+    "params": {"property_id": "p", "field": "speed", "op": ">", "threshold": 0.2,
+               "sustain_sec": 0.0},
+    "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
+}
+
+
+def test_end_to_end_graph_writes_verdict_on_breach(logger, tmp_path):
+    rt = build_graph(
+        [_converter(SPEED_CONVERTER)],
+        [_verdict(THRESHOLD_VERDICT)],
+        _links(("source:/odom", "converter:c1"), ("converter:c1", "verdict:v1")),
+        [],
+        str(tmp_path), "S", logger,
+    )
+    assert rt is not None
+    rt.record_entry.export(_odom_record(0.4))
+    rt.close()
+
+    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
+    assert len(out) == 1
+    assert '"property_id": "p"' in out[0]
+    assert '"result": false' in out[0]
+
+
+def test_source_links_filter_other_sources(logger, tmp_path):
+    rt = build_graph(
+        [_converter(SPEED_CONVERTER)],
+        [_verdict(THRESHOLD_VERDICT)],
+        _links(("source:/odom", "converter:c1"), ("converter:c1", "verdict:v1")),
+        [],
+        str(tmp_path), "S", logger,
+    )
+    assert rt is not None
+    rt.record_entry.export(_odom_record(0.9, topic="/other"))
+    rt.record_entry.export(_odom_record(0.4, seq=2))
+    rt.close()
+
+    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
+    assert len(out) == 1
+
+
+def test_converter_without_target_is_skipped(logger, tmp_path):
+    rt = build_graph(
+        [_converter(SPEED_CONVERTER)],
+        [],
+        [],
+        [],
+        str(tmp_path), "S", logger,
+    )
+    assert rt is None
+
+
+def test_unresolvable_converter_is_skipped(logger, tmp_path):
+    rt = build_graph(
+        [_converter({"id": "bad", "type": "no.such.module:Nope"})],
+        [_verdict(THRESHOLD_VERDICT)],
+        _links(("converter:bad", "verdict:v1")),
+        [],
+        str(tmp_path), "S", logger,
+    )
+    assert rt is None
 
 
 def test_session_id_substituted_in_verdict_exporter_path(logger, tmp_path):
-    """`{session_id}` in any string kwarg of a verdict exporter spec
-    resolves against the chain's session id, and relative paths root
-    at `output_dir`."""
-    spec = {
-        "type": "custom.rule_based_converter:RuleBasedConverter",
-        "source_match": "^/odom$",
-        "field_map": {"velocity": "twist.twist.linear.x"},
-        "property_id": "p1",
-        "verdict": {
-            "type": "custom.threshold_verdict:ThresholdVerdict",
-            "property_id": "p1",
-            "field": "velocity",
-            "op": ">",
-            "threshold": 0.2,
-            "exporters": [
-                {"type": "file", "path": "verdicts_{session_id}.jsonl"},
-            ],
-        },
-    }
-    spec = ConverterSpec.from_dict(spec)
-    built = build_converter_chain(spec, str(tmp_path), "abc123", logger)
-    assert built is not None
-    _, verdict_dispatcher = built
-    exporters = verdict_dispatcher.exporters
-    assert len(exporters) == 1
-    assert cast(Any, exporters[0]).path == Path(tmp_path) / "verdicts_abc123.jsonl"
+    stage = build_verdict_stage(_verdict(THRESHOLD_VERDICT), str(tmp_path), "abc123", logger)
+    assert stage is not None
+    _, verdict_dispatcher = stage
+    assert verdict_dispatcher.exporters[0].path == Path(tmp_path) / "v_abc123.jsonl"
     verdict_dispatcher.close_all()
 
 
-def test_new_exporters_schema_with_file_and_stdout(logger, tmp_path):
-    """The new `verdict.exporters: [...]` schema builds one Exporter per
-    entry, fanning out via the Dispatcher[Verdict]."""
-    spec = {
-        "type": "custom.rule_based_converter:RuleBasedConverter",
-        "source_match": "^/odom$",
-        "field_map": {"velocity": "twist.twist.linear.x"},
-        "property_id": "p1",
-        "verdict": {
-            "type": "custom.threshold_verdict:ThresholdVerdict",
-            "property_id": "p1",
-            "field": "velocity",
-            "op": ">",
-            "threshold": 0.2,
-            "exporters": [
-                {"type": "file", "path": "v_{session_id}.jsonl"},
-                {"type": "stdout"},
-            ],
-        },
-    }
-    spec = ConverterSpec.from_dict(spec)
-    built = build_converter_chain(spec, str(tmp_path), "S", logger)
-    assert built is not None
-    _, verdict_dispatcher = built
-    assert verdict_dispatcher.size == 2
-    verdict_dispatcher.close_all()
-
-
-def test_end_to_end_chain_writes_verdict_on_breach(logger, tmp_path):
-    """Drive a record through the chain and confirm a violation Verdict
-    reaches the VerdictFileExporter."""
-    spec = {
-        "type": "custom.rule_based_converter:RuleBasedConverter",
-        "source_match": "^/odom$",
-        "field_map": {"velocity": "twist.twist.linear.x"},
-        "property_id": "speed",
-        "verdict": {
-            "type": "custom.threshold_verdict:ThresholdVerdict",
-            "property_id": "speed",
-            "field": "velocity",
-            "op": ">",
-            "threshold": 0.2,
-            "sustain_sec": 0.0,
-            "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
-        },
-    }
-    spec = ConverterSpec.from_dict(spec)
-    built = build_converter_chain(spec, str(tmp_path), "S", logger)
-    assert built is not None
-    converter_exporter, verdict_dispatcher = built
-
-    raw: Dispatcher = Dispatcher(label="raw")
-    raw.add(converter_exporter)
-
-    # Phase-2 FieldExtractor produces flat dot-keyed dicts.
-    rec = DataRecord.from_topic_msg(
-        session_id="S",
-        topic_name="/odom",
-        msg_type="nav_msgs/msg/Odometry",
-        data={"twist.twist.linear.x": 0.4},  # > 0.2 ⇒ violation
-        seq=1,
-    )
-    raw.export(rec)
-    verdict_dispatcher.close_all()
-
-    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
-    assert len(out) == 1
-    assert '"property_id": "speed"' in out[0]
-    assert '"result": false' in out[0]
-
-
-def test_inputs_filter_drops_other_sources(logger, tmp_path):
-    """A converter with `inputs: ["/cmd_vel"]` must not see /odom records."""
-    spec = {
-        "type": "custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter",
-        "inputs": ["/cmd_vel"],
-        "verdict": {
-            "type": "custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict",
-            "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
-        },
-    }
-    spec = ConverterSpec.from_dict(spec)
-    built = build_converter_chain(spec, str(tmp_path), "S", logger)
-    assert built is not None
-    outer, verdict_dispatcher = built
-
-    raw: Dispatcher = Dispatcher(label="raw")
-    raw.add(outer)
-
-    # /odom should be filtered out by inputs even though its data shape would
-    # otherwise match (twist.linear.x present).
-    raw.export(DataRecord.from_topic_msg(
-        session_id="S", topic_name="/odom",
-        msg_type="nav_msgs/msg/Odometry",
-        data={"twist.linear.x": 0.99}, seq=1,
-    ))
-    # /cmd_vel with a breach should fire.
-    raw.export(DataRecord.from_topic_msg(
-        session_id="S", topic_name="/cmd_vel",
-        msg_type="geometry_msgs/msg/Twist",
-        data={"twist.linear.x": 0.5}, seq=2,
-    ))
-    verdict_dispatcher.close_all()
-
-    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
-    assert len(out) == 1, f"expected exactly one verdict (from /cmd_vel), got {len(out)}"
-    assert '"value": 0.5' in out[0]
-
-
-def test_inputs_empty_list_rejected(logger, tmp_path):
-    spec = {
-        "type": "custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter",
-        "inputs": [],
-        "verdict": {
-            "type": "custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict",
-            "exporters": [{"type": "stdout"}],
-        },
-    }
-    spec = ConverterSpec.from_dict(spec)
-    assert build_converter_chain(spec, str(tmp_path), "S", logger) is None
-
-
-def test_inputs_wrong_type_rejected(logger, tmp_path):
-    spec = {
-        "type": "custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter",
-        "inputs": "/cmd_vel",  # must be a list, not a bare string
-        "verdict": {
-            "type": "custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict",
-            "exporters": [{"type": "stdout"}],
-        },
-    }
-    spec = ConverterSpec.from_dict(spec)
-    assert build_converter_chain(spec, str(tmp_path), "S", logger) is None
-
-
-def test_converter_stage_feeds_arbitrary_downstream(logger):
-    """The converter half can run detached from the verdict half: it forwards
-    DSL records to *any* downstream Dispatcher (here a capturing one standing
-    in for a network transport)."""
-    captured: list = []
-
-    class _Capture(Exporter):
-        def export(self, record) -> None:
-            captured.append(record)
-
-    downstream: Dispatcher = Dispatcher(label="capture")
-    downstream.add(_Capture())
-
-    spec = ConverterSpec.from_dict({
-        "type": "custom.rule_based_converter:RuleBasedConverter",
-        "source_match": "^/odom$",
-        "field_map": {"velocity": "twist.twist.linear.x"},
-        "property_id": "speed",
-    })
-    outer = build_converter_stage(spec, downstream, logger)
-    assert outer is not None
-
-    raw: Dispatcher = Dispatcher(label="raw")
-    raw.add(outer)
-    raw.export(DataRecord.from_topic_msg(
-        session_id="S", topic_name="/odom",
-        msg_type="nav_msgs/msg/Odometry",
-        data={"twist.twist.linear.x": 0.4}, seq=1,
-    ))
-
-    assert len(captured) == 1
-    assert captured[0]["velocity"] == 0.4
-    assert captured[0]["_property_id"] == "speed"
+def test_unknown_verdict_exporter_type_fails_stage(logger, tmp_path):
+    spec = _verdict({**THRESHOLD_VERDICT, "exporters": [{"type": "nope"}]})
+    assert build_verdict_stage(spec, str(tmp_path), "S", logger) is None
 
 
 def test_verdict_stage_consumes_transported_dsl_record(logger, tmp_path):
-    """The verdict half can run from a DSL record alone (as if it arrived over
-    a transport), with no converter in the process."""
-    spec = ConverterSpec.from_dict({
-        "type": "custom.rule_based_converter:RuleBasedConverter",
-        "verdict": {
-            "type": "custom.threshold_verdict:ThresholdVerdict",
-            "property_id": "speed",
-            "field": "velocity",
-            "op": ">",
-            "threshold": 0.2,
-            "sustain_sec": 0.0,
-            "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
-        },
-    })
-    stage = build_verdict_stage(spec, str(tmp_path), "S", logger)
-    assert stage is not None
-    dsl_dispatcher, verdict_dispatcher = stage
-
-    # Hand the verdict stage a DSL record directly — the shape a converter on
-    # another host would have published.
-    dsl_dispatcher.export({"velocity": 0.4, "_property_id": "speed", "_timestamp": 1.0})
-    verdict_dispatcher.close_all()
-    dsl_dispatcher.close_all()
+    """A verdict fed through input routing evaluates DSL records that arrived
+    over a transport, with no converter in the process."""
+    rt = build_graph(
+        [],
+        [_verdict(THRESHOLD_VERDICT)],
+        _links(("input:ext", "verdict:v1")),
+        [],
+        str(tmp_path), "S", logger,
+    )
+    assert rt is not None
+    rt.input_entries["ext"].export({"speed": 0.4, "_property_id": "p", "_timestamp": 1.0})
+    rt.close()
 
     out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
     assert len(out) == 1
-    assert '"property_id": "speed"' in out[0]
     assert '"result": false' in out[0]
 
 
-def test_unknown_verdict_exporter_type_returns_none(logger, tmp_path):
-    spec = {
+def test_converter_output_endpoint_archives_dsl(logger, tmp_path):
+    outputs = [EndpointSpec.from_dict(
+        {"id": "arch", "payload": "dsl", "type": "file", "path": "arch_{session_id}.jsonl"}, 1
+    )]
+    rt = build_graph(
+        [_converter(SPEED_CONVERTER)],
+        [],
+        _links(("converter:c1", "output:arch")),
+        outputs,
+        str(tmp_path), "S", logger,
+    )
+    assert rt is not None
+    rt.record_entry.export(_odom_record(0.4))
+    rt.close()
+
+    rows = [json.loads(l) for l in (tmp_path / "arch_S.jsonl").read_text().splitlines()]
+    assert rows[0]["speed"] == 0.4
+
+
+def test_converter_chaining_in_process(logger, tmp_path):
+    """data_filter -> dsl_converter -> verdict, all in one process."""
+    filter_spec = _converter({
+        "id": "f1",
+        "type": "custom.odom_speed_filter:OdomSpeedFilter",
+        "params": {"components": ["twist.twist.linear.x"], "output_field": "speed"},
+    })
+    dsl_spec = _converter({
+        "id": "c1",
         "type": "custom.rule_based_converter:RuleBasedConverter",
-        "source_match": "^/odom$",
-        "field_map": {"velocity": "twist.twist.linear.x"},
-        "property_id": "p1",
-        "verdict": {
-            "type": "custom.threshold_verdict:ThresholdVerdict",
-            "property_id": "p1",
-            "field": "velocity",
-            "op": ">",
-            "threshold": 0.2,
-            "exporters": [{"type": "nope"}],
-        },
-    }
-    spec = ConverterSpec.from_dict(spec)
-    assert build_converter_chain(spec, str(tmp_path), "S", logger) is None
+        "params": {"source_match": "^/odom$", "field_map": {"speed": "speed"},
+                   "property_id": "p"},
+    })
+    rt = build_graph(
+        [filter_spec, dsl_spec],
+        [_verdict(THRESHOLD_VERDICT)],
+        _links(
+            ("source:/odom", "converter:f1"),
+            ("converter:f1", "converter:c1"),
+            ("converter:c1", "verdict:v1"),
+        ),
+        [],
+        str(tmp_path), "S", logger,
+    )
+    assert rt is not None
+    # c1 is chained-only: it must not double-consume the raw stream.
+    rt.record_entry.export(_odom_record(0.4))
+    rt.close()
+
+    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
+    assert len(out) == 1
+    assert '"result": false' in out[0]
+
+
+def test_converter_cycle_fails_graph(logger, tmp_path):
+    a = _converter({"id": "a", "type": "custom.odom_speed_filter:OdomSpeedFilter"})
+    b = _converter({"id": "b", "type": "custom.odom_speed_filter:OdomSpeedFilter"})
+    rt = build_graph(
+        [a, b],
+        [],
+        _links(("converter:a", "converter:b"), ("converter:b", "converter:a")),
+        [],
+        str(tmp_path), "S", logger,
+    )
+    assert rt is None
+
+
+def test_verdict_shared_by_two_converters_instantiated_once(logger, tmp_path):
+    c2 = dict(SPEED_CONVERTER, id="c2")
+    rt = build_graph(
+        [_converter(SPEED_CONVERTER), _converter(c2)],
+        [_verdict(THRESHOLD_VERDICT)],
+        _links(
+            ("source:/odom", "converter:c1"),
+            ("source:/cmd_vel", "converter:c2"),
+            ("converter:c1", "verdict:v1"),
+            ("converter:c2", "verdict:v1"),
+        ),
+        [],
+        str(tmp_path), "S", logger,
+    )
+    assert rt is not None
+    # ThresholdVerdict is edge-triggered: a second breach via the other
+    # converter must not re-fire because the same instance holds state.
+    rt.record_entry.export(_odom_record(0.4, topic="/odom"))
+    rt.record_entry.export(_odom_record(0.5, seq=2, topic="/cmd_vel"))
+    rt.close()
+
+    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
+    assert len(out) == 1

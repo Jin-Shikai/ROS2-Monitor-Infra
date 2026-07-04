@@ -186,7 +186,8 @@ class ServiceCollector(DataCollector):
 class ActionCollector(DataCollector):
     """Subscribe to action feedback and/or status hidden topics.
 
-    goal/result/cancel require server-side introspection and are deferred.
+    This collector supports feedback and status phases. Goal/result/cancel
+    phases require server-side introspection and are not collected here.
     """
 
     def __init__(

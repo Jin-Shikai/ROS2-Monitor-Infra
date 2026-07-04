@@ -9,10 +9,11 @@ The Compose case is self-testing: it starts
 `demo/common/robot_simulator.py` in the same container, monitors the robot's
 `/odom` motion, and switches its speed every three seconds:
 
-- `0.4 m/s`: above the `0.3 m/s` limit, emitting `result=false`
-- `0.2 m/s`: below the limit, emitting a clearing `result=true`
+- `0.4 m/s`: above the `0.3 m/s` limit
+- `0.2 m/s`: below the limit
 
-The verdict service emits only when the property state changes, so the log
+The robot only publishes values. The verdict service emits only when the
+property state changes, so the monitor log
 alternates between violation and recovery instead of printing at 10 Hz.
 
 ## Run

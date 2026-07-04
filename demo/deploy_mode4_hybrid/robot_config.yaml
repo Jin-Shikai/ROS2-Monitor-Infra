@@ -12,10 +12,15 @@ topics:
         broker: mosquitto
         topic_prefix: monitor/robot1/
 converters:
-  - type: custom.odom_speed_converter:OdomSpeedConverter
-    verdict:
-      type: custom.odom_speed_verdict:OdomSpeedVerdict
-      exporters:
-        - type: stdout
-        - type: file
-          path: local_verdicts_{session_id}.jsonl
+  - id: odom_speed
+    type: custom.odom_speed_converter:OdomSpeedConverter
+verdict_services:
+  - id: local_check
+    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    exporters:
+      - type: stdout
+      - type: file
+        path: local_verdicts_{session_id}.jsonl
+links:
+  - {from: "source:/odom", to: "converter:odom_speed"}
+  - {from: "converter:odom_speed", to: "verdict:local_check"}

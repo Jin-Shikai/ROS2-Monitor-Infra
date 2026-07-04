@@ -21,7 +21,7 @@ import rclpy
 from rclpy.node import Node
 
 from config_model import MonitorConfig, MonitoredSourceSpec
-from data_record import DataRecord, generate_session_id
+from data_record import generate_session_id
 from collector import (
     CollectorManager,
     TopicCollector,
@@ -49,9 +49,6 @@ class MonitorNode(Node):
 
         self.runtime = MonitorRuntime(config, self.session_id, log)
         self.dispatcher = self.runtime.dispatcher
-        self._converter_dispatcher = self.runtime.converter_dispatcher
-        self._source_dispatchers = self.runtime.source_dispatchers
-        self._verdict_dispatchers = self.runtime.verdict_dispatchers
         self.runtime.emit_session_start()
 
         self.manager = CollectorManager(
@@ -84,18 +81,9 @@ class MonitorNode(Node):
         If the spec carries its own `exporters:` block, build a per-source
         Dispatcher (records go *only* there for the exporter side,
         isolated from the global stream). Either way the record is also
-        tee'd to the converter tap so DSL chains keep working.
+        tee'd to the converter tap so evaluation graphs keep working.
         """
-        if hasattr(self, "runtime"):
-            return self.runtime.export_for(spec, source_name).export
-
-        target = self.dispatcher.export
-        converter_export = self._converter_dispatcher.export
-
-        def tee(record):
-            target(record)
-            converter_export(record)
-        return tee
+        return self.runtime.export_for(spec, source_name).export
 
     def _discover_network_types(self) -> tuple[dict[str, str], dict[str, str]]:
         import time
@@ -191,19 +179,8 @@ class MonitorNode(Node):
             self.manager.stop_all()
         finally:
             stats = {"collectors": len(self.manager.collectors)}
-            if hasattr(self, "runtime"):
-                self.runtime.emit_session_end(stats)
-                self.runtime.close_all()
-                return
-            self.dispatcher.export(
-                DataRecord.make_session_end(self.session_id, stats)
-            )
-            self.dispatcher.close_all()
-            self._converter_dispatcher.close_all()
-            for sd in self._source_dispatchers:
-                sd.close_all()
-            for vd in getattr(self, "_verdict_dispatchers", []):
-                vd.close_all()
+            self.runtime.emit_session_end(stats)
+            self.runtime.close_all()
 
 
 def main() -> int:

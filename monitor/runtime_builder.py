@@ -8,7 +8,7 @@ from config_model import ExporterSpec, MonitoredSourceSpec, TransformerSpec
 from data_record import DataRecord
 from exporter import Dispatcher, Exporter
 from exporters import resolve_data_record_exporter_class
-from pipeline import build_converter_chain
+from pipeline import GraphRuntime, build_graph
 from transformer import (
     FieldExtractor,
     OnChangeFilter,
@@ -32,11 +32,11 @@ def build_transformer_pipeline(
     chain: list[Transformer] = []
     for spec in specs or []:
         if not spec.type:
-            logger.warn(f"Transformer spec missing 'type'; skipping: {spec.raw}")
+            logger.warning(f"Transformer spec missing 'type'; skipping: {spec.raw}")
             continue
         cls = TRANSFORMER_REGISTRY.get(spec.type)
         if cls is None:
-            logger.warn(f"Unknown transformer type: {spec.type}; skipping.")
+            logger.warning(f"Unknown transformer type: {spec.type}; skipping.")
             continue
         try:
             chain.append(cls(**spec.kwargs))
@@ -68,12 +68,12 @@ def build_data_record_dispatcher(
     suffix_default = sanitize_source_name(source_name) if source_name else ""
     for spec in specs:
         if not spec.type:
-            logger.warn(f"Exporter spec missing 'type'; skipping: {spec.raw}")
+            logger.warning(f"Exporter spec missing 'type'; skipping: {spec.raw}")
             continue
         try:
             cls = resolve_data_record_exporter_class(spec.type)
         except (KeyError, ImportError, AttributeError, TypeError, ValueError) as ex:
-            logger.warn(f"Cannot resolve exporter '{spec.type}': {ex}")
+            logger.warning(f"Cannot resolve exporter '{spec.type}': {ex}")
             continue
         kwargs = dict(spec.kwargs)
         if spec.type == "file":
@@ -110,23 +110,22 @@ class MonitorRuntime:
             logger,
             default_to_file=not has_source_exporters,
         )
-        self.converter_dispatcher: Dispatcher[DataRecord] = Dispatcher(
-            label="Converters"
-        )
         self.source_dispatchers: list[Dispatcher[DataRecord]] = []
-        self.verdict_dispatchers: list[Dispatcher] = []
-        self._build_converter_chains()
-
-    def _build_converter_chains(self) -> None:
-        for spec in self.config.converters:
-            built = build_converter_chain(
-                spec, self.config.output_dir, self.session_id, self.logger
+        self.graph: GraphRuntime | None = None
+        if config.converters or config.verdict_services:
+            self.graph = build_graph(
+                config.converters,
+                config.verdict_services,
+                config.links,
+                config.outputs,
+                config.output_dir,
+                session_id,
+                logger,
             )
-            if built is None:
-                continue
-            converter_exporter, verdict_dispatcher = built
-            self.converter_dispatcher.add(converter_exporter)
-            self.verdict_dispatchers.append(verdict_dispatcher)
+        self.converter_dispatcher: Dispatcher[DataRecord] = (
+            self.graph.record_entry if self.graph is not None
+            else Dispatcher(label="Records")
+        )
 
     def emit_session_start(self) -> None:
         self.dispatcher.export(
@@ -164,8 +163,7 @@ class MonitorRuntime:
 
     def close_all(self) -> None:
         self.dispatcher.close_all()
-        self.converter_dispatcher.close_all()
         for dispatcher in self.source_dispatchers:
             dispatcher.close_all()
-        for dispatcher in self.verdict_dispatchers:
-            dispatcher.close_all()
+        if self.graph is not None:
+            self.graph.close()

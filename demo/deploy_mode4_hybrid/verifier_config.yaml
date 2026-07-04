@@ -1,15 +1,19 @@
 monitor:
   output_dir: /output
-verdict_runner:
-  source:
+inputs:
+  - id: robot_feed
     type: mqtt
     broker: mosquitto
     topic_filter: monitor/robot1/#
 converters:
-  - type: custom.odom_speed_converter:OdomSpeedConverter
-    verdict:
-      type: custom.odom_speed_verdict:OdomSpeedVerdict
-      exporters:
-        - type: stdout
-        - type: file
-          path: central_verdicts_{session_id}.jsonl
+  - id: odom_speed
+    type: custom.odom_speed_converter:OdomSpeedConverter
+verdict_services:
+  - id: central_check
+    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    exporters:
+      - type: stdout
+      - type: file
+        path: central_verdicts_{session_id}.jsonl
+links:
+  - {from: "converter:odom_speed", to: "verdict:central_check"}

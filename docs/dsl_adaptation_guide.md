@@ -1,8 +1,7 @@
 # Adapting a New DSL
 
 This document is the normative procedure for connecting a new property
-language or runtime-verification engine to ROS2-Monitor-Infra. The historical
-design discussion remains in `dsl_extension_todos.md`.
+language or runtime-verification engine to ROS2-Monitor-Infra.
 
 ## Integration Boundary
 
@@ -16,7 +15,10 @@ DataRecord -> DataConverter -> DSL record -> VerdictService -> Verdict
   representation expected by the DSL engine.
 - `VerdictService` owns the DSL engine or monitor state, consumes DSL records,
   and emits the framework's common `Verdict` object.
-- YAML selects and parameterizes both classes.
+- YAML selects and parameterizes both classes separately, then links sources to
+  converters and converters to verdict services.
+- Dashboard forms are generated from optional plugin manifests under
+  `custom/manifests/`.
 
 ## Required Inputs Before Adaptation
 
@@ -26,7 +28,7 @@ DataRecord -> DataConverter -> DSL record -> VerdictService -> Verdict
 3. Define the DSL-record schema passed between converter and verdict service.
 4. Decide whether the property is local, multi-source, or cross-robot.
 5. Decide whether evaluation runs in `monitor_node` or a remote
-   `verdict_runner`.
+   `node_runner`.
 
 ## Adaptation Procedure
 
@@ -46,7 +48,21 @@ Return `None` for irrelevant or incomplete records. Include `_timestamp`,
 
 For multi-source properties, one converter may retain the latest state from
 multiple source names and emit only after all required inputs exist. See
-`custom/fleet_distance.py`.
+`custom/fleet_distance.py` and `custom/relative_speed.py`.
+
+A converter may also emit on its own schedule — timeouts, windows, watchdogs —
+by overriding the optional lifecycle:
+
+```python
+def start(self, emit: Callable[[Any], None]) -> None: ...
+def stop(self) -> None: ...
+```
+
+`start` is called once after wiring; keep `emit` and call it from a timer or
+thread with the same values `convert()` may return (`emit` is thread-safe).
+`stop` is called once on shutdown — cancel timers there. See
+`custom/stale_watchdog.py` for a complete example that fires when a source
+falls silent.
 
 ### 2. Implement the verdict service
 
@@ -88,29 +104,41 @@ topics:
         fields: [field.required.by.dsl]
 
 converters:
-  - type: custom.my_dsl.converter:MyDSLConverter
-    inputs: [/required_source]
-    formula: "dsl-specific formula or identifier"
-    verdict:
-      type: custom.my_dsl.verdict:MyDSLVerdict
+  - id: my-dsl-converter
+    type: custom.my_dsl.converter:MyDSLConverter
+    params:
+      formula: "dsl-specific formula or identifier"
+
+verdict_services:
+  - id: my-dsl-verdict
+    type: custom.my_dsl.verdict:MyDSLVerdict
+    params:
       property_id: my_property
-      exporters:
-        - type: stdout
-        - type: file
-          path: "my_property_{session_id}.jsonl"
+    exporters:
+      - type: stdout
+      - type: file
+        path: "my_property_{session_id}.jsonl"
+
+links:
+  - from: source:/required_source
+    to: converter:my-dsl-converter
+  - from: converter:my-dsl-converter
+    to: verdict:my-dsl-verdict
 ```
 
-Keys beside converter `type`, except framework-reserved `inputs`, `output`,
-and `verdict`, become converter constructor keyword arguments. Keys beside
-verdict `type`, except `exporters`, become verdict constructor keyword
-arguments.
+Keys under converter `params` become converter constructor keyword arguments.
+Keys under verdict `params` become verdict-service constructor keyword
+arguments. Source selection belongs in `links`, not in converter business
+configuration.
 
 ### 5. Choose deployment transport
 
 - Integrated/local: put `topics` and `converters` in one monitor config.
 - Remote/central: robot config exports DataRecords through MQTT; verifier
-  config declares `verdict_runner.source` and the converter chain.
-- Offline: recorder writes DataRecords to file; verifier uses source `file`.
+  config declares a records `inputs:` entry and the evaluation graph.
+- Split converter/verdict: the converter host adds a dsl `outputs:` entry, the
+  verdict host a dsl `inputs:` entry naming the same topic or file.
+- Offline: recorder writes DataRecords to file; verifier uses a `file` input.
 - Choreographed: local verdicts use an MQTT verdict exporter; an aggregator
   uses `custom.verdict_mqtt_source:VerdictMQTTSource`.
 

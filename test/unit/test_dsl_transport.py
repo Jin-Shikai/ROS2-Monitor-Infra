@@ -181,3 +181,64 @@ def test_roundtrip_dsl_record_survives_publish_then_receive():
     src._on_message(src._client, None, _fake_message("dsl/x", payload))
 
     assert downstream.items == [record]
+
+
+# --- File transports ---------------------------------------------------------
+
+def test_file_exporter_and_source_roundtrip(tmp_path):
+    from dsl_transport import DslRecordFileExporter, DslRecordFileSource
+    import time
+
+    path = tmp_path / "dsl.jsonl"
+    exporter = DslRecordFileExporter(path=str(path))
+    exporter.export({"speed": 0.4, "_property_id": "p"})
+    exporter.close()
+
+    sink = _ListExporter()
+    source = DslRecordFileSource(path=str(path))
+    source.start(sink)
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline and not sink.items:
+        time.sleep(0.02)
+    source.stop()
+    assert sink.items == [{"speed": 0.4, "_property_id": "p"}]
+
+
+def test_file_source_follow_reads_appended_lines(tmp_path):
+    from dsl_transport import DslRecordFileExporter, DslRecordFileSource
+    import time
+
+    path = tmp_path / "dsl.jsonl"
+    sink = _ListExporter()
+    source = DslRecordFileSource(path=str(path), follow=True, poll_sec=0.05)
+    source.start(sink)  # file does not exist yet; follow waits for it
+    try:
+        exporter = DslRecordFileExporter(path=str(path))
+        exporter.export({"n": 1})
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and len(sink.items) < 1:
+            time.sleep(0.02)
+        exporter.export({"n": 2})
+        exporter.close()
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline and len(sink.items) < 2:
+            time.sleep(0.02)
+    finally:
+        source.stop()
+    assert sink.items == [{"n": 1}, {"n": 2}]
+
+
+def test_registries_resolve_builtins_and_import_paths():
+    from dsl_transport import (
+        DslRecordFileExporter,
+        DslRecordFileSource,
+        resolve_dsl_exporter_class,
+        resolve_dsl_source_class,
+    )
+
+    assert resolve_dsl_exporter_class("file") is DslRecordFileExporter
+    assert resolve_dsl_source_class("file") is DslRecordFileSource
+    assert resolve_dsl_exporter_class("mqtt") is DslRecordMQTTExporter
+    assert resolve_dsl_source_class("mqtt") is DslRecordMQTTSource
+    with pytest.raises(KeyError):
+        resolve_dsl_source_class("nope")

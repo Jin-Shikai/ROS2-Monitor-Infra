@@ -10,7 +10,7 @@ Implemented in this demo:
 
 - robot-side `monitor_node`
 - MQTT transport broker
-- verifier-side `verdict_runner`
+- verifier-side `node_runner`
 - verdict output to stdout, file and MQTT
 
 The robot config uses a per-topic DataRecord exporter under `/odom`. Business
@@ -31,9 +31,10 @@ docker compose -f demo/deploy_mode3/docker-compose.yml up --build
 ## Test behavior
 
 The Compose case starts the `speed-limit-cycle` scenario beside the robot-side
-monitor. `/odom` speed alternates between `0.4` and `0.2 m/s`, and the remote
-verifier repeatedly emits violation and recovery. The broker is published on
-host port `2883` because Windows commonly reserves port `1883`.
+monitor. `/odom` speed alternates between `0.4` and `0.2 m/s`; the robot only
+publishes values, and the remote verifier owns the violation/recovery verdicts.
+The broker is published on host port `2883` because Windows commonly reserves
+port `1883`.
 
 To use a real ROS2 node instead, remove the
 `python3 /demo/common/robot_simulator.py speed-limit-cycle ... &` line from the monitor service
@@ -55,5 +56,5 @@ MQTT topics used by the demo:
 
 ```text
 monitor/#                         DataRecords from monitor_node
-verdicts/robot1/odom_speed_limit  Verdicts from verdict_runner
+verdicts/robot1/odom_speed_limit  Verdicts from node_runner
 ```

@@ -1,4 +1,4 @@
-# Mode 2 demo: monitor node + MQTT broker + verdict runner
+# Mode 2 demo: monitor node + MQTT broker + node runner
 
 This demo runs the split architecture where the robot-side monitor only
 collects ROS2 data and publishes DataRecords, while the verifier-side runner
@@ -9,7 +9,7 @@ Included services:
 - `mosquitto`: transport broker on `127.0.0.1:1883`
 - `monitor_node`: bundled scenario robot, ROS2-facing collector, and DataRecord
   MQTT publisher
-- `verdict_runner`: MQTT DataRecord subscriber plus converter/verdict pipeline
+- `node_runner`: MQTT DataRecord subscriber plus converter/verdict graph
 
 The `/odom` topic owns its DataRecord exporter in `robot_config.yaml`.
 Business choices such as source filtering, field selection and threshold are
@@ -34,9 +34,10 @@ the broker at `127.0.0.1:1883`.
 
 The custom verdict class uses `speed > 0.3`, while the shared
 `demo/common/robot_simulator.py` alternates `/odom` speed between `0.4` and
-`0.2 m/s`, so the central verifier repeatedly emits violation and recovery.
+`0.2 m/s`. The robot only publishes values; the central verifier owns the
+violation/recovery verdicts.
 
-Verdicts are printed by `verdict_runner` and also written under:
+Verdicts are printed by `node_runner` and also written under:
 
 ```text
 output/mode2/verifier/
@@ -46,5 +47,5 @@ output/mode2/verifier/
 
 - `robot_config.yaml`: monitor-side config. It subscribes to `/odom`, extracts
   selected fields, and publishes DataRecords to MQTT.
-- `verifier_config.yaml`: verifier-side config. It subscribes to MQTT
-  DataRecords and runs the `RuleBasedConverter -> ThresholdVerdict` chain.
+- `verifier_config.yaml`: verifier-side config. Its `inputs:` entry subscribes
+  to MQTT DataRecords; the graph links the converter to the verdict service.

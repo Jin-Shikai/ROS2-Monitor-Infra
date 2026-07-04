@@ -2,8 +2,8 @@ monitor:
   output_dir: /output/verifier
   session_id_prefix: mode3_verifier1
 
-verdict_runner:
-  source:
+inputs:
+  - id: robot_feed
     type: mqtt
     broker: mosquitto
     port: 1883
@@ -11,15 +11,21 @@ verdict_runner:
     qos: 1
 
 converters:
-  - type: custom.odom_speed_converter:OdomSpeedConverter
-    verdict:
-      type: custom.odom_speed_verdict:OdomSpeedVerdict
-      exporters:
-        - type: stdout
-        - type: file
-          path: verdicts_{session_id}.jsonl
-        - type: mqtt
-          broker: mosquitto
-          port: 1883
-          topic: verdicts/robot1/odom_speed_limit
-          qos: 1
+  - id: odom_speed
+    type: custom.odom_speed_converter:OdomSpeedConverter
+
+verdict_services:
+  - id: odom_speed_check
+    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    exporters:
+      - type: stdout
+      - type: file
+        path: verdicts_{session_id}.jsonl
+      - type: mqtt
+        broker: mosquitto
+        port: 1883
+        topic: verdicts/robot1/odom_speed_limit
+        qos: 1
+
+links:
+  - {from: "converter:odom_speed", to: "verdict:odom_speed_check"}

@@ -1,0 +1,38 @@
+{
+  "id": "rule_based_converter",
+  "kind": "converter",
+  "name": "Rule Based Converter",
+  "class_path": "custom.rule_based_converter:RuleBasedConverter",
+  "params": [
+    {
+      "key": "source_match",
+      "label": "Source match",
+      "type": "string",
+      "required": true,
+      "default": "^/cmd_vel$"
+    },
+    {
+      "key": "field_map",
+      "label": "Field map",
+      "type": "json",
+      "required": true,
+      "default": {
+        "speed": "linear.x"
+      }
+    },
+    {
+      "key": "property_id",
+      "label": "Property ID",
+      "type": "string",
+      "required": false,
+      "default": "nav2_cmd_vel_speed_limit"
+    },
+    {
+      "key": "require_all",
+      "label": "Require all fields",
+      "type": "bool",
+      "required": false,
+      "default": false
+    }
+  ]
+}

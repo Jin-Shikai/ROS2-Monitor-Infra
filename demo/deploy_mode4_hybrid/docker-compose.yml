@@ -31,4 +31,4 @@ services:
       - ../../custom:/monitor/custom
       - ./verifier_config.yaml:/demo/verifier_config.yaml:ro
       - ../../output/mode4/central:/output
-    command: python3 /monitor/verdict_runner.py --config /demo/verifier_config.yaml
+    command: python3 /monitor/node_runner.py --config /demo/verifier_config.yaml
