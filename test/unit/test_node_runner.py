@@ -18,9 +18,9 @@ def _write_records(path, values):
     with open(path, "w", encoding="utf-8") as f:
         for seq, value in enumerate(values, start=1):
             record = DataRecord.from_topic_msg(
-                session_id="S", topic_name="/odom",
-                msg_type="nav_msgs/msg/Odometry",
-                data={"twist.twist.linear.x": value}, seq=seq,
+                session_id="S", topic_name="/cmd_vel",
+                msg_type="geometry_msgs/msg/Twist",
+                data={"linear": {"x": value}}, seq=seq,
             )
             f.write(record.to_json() + "\n")
 
@@ -48,22 +48,16 @@ def test_full_chain_from_records_input(tmp_path):
         "inputs": [{"id": "replay", "type": "file", "path": str(records)}],
         "converters": [{
             "id": "c1",
-            "type": "custom.rule_based:RuleBasedConverter",
-            "params": {
-                "source_match": "^/odom$",
-                "field_map": {"speed": "twist.twist.linear.x"},
-                "property_id": "p",
-            },
+            "type": "custom.speed:CmdVelSpeedConverter",
         }],
         "verdict_services": [{
             "id": "v1",
             "type": "custom.threshold:ThresholdVerdict",
-            "params": {"property_id": "p", "field": "speed", "op": ">",
-                       "threshold": 0.2, "sustain_sec": 0.0},
+            "params": {"property_id": "p", "threshold": 0.2},
             "exporters": [{"type": "file", "path": str(verdict_file)}],
         }],
         "links": [
-            {"from": "source:/odom", "to": "converter:c1"},
+            {"from": "source:/cmd_vel", "to": "converter:c1"},
             {"from": "converter:c1", "to": "verdict:v1"},
         ],
     })
@@ -87,8 +81,7 @@ def test_verdict_only_host_from_dsl_input(tmp_path):
         "verdict_services": [{
             "id": "v1",
             "type": "custom.threshold:ThresholdVerdict",
-            "params": {"property_id": "p", "field": "speed", "op": ">",
-                       "threshold": 0.2, "sustain_sec": 0.0},
+            "params": {"property_id": "p", "threshold": 0.2},
             "exporters": [{"type": "file", "path": str(verdict_file)}],
         }],
         "links": [{"from": "input:dsl_in", "to": "verdict:v1"}],
@@ -105,7 +98,7 @@ def test_runner_without_inputs_exits(tmp_path):
         "verdict_services": [{
             "id": "v1",
             "type": "custom.threshold:ThresholdVerdict",
-            "params": {"property_id": "p", "field": "speed", "op": ">", "threshold": 0.2},
+            "params": {"property_id": "p", "threshold": 0.2},
         }],
         "links": [{"from": "input:missing", "to": "verdict:v1"}],
     })

@@ -5,40 +5,11 @@
   "class_path": "custom.threshold:ThresholdVerdict",
   "params": [
     {
-      "key": "property_id",
-      "label": "Property ID",
-      "type": "string",
-      "required": true,
-      "default": "nav2_cmd_vel_speed_limit"
-    },
-    {
-      "key": "field",
-      "label": "Input field",
-      "type": "string",
-      "required": true,
-      "default": "speed"
-    },
-    {
-      "key": "op",
-      "label": "Operator",
-      "type": "enum",
-      "required": true,
-      "options": [">", ">=", "<", "<=", "==", "!="],
-      "default": ">"
-    },
-    {
       "key": "threshold",
       "label": "Threshold",
       "type": "number",
       "required": true,
       "default": 0.3
-    },
-    {
-      "key": "sustain_sec",
-      "label": "Sustain seconds",
-      "type": "number",
-      "required": false,
-      "default": 0.0
     }
   ]
 }

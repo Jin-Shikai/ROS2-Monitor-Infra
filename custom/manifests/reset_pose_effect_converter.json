@@ -4,10 +4,7 @@
   "name": "Reset Pose Effect Converter",
   "class_path": "custom.reset_pose_effect:ResetPoseEffectConverter",
   "params": [
-    {"key": "service_name", "label": "Service", "type": "string", "default": "/reset_pose"},
-    {"key": "odom_name", "label": "Odometry", "type": "string", "default": "/odom"},
     {"key": "deadline_sec", "label": "Deadline seconds", "type": "number", "default": 1.0},
-    {"key": "tolerance_m", "label": "Tolerance meters", "type": "number", "default": 0.05},
-    {"key": "property_id", "label": "Property ID", "type": "string", "default": "reset_pose_effect"}
+    {"key": "tolerance_m", "label": "Tolerance meters", "type": "number", "default": 0.05}
   ]
 }

@@ -1,11 +1,8 @@
-"""Check that a successful `/reset_pose` call is followed by odom near origin."""
-
 from __future__ import annotations
 
 import math
-import threading
 import time
-from typing import Any, Callable
+from typing import Any
 
 from converter import DataConverter
 from data_record import DataRecord
@@ -13,11 +10,11 @@ from transformer import _get_path
 from verdict import Verdict, VerdictService
 
 
-def _field(data: dict, path: str, default: float = 0.0):
+def _field(data: dict, path: str) -> float:
     if path in data:
-        return data[path]
+        return float(data[path])
     found, value = _get_path(data, path)
-    return value if found else default
+    return float(value) if found else 0.0
 
 
 class ResetPoseEffectConverter(DataConverter):
@@ -36,74 +33,51 @@ class ResetPoseEffectConverter(DataConverter):
         self.deadline_sec = float(deadline_sec)
         self.tolerance_m = float(tolerance_m)
         self.property_id = property_id
-        self.pending: dict[str, Any] | None = None
-        self.latest_odom: tuple[str, float, float] | None = None
-        self._emit: Callable[[Any], None] | None = None
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-
-    def start(self, emit: Callable[[Any], None]) -> None:
-        self._emit = emit
-        self._thread = threading.Thread(target=self._watch_deadline, daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=1.0)
+        self.reset: DataRecord | None = None
 
     def convert(self, record: DataRecord) -> dict | None:
         if record.source_name == self.service_name and record.phase == "response":
-            if record.data.get("success") is True:
-                self.pending = {
-                    "time": record.timestamp,
-                    "record_id": record.record_id,
-                    "sequence_number": record.metadata.get("sequence_number"),
-                }
+            self.reset = record if record.data.get("success") is True else None
+            return None
+        if record.source_name != self.odom_name or self.reset is None:
             return None
 
-        if record.source_name != self.odom_name:
-            return None
-        distance = self._odom_distance(record)
-        self.latest_odom = (record.record_id, record.timestamp, distance)
-        if not self.pending:
-            return None
+        distance = math.hypot(
+            _field(record.data, "pose.pose.position.x"),
+            _field(record.data, "pose.pose.position.y"),
+        )
+        elapsed = record.timestamp - self.reset.timestamp
         if distance <= self.tolerance_m:
-            return self._finish(True, record.timestamp, distance)
-        if record.timestamp - float(self.pending["time"]) > self.deadline_sec:
-            return self._finish(False, record.timestamp, distance)
+            return self._emit(True, record, distance, elapsed)
+        if elapsed >= self.deadline_sec:
+            return self._emit(False, record, distance, elapsed)
         return None
 
-    def _watch_deadline(self) -> None:
-        while not self._stop.wait(0.05):
-            if not self.pending or self._emit is None:
-                continue
-            if time.time() - float(self.pending["time"]) > self.deadline_sec:
-                distance = self.latest_odom[2] if self.latest_odom else None
-                self._emit(self._finish(False, time.time(), distance))
-
-    def _odom_distance(self, record: DataRecord) -> float:
-        x = float(_field(record.data, "pose.pose.position.x"))
-        y = float(_field(record.data, "pose.pose.position.y"))
-        return math.hypot(x, y)
-
-    def _finish(self, ok: bool, ts: float, distance: float | None) -> dict:
-        pending = self.pending or {"time": ts, "record_id": "", "sequence_number": None}
-        self.pending = None
-        input_ids = [pending["record_id"]]
-        if self.latest_odom:
-            input_ids.append(self.latest_odom[0])
+    def _emit(
+        self,
+        ok: bool,
+        odom: DataRecord,
+        distance: float,
+        elapsed: float,
+    ) -> dict:
+        reset = self.reset
+        self.reset = None
         return {
             "reset_effect_ok": ok,
-            "elapsed_sec": ts - float(pending["time"]),
+            "elapsed_sec": elapsed,
             "distance_to_origin": distance,
             "deadline_sec": self.deadline_sec,
             "tolerance_m": self.tolerance_m,
-            "sequence_number": pending["sequence_number"],
+            "sequence_number": reset.metadata.get("sequence_number") if reset else None,
             "_property_id": self.property_id,
-            "_timestamp": ts,
+            "_timestamp": odom.timestamp,
             "_source_name": "reset_pose_effect",
-            "_input_record_ids": input_ids,
+            "_input_record_ids": [
+                record_id for record_id in [
+                    reset.record_id if reset else "",
+                    odom.record_id,
+                ] if record_id
+            ],
         }
 
 

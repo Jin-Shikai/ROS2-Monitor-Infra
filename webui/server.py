@@ -89,7 +89,7 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
         "id": "speed_check",
         "name": "Demo preset: speed check",
         "summary": "Checks /cmd_vel.linear.x against a speed threshold.",
-        "converter_manifest": "rule_based_converter",
+        "converter_manifest": "speed_converter",
         "verdict_manifest": "threshold_verdict",
         "hosts": ["robot"],
         "placement": {},
@@ -106,15 +106,8 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
             }
         ],
         "overrides": {
-            "converter": {
-                "source_match": "^/cmd_vel$",
-                "field_map": {"speed": "linear.x"},
-                "property_id": "speed_check",
-            },
+            "converter": {},
             "verdict": {
-                "property_id": "speed_check",
-                "field": "speed",
-                "op": ">",
                 "threshold": 0.3,
             },
         },
@@ -151,8 +144,6 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
         "overrides": {
             "converter": {},
             "verdict": {
-                "property_id": "fleet_relative_speed",
-                "field": "relative_speed",
                 "threshold": 0.5,
             },
         },
@@ -819,14 +810,14 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
             "converter": raw_converter.get("converter") or "dsl_converter",
             "class_path": str(
                 raw_converter.get("class_path")
-                or "custom.rule_based:RuleBasedConverter"
+                or "custom.speed:CmdVelSpeedConverter"
             ),
             "input_from": converter_inputs,
             "output_to": converter_output[converter_id],
             **_params_to_kwargs(
                 raw_converter.get("params"),
                 raw_converter.get("class_path")
-                or "custom.rule_based:RuleBasedConverter",
+                or "custom.speed:CmdVelSpeedConverter",
             ),
         }
     _reject_chain_cycles(chain_inputs)
@@ -1098,19 +1089,42 @@ def _discover_graph_with_docker() -> dict[str, Any]:
     return json.loads(lines[-1])
 
 
+def _graph_resource_count(graph: dict[str, Any]) -> int:
+    return sum(len(list(graph.get(key) or [])) for key in ("topics", "services", "actions"))
+
+
 def discover_graph() -> dict[str, Any]:
-    methods: list[dict[str, str]] = []
+    methods: list[dict[str, Any]] = []
     try:
         graph = _discover_graph_locally()
-        return {"available": True, "method": "local", **graph}
+        count = _graph_resource_count(graph)
+        if count:
+            return {"available": True, "method": "local", "resource_count": count, **graph}
+        methods.append({"method": "local", "empty": True})
     except Exception as ex:
         methods.append({"method": "local", "error": str(ex)})
 
     try:
         graph = _discover_graph_with_docker()
-        return {"available": True, "method": "docker", "warnings": methods, **graph}
+        return {
+            "available": True,
+            "method": "docker",
+            "warnings": methods,
+            "resource_count": _graph_resource_count(graph),
+            **graph,
+        }
     except Exception as ex:
         methods.append({"method": "docker", "error": str(ex)})
+        if methods and methods[0].get("empty"):
+            return {
+                "available": True,
+                "method": "local",
+                "warnings": methods,
+                "resource_count": 0,
+                "topics": [],
+                "services": [],
+                "actions": [],
+            }
         return {
             "available": False,
             "error": "ROS graph discovery failed.",
@@ -1172,14 +1186,52 @@ def publish_recent_verdicts(delay: float = 0.0) -> None:
     threading.Timer(delay, _publish).start()
 
 
+def _target_id_for_services(target_services: list[str]) -> str:
+    return "generated_stack" if not target_services else ",".join(sorted(set(target_services)))
+
+
+def _merge_target_ids(current: str, target_services: list[str]) -> str:
+    if current == "generated_stack" or not target_services:
+        return "generated_stack"
+    services = {item for item in current.split(",") if item}
+    services.update(target_services)
+    return ",".join(sorted(services))
+
+
+def _stop_log_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def _start_compose_log_stream(target_id: str, command: list[str]) -> RunState:
+    log_command = ["docker", "compose", "-f", str(GENERATED_COMPOSE), "logs", "-f", "--tail", "120"]
+    process = subprocess.Popen(
+        log_command,
+        cwd=str(ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    run = RunState(
+        target_id=target_id,
+        command=command,
+        compose_path=GENERATED_COMPOSE,
+        started_at=time.time(),
+        process=process,
+    )
+    threading.Thread(target=_read_process_logs, args=(process,), daemon=True).start()
+    return run
+
+
 def start_generated_run(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = payload or {}
     target_services = [str(item) for item in list(payload.get("target_services") or [])]
-    with STATE.lock:
-        if STATE.run is not None and STATE.run.process.poll() is None:
-            result = current_run_payload()
-            result["message"] = "Runtime stack is already active."
-            return result
     generated_payload = None
     if payload:
         generated_payload = generate_configs(payload)
@@ -1187,26 +1239,30 @@ def start_generated_run(payload: dict[str, Any] | None = None) -> dict[str, Any]
         if STATE.generated is None or not GENERATED_COMPOSE.exists():
             raise RuntimeError("Configure monitor sources before starting the monitor.")
 
-    command = ["docker", "compose", "-f", str(GENERATED_COMPOSE), "up", "--build", *target_services]
-    process = subprocess.Popen(
+    command = ["docker", "compose", "-f", str(GENERATED_COMPOSE), "up", "--build", "-d", *target_services]
+    completed = subprocess.run(
         command,
         cwd=str(ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
-        bufsize=1,
+        timeout=120,
+        check=False,
     )
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stdout.strip() or "Docker Compose start failed.")
+
     with STATE.lock:
-        STATE.logs.clear()
-        STATE.run = RunState(
-            target_id="generated_stack" if not target_services else ",".join(target_services),
-            command=command,
-            compose_path=GENERATED_COMPOSE,
-            started_at=time.time(),
-            process=process,
-        )
-    threading.Thread(target=_read_process_logs, args=(process,), daemon=True).start()
+        previous = STATE.run
+        target_id = _target_id_for_services(target_services)
+        if previous is None or previous.process.poll() is not None:
+            STATE.logs.clear()
+        elif previous.compose_path == GENERATED_COMPOSE:
+            target_id = _merge_target_ids(previous.target_id, target_services)
+            _stop_log_process(previous.process)
+        STATE.run = _start_compose_log_stream(target_id, command)
     result = current_run_payload()
+    result["message"] = f"Started {', '.join(target_services) if target_services else 'generated stack'}."
     if generated_payload is not None:
         result["generated_files"] = generated_payload
     EVENTS.publish("run_state", result)

@@ -32,28 +32,22 @@ def _links(*pairs: tuple[str, str]) -> list[RuntimeLinkSpec]:
     return [RuntimeLinkSpec.from_dict({"from": f, "to": t}) for f, t in pairs]
 
 
-def _odom_record(value: float, seq: int = 1, topic: str = "/odom") -> DataRecord:
+def _cmd_vel_record(value: float, seq: int = 1, topic: str = "/cmd_vel") -> DataRecord:
     return DataRecord.from_topic_msg(
-        session_id="S", topic_name=topic, msg_type="nav_msgs/msg/Odometry",
-        data={"twist.twist.linear.x": value}, seq=seq,
+        session_id="S", topic_name=topic, msg_type="geometry_msgs/msg/Twist",
+        data={"linear": {"x": value}}, seq=seq,
     )
 
 
 SPEED_CONVERTER = {
     "id": "c1",
-    "type": "custom.rule_based:RuleBasedConverter",
-    "params": {
-        "source_match": "^/odom$",
-        "field_map": {"speed": "twist.twist.linear.x"},
-        "property_id": "p",
-    },
+    "type": "custom.speed:CmdVelSpeedConverter",
 }
 
 THRESHOLD_VERDICT = {
     "id": "v1",
     "type": "custom.threshold:ThresholdVerdict",
-    "params": {"property_id": "p", "field": "speed", "op": ">", "threshold": 0.2,
-               "sustain_sec": 0.0},
+    "params": {"threshold": 0.2, "property_id": "p"},
     "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
 }
 
@@ -62,12 +56,12 @@ def test_end_to_end_graph_writes_verdict_on_breach(logger, tmp_path):
     rt = build_graph(
         [_converter(SPEED_CONVERTER)],
         [_verdict(THRESHOLD_VERDICT)],
-        _links(("source:/odom", "converter:c1"), ("converter:c1", "verdict:v1")),
+        _links(("source:/cmd_vel", "converter:c1"), ("converter:c1", "verdict:v1")),
         [],
         str(tmp_path), "S", logger,
     )
     assert rt is not None
-    rt.record_entry.export(_odom_record(0.4))
+    rt.record_entry.export(_cmd_vel_record(0.4))
     rt.close()
 
     out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
@@ -80,13 +74,13 @@ def test_source_links_filter_other_sources(logger, tmp_path):
     rt = build_graph(
         [_converter(SPEED_CONVERTER)],
         [_verdict(THRESHOLD_VERDICT)],
-        _links(("source:/odom", "converter:c1"), ("converter:c1", "verdict:v1")),
+        _links(("source:/cmd_vel", "converter:c1"), ("converter:c1", "verdict:v1")),
         [],
         str(tmp_path), "S", logger,
     )
     assert rt is not None
-    rt.record_entry.export(_odom_record(0.9, topic="/other"))
-    rt.record_entry.export(_odom_record(0.4, seq=2))
+    rt.record_entry.export(_cmd_vel_record(0.9, topic="/other"))
+    rt.record_entry.export(_cmd_vel_record(0.4, seq=2))
     rt.close()
 
     out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
@@ -159,7 +153,7 @@ def test_converter_output_endpoint_archives_dsl(logger, tmp_path):
         str(tmp_path), "S", logger,
     )
     assert rt is not None
-    rt.record_entry.export(_odom_record(0.4))
+    rt.record_entry.export(_cmd_vel_record(0.4))
     rt.close()
 
     rows = [json.loads(l) for l in (tmp_path / "arch_S.jsonl").read_text().splitlines()]
@@ -172,8 +166,8 @@ def test_verdict_shared_by_two_converters_instantiated_once(logger, tmp_path):
         [_converter(SPEED_CONVERTER), _converter(c2)],
         [_verdict(THRESHOLD_VERDICT)],
         _links(
-            ("source:/odom", "converter:c1"),
-            ("source:/cmd_vel", "converter:c2"),
+            ("source:/cmd_vel", "converter:c1"),
+            ("source:/cmd_vel_aux", "converter:c2"),
             ("converter:c1", "verdict:v1"),
             ("converter:c2", "verdict:v1"),
         ),
@@ -181,10 +175,8 @@ def test_verdict_shared_by_two_converters_instantiated_once(logger, tmp_path):
         str(tmp_path), "S", logger,
     )
     assert rt is not None
-    # ThresholdVerdict is edge-triggered: a second breach via the other
-    # converter must not re-fire because the same instance holds state.
-    rt.record_entry.export(_odom_record(0.4, topic="/odom"))
-    rt.record_entry.export(_odom_record(0.5, seq=2, topic="/cmd_vel"))
+    rt.record_entry.export(_cmd_vel_record(0.4, topic="/cmd_vel"))
+    rt.record_entry.export(_cmd_vel_record(0.5, seq=2, topic="/cmd_vel_aux"))
     rt.close()
 
     out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()

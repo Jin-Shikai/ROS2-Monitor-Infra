@@ -92,8 +92,8 @@ A DSL record has two groups of keys:
 |---|---|
 | **Type** | `float` (seconds since Unix epoch) |
 | **Source** | Converter copies `DataRecord.timestamp`. |
-| **Read by framework** | No, but read by **verdict services**: `ThresholdVerdict` uses it for the `sustain_sec` window; emitted verdicts use it as `Verdict.timestamp`. Falls back to `time.time()` if absent. |
-| **Purpose** | Time correlation and sustained-violation windows. |
+| **Read by framework** | No, but read by **verdict services**: emitted verdicts use it as `Verdict.timestamp`. Falls back to `time.time()` if absent. |
+| **Purpose** | Time correlation. |
 
 ### `_source_name`
 
@@ -123,12 +123,11 @@ A DSL record has two groups of keys:
 ## Domain Payload Keys
 
 Everything not underscore-prefixed is the converter's projection of the input,
-named for what the verdict service reads. The verdict service's configured
-`field` (for `ThresholdVerdict`) must name one of these keys.
+named for what the verdict service reads.
 
 | Converter | Domain keys produced |
 |---|---|
-| `custom.rule_based:RuleBasedConverter` | one key per `field_map` entry (e.g. `velocity`, `position_x`) |
+| `custom.speed:CmdVelSpeedConverter` | `speed` |
 | `custom.odom_speed_converter:OdomSpeedConverter` | `speed` |
 | `custom.nav2_case1...:CmdVelSpeedConverter` | `speed` |
 | `custom.fleet_distance:FleetDistanceConverter` | `distance` |
@@ -214,7 +213,7 @@ For example 1, a violation verdict carries the propagated correlation:
   "timestamp": 1776283880.63,
   "property_id": "odom_speed_limit",
   "result": false,
-  "details": {"field": "speed", "op": ">", "threshold": 0.30, "value": 0.4},
+  "details": {"field": "speed", "threshold": 0.30, "value": 0.4},
   "monitor_session_id": "20260415_211500_a1b2c3d4",
   "input_record_ids": ["20260415_211500_a1b2c3d4:topic:/odom:-:7"]
 }
@@ -231,5 +230,5 @@ For example 1, a violation verdict carries the propagated correlation:
 3. In `evaluate()`, guard with `isinstance(dsl_record, dict)` and read your
    domain keys; use `_timestamp` for any time logic.
 
-See `custom/rule_based.py` + `custom/threshold.py` for the
+See `custom/speed.py` + `custom/threshold.py` for the
 reference pair, and `docs/dsl_adaptation_guide.md` for the full procedure.

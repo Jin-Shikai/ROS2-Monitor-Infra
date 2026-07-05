@@ -1,0 +1,7 @@
+{
+  "id": "speed_converter",
+  "kind": "converter",
+  "name": "Command Speed Converter",
+  "class_path": "custom.speed:CmdVelSpeedConverter",
+  "params": []
+}

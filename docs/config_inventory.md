@@ -87,14 +87,11 @@ them. A constructor error causes that chain to be skipped.
 
 | `type` | Field | Type / allowed values | Required | Default | Meaning |
 |---|---|---|---:|---|---|
-| `custom.rule_based:RuleBasedConverter` | `source_match` | valid Python regular-expression string | yes | none | Search pattern applied to `DataRecord.source_name`. |
-| same | `field_map` | mapping: output-name string to input dot-path string | yes | none | Projects input fields into the DSL record. |
-| same | `property_id` | string or null | no | null | Adds `_property_id` to produced DSL records. |
-| same | `require_all` | bool | no | `false` | If true, drop a record when any mapped field is missing; otherwise drop only when none are found. |
+| `custom.speed:CmdVelSpeedConverter` | none | - | - | - | Extracts `linear.x` from command velocity records as `speed`. |
 | `custom.fleet_distance:FleetDistanceConverter` | `robot_a` | ROS namespace string | yes | none | First robot namespace; trailing slash is removed. |
 | same | `robot_b` | ROS namespace string | yes | none | Second robot namespace; trailing slash is removed. |
-| `custom.relative_speed:RelativeSpeedConverter` | `robot_a` | ROS namespace string | yes | none | First robot namespace; joins `<robot>/odom` streams. |
-| same | `robot_b` | ROS namespace string | yes | none | Second robot namespace. |
+| `custom.relative_speed:RelativeSpeedConverter` | `robot_a` | ROS namespace string | no | inferred from first `<robot>/odom` input | First robot namespace; joins `<robot>/odom` streams. |
+| same | `robot_b` | ROS namespace string | no | inferred from second `<robot>/odom` input | Second robot namespace. |
 | same | `components` | list of dot-path strings | no | odom planar velocity | Velocity components compared between the robots. |
 | same | `property_id` | string | no | `fleet_relative_speed` | `_property_id` tag on emitted records. |
 | `custom.stale_watchdog:StaleWatchdogConverter` | `timeout_sec` | number `> 0` | yes | none | Silence duration after which the watchdog emits; uses the converter lifecycle (`start`/`stop`) with its own timer thread. |
@@ -110,20 +107,12 @@ them. A constructor error causes that chain to be skipped.
 
 | `type` | Field | Type / allowed values | Required | Default | Meaning |
 |---|---|---|---:|---|---|
-| `custom.threshold:ThresholdVerdict` | `property_id` | non-empty string recommended | yes | none | Identifier written into every emitted verdict. |
-| same | `field` | string key present in the DSL record | yes | none | Value to compare. |
-| same | `op` | one of `>`, `>=`, `<`, `<=`, `==`, `!=` | yes | none | Comparison operator; a true comparison means violation. |
-| same | `threshold` | number convertible to float | yes | none | Right-hand comparison value. |
-| same | `sustain_sec` | number convertible to float; `>= 0` recommended | no | `0.0` | Required continuous violation duration before firing. |
+| `custom.threshold:ThresholdVerdict` | `threshold` | number convertible to float | no | `0.3` | Violation occurs when the first numeric DSL payload value is greater than this value. |
+| same | `property_id` | string | no | DSL `_property_id` or compared field name | Identifier written into every emitted verdict. |
 | `custom.fleet_distance:MinimumFleetDistanceVerdict` | `minimum_distance` | number convertible to float | no | `1.0` | Violation occurs when computed distance is below this value. |
 | `custom.verdict_aggregation:SimultaneousLocalViolationsVerdict` | `minimum_count` | integer; `>= 1` recommended | no | `2` | Violation occurs when at least this many local sources violate. |
 | `custom.odom_speed_verdict:OdomSpeedVerdict` | none | - | - | - | Fixed demo limit: `/odom` speed greater than `0.30 m/s`. |
 | `custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict` | none | - | - | - | Fixed demo limit: command speed greater than `0.30 m/s`. |
-| `custom.cmd_vel_speed:Demo1SpeedingCheck` | `check` | string key present in the DSL record | no | `speed` | DSL field this demo verdict reads. |
-| same | `op` | one of `>`, `>=`, `<`, `<=`, `==`, `!=` | no | `>` | Comparison operator. |
-| same | `value` | number convertible to float | no | `0.5` | Right-hand comparison value. |
-| same | `property_id` | string | no | `demo1_speeding` | Identifier written into emitted verdicts. |
-| same | `emit_recovery` | bool | no | `true` | Whether to emit a passing verdict when the condition clears. |
 
 ### Custom Sources
 

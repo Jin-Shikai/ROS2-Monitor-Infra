@@ -1,6 +1,6 @@
 """Unit tests for monitor/converter.py — framework abstractions only.
 
-For tests of the RuleBasedConverter demo, see test_custom_rule_based_converter.py.
+For tests of the command-speed demo converter, see test_custom_speed_converter.py.
 """
 
 import pytest
@@ -156,12 +156,12 @@ def test_converter_exporter_passes_non_datarecord_payloads():
 
 def test_resolve_requires_module_path():
     with pytest.raises(ValueError):
-        resolve_converter_class("RuleBasedConverter")
+        resolve_converter_class("CmdVelSpeedConverter")
 
 
 def test_resolve_module_path_works():
     cls = resolve_converter_class(
-        "custom.rule_based:RuleBasedConverter"
+        "custom.speed:CmdVelSpeedConverter"
     )
     assert issubclass(cls, DataConverter)
 

@@ -26,6 +26,7 @@ let marquee = null;
 let runLogRows = [];
 let robotLogRows = [];
 let runningNodeKeys = new Set();
+let lastGraphData = null;
 
 const NODE_WIDTH = 210;
 const NODE_HEIGHT = 72;
@@ -134,6 +135,7 @@ function primarySelectedKey() {
 }
 
 function hostForNodeKey(key) {
+  if (key.startsWith("broker:")) return "";
   if (key.startsWith("host:")) return key.replace(/^host:/, "");
   if (key.startsWith("source:")) {
     return sources.find((source) => sourceId(source) === key)?.host || "";
@@ -156,6 +158,10 @@ function hostForNodeKey(key) {
 function servicesForKeys(keys) {
   const services = new Set();
   keys.forEach((key) => {
+    if (key.startsWith("broker:")) {
+      services.add("mosquitto");
+      return;
+    }
     const host = hostForNodeKey(key);
     if (host) services.add(serviceNameForHost(host));
   });
@@ -168,24 +174,29 @@ function labelForNodeKey(key) {
   if (key.startsWith("monitor:")) return key.replace(/^monitor:/, "");
   if (key.startsWith("converter:")) return key.replace(/^converter:/, "");
   if (key.startsWith("verdict:")) return key.replace(/^verdict:/, "");
+  if (key.startsWith("broker:")) return "Broker";
   return key || "Selection";
 }
 
 function logTermsForKey(key) {
-  const terms = [labelForNodeKey(key), hostForNodeKey(key), serviceNameForHost(hostForNodeKey(key))].filter(Boolean);
-  if (key.startsWith("host:")) terms.push("node_runner", "monitor_node");
+  const terms = [labelForNodeKey(key)].filter(Boolean);
+  if (key.startsWith("host:")) {
+    const host = hostForNodeKey(key);
+    terms.push(host, serviceNameForHost(host), "node_runner", "monitor_node");
+  }
   if (key.startsWith("source:")) terms.push("robot", "docker", "ros");
-  if (key.startsWith("monitor:")) terms.push("monitor_node", "monitor");
+  if (key.startsWith("monitor:")) terms.push("monitor_node");
   if (key.startsWith("converter:")) {
     const id = key.replace(/^converter:/, "");
     const converter = converters.find((item) => item.id === id);
-    terms.push(id, converter?.class_path || "", converter?.host || "");
+    terms.push(id, converter?.class_path || "");
   }
   if (key.startsWith("verdict:")) {
     const id = key.replace(/^verdict:/, "");
     const verdict = verdictServices.find((item) => item.id === id);
-    terms.push(id, verdict?.class_path || "", verdict?.host || "", "verdict");
+    terms.push(id, verdict?.class_path || "", "verdict");
   }
+  if (key.startsWith("broker:")) terms.push("mosquitto", "broker", String(brokerHost), String(brokerPort));
   return terms.map((term) => String(term).toLowerCase()).filter(Boolean);
 }
 
@@ -259,25 +270,31 @@ function addHost(seed = {}) {
   renderAll();
 }
 
-function addRobot(seed = {}) {
-  const targetHost = seed.host || selectedHost();
+function declareSource(seed = {}, preferredHost = "") {
+  const targetHost = seed.host || preferredHost || selectedHost() || selectedSource()?.host;
   if (!targetHost) {
-    $("scanStatus").textContent = "Create and select a host before adding a robot.";
-    return;
+    $("scanStatus").textContent = "Select the robot/application host for this ROS source.";
+    return null;
+  }
+  if (!seed.name) {
+    $("scanStatus").textContent = "Use Scan graph to choose a real ROS source.";
+    return null;
   }
   const host = ensureHost(targetHost);
   const source = {
     source_kind: seed.source_kind || "topic",
-    name: seed.name || `/${host}/odom`,
-    interface: seed.interface || "nav_msgs/msg/Odometry",
+    name: seed.name,
+    interface: seed.interface || "",
     host,
   };
   if (!sources.some((item) => sourceKey(item) === sourceKey(source))) {
     sources.push(source);
   }
+  if (runningNodeKeys.has(`host:${host}`)) runningNodeKeys.add(sourceId(source));
   selectedNode = { kind: "robot", id: sourceId(source) };
   selectedNodeKeys = new Set([sourceId(source)]);
   renderAll();
+  return source;
 }
 
 function addMonitor(seed = {}) {
@@ -288,18 +305,17 @@ function addMonitor(seed = {}) {
   }
   const host = ensureHost(targetHost);
   const id = uniqueRuntimeId(seed.id || `monitor_${host}`, monitors.map((monitor) => monitor.id));
-  const sameHostKeys = sources.filter((source) => source.host === host).map(sourceKey);
   const monitor = {
     id,
     host,
-    sourceKeys: seed.sourceKeys ? seed.sourceKeys.slice() : sameHostKeys,
+    sourceKeys: seed.sourceKeys ? seed.sourceKeys.slice() : [],
   };
   monitors.push(monitor);
   selectedNode = { kind: "monitor", id: monitor.id };
   selectedNodeKeys = new Set([monitorKey(monitor)]);
   $("scanStatus").textContent = monitor.sourceKeys.length
-    ? `Monitor ${id} subscribes to ${monitor.sourceKeys.length} source(s) on ${host}. Use Connect to target to subscribe robots on other hosts.`
-    : `Monitor ${id} added with no subscriptions. Select robot blocks, click this monitor, then Connect to target.`;
+    ? `Monitor ${id} subscribes to ${monitor.sourceKeys.length} source(s).`
+    : `Monitor ${id} added with no subscriptions. Select source blocks, shift-click this monitor, then Connect.`;
   renderAll();
 }
 
@@ -312,7 +328,7 @@ function addConverter(seed = {}) {
   const index = converters.length + 1;
   const converter = {
     id: uniqueRuntimeId(seed.id || `converter_${index}`, converters.map((item) => item.id)),
-    class_path: seed.class_path || "custom.rule_based:RuleBasedConverter",
+    class_path: seed.class_path || "",
     params: structuredClone(seed.params || []),
     host: ensureHost(targetHost),
     inputSourceKeys: seed.inputSourceKeys ? seed.inputSourceKeys.slice() : [],
@@ -334,7 +350,7 @@ function addVerdict(seed = {}) {
   const index = verdictServices.length + 1;
   const verdict = {
     id: uniqueRuntimeId(seed.id || `verdict_${index}`, verdictServices.map((item) => item.id)),
-    class_path: seed.class_path || "custom.threshold:ThresholdVerdict",
+    class_path: seed.class_path || "",
     params: structuredClone(seed.params || []),
     host: ensureHost(targetHost),
   };
@@ -416,12 +432,12 @@ function pruneConverterChains() {
 function applyConnection(mode) {
   const verb = mode === "connect" ? "Connected" : "Disconnected";
   if (!selectedNode) {
-    $("scanStatus").textContent = "Select the source blocks first, then shift-click the target (monitor, converter, or verdict) last.";
+    $("scanStatus").textContent = "Select input blocks first, then shift-click the target (monitor, converter, or verdict) last.";
     return;
   }
   const otherKeys = [...selectedNodeKeys].filter((key) => key !== nodeKeyFromSelection(selectedNode));
   if (!otherKeys.length) {
-    $("scanStatus").textContent = "Select source blocks first (click, then shift-click or box-select to extend), and shift-click the target block last.";
+    $("scanStatus").textContent = "Select input blocks first (click, then shift-click or box-select to extend), and shift-click the target block last.";
     return;
   }
   if (selectedNode.kind === "monitor") {
@@ -429,7 +445,7 @@ function applyConnection(mode) {
     if (!monitor) return;
     const keys = otherKeys.filter((key) => key.startsWith("source:")).flatMap((key) => sourceKeysForNodeKey(key));
     if (!keys.length) {
-      $("scanStatus").textContent = "A monitor target accepts robot source blocks only.";
+      $("scanStatus").textContent = "A monitor target accepts ROS source blocks only.";
       return;
     }
     if (mode === "connect") {
@@ -439,19 +455,20 @@ function applyConnection(mode) {
     } else {
       monitor.sourceKeys = monitor.sourceKeys.filter((key) => !keys.includes(key));
     }
-    $("scanStatus").textContent = `${verb} ${keys.length} robot source(s) ${mode === "connect" ? "to" : "from"} ${monitor.id}.`;
+    $("scanStatus").textContent = `${verb} ${keys.length} ROS source(s) ${mode === "connect" ? "to" : "from"} ${monitor.id}.`;
     renderAll();
     return;
   }
   if (selectedNode.kind === "converter") {
     const converter = converters.find((item) => item.id === selectedNode.id);
     if (!converter) return;
-    const inputKeys = otherKeys.flatMap((key) => sourceKeysForNodeKey(key));
+    const monitorKeys = otherKeys.filter((key) => key.startsWith("monitor:"));
+    const inputKeys = monitorKeys.flatMap((key) => sourceKeysForNodeKey(key));
     const upstreamIds = otherKeys
       .flatMap((key) => converterIdsForNodeKey(key))
       .filter((id) => id !== converter.id);
     if (!inputKeys.length && !upstreamIds.length) {
-      $("scanStatus").textContent = "A converter target accepts robot, monitor, or converter blocks.";
+      $("scanStatus").textContent = "A converter target accepts monitor or converter blocks.";
       return;
     }
     converter.inputConverterIds = converter.inputConverterIds || [];
@@ -467,7 +484,7 @@ function applyConnection(mode) {
       converter.inputConverterIds = converter.inputConverterIds.filter((id) => !upstreamIds.includes(id));
     }
     const parts = [];
-    if (inputKeys.length) parts.push(`${inputKeys.length} source input(s)`);
+    if (monitorKeys.length) parts.push(`${monitorKeys.length} monitor feed(s)`);
     if (upstreamIds.length) parts.push(`${upstreamIds.length} converter feed(s)`);
     $("scanStatus").textContent = `${verb} ${parts.join(" and ")} ${mode === "connect" ? "to" : "from"} ${converter.id}.`;
     renderAll();
@@ -629,6 +646,8 @@ function topologyModel() {
 
 function topologyLayout() {
   const model = topologyModel();
+  const mqttHostLinks = model.hostLinks.filter((link) => link.payload === "records" || link.payload === "dsl");
+  const brokerHosts = [...new Set(mqttHostLinks.flatMap((link) => [link.from, link.to]))];
   const hostMap = new Map();
   hosts.forEach((host) => hostMap.set(host, []));
   model.nodes.forEach((node) => {
@@ -693,17 +712,45 @@ function topologyLayout() {
 
   const hostById = Object.fromEntries(hostBoxes.map((box) => [box.host, box]));
   const nodeByKey = Object.fromEntries(layoutNodes.map((node) => [node.key, node]));
-  return { ...model, nodes: layoutNodes, nodeByKey, hostBoxes, hostById };
+  const brokerHostBoxes = brokerHosts.map((host) => hostById[host]).filter(Boolean);
+  const brokerNode = brokerHostBoxes.length ? {
+    key: "broker:mqtt",
+    kind: "broker",
+    id: "mqtt",
+    title: "Broker",
+    subtitle: `mqtt://${brokerHost}:${brokerPort}`,
+    status: isNodeRunning("broker:mqtt") ? "running" : "MQTT broker",
+    x: Math.max(...brokerHostBoxes.map((box) => box.x + box.width)) + HOST_GAP_X,
+    y: Math.round((Math.min(...brokerHostBoxes.map((box) => box.y)) + Math.max(...brokerHostBoxes.map((box) => box.y + box.height))) / 2 - NODE_HEIGHT / 2),
+  } : null;
+  if (brokerNode) nodeByKey[brokerNode.key] = brokerNode;
+  const brokerEdges = brokerNode ? brokerHosts.map((host) => ({
+    key: `broker|${host}`,
+    from: host,
+    to: brokerNode.key,
+    payload: "broker",
+  })) : [];
+  return {
+    ...model,
+    nodes: layoutNodes,
+    nodeByKey,
+    hostBoxes,
+    hostById,
+    brokerNode,
+    brokerEdges,
+    directHostLinks: model.hostLinks.filter((link) => link.payload !== "records" && link.payload !== "dsl"),
+  };
 }
 
 function iconFor(kind) {
-  return { robot: "R", monitor: "M", host: "H", converter: "C", verdict: "V" }[kind] || "?";
+  return { robot: "S", monitor: "M", host: "H", converter: "C", verdict: "V", broker: "B" }[kind] || "?";
 }
 
 function nodeSelectionKind(node) {
   if (node.kind === "host") return { kind: "host", id: node.id };
   if (node.kind === "robot") return { kind: "robot", id: node.id };
   if (node.kind === "monitor") return { kind: "monitor", id: node.id };
+  if (node.kind === "broker") return { kind: "broker", id: node.id };
   return { kind: node.kind, id: node.id };
 }
 
@@ -712,6 +759,7 @@ function nodeKeyFromSelection(node) {
   if (node.kind === "host") return `host:${node.id}`;
   if (node.kind === "robot") return node.id;
   if (node.kind === "monitor") return node.id;
+  if (node.kind === "broker") return `broker:${node.id}`;
   return `${node.kind}:${node.id}`;
 }
 
@@ -791,8 +839,52 @@ function runtimeKeysForHost(host) {
   return keys;
 }
 
+function sourceOnlyHostKey(key) {
+  if (!key.startsWith("host:")) return false;
+  const keys = runtimeKeysForHost(key.replace(/^host:/, ""));
+  return !keys.some((item) => !item.startsWith("source:"));
+}
+
+function hostHasSources(key) {
+  if (!key.startsWith("host:")) return false;
+  return runtimeKeysForHost(key.replace(/^host:/, "")).some((item) => item.startsWith("source:"));
+}
+
+function robotApplicationHostKey(key) {
+  return sourceOnlyHostKey(key) || hostHasSources(key);
+}
+
+function selectedRobotSourceKeys() {
+  const keys = [];
+  selectedKeys().forEach((key) => {
+    if (key.startsWith("source:")) keys.push(key);
+    if (sourceOnlyHostKey(key)) {
+      runtimeKeysForHost(key.replace(/^host:/, ""))
+        .filter((item) => item.startsWith("source:"))
+        .forEach((item) => keys.push(item));
+    }
+  });
+  return [...new Set(keys)];
+}
+
+function selectedRobotHostKeys() {
+  const keys = selectedKeys().filter(robotApplicationHostKey);
+  selectedRobotSourceKeys().forEach((key) => {
+    const host = hostForNodeKey(key);
+    if (host) keys.push(`host:${host}`);
+  });
+  return [...new Set(keys)];
+}
+
+function setSelectedRobotRunning(running) {
+  [...selectedRobotSourceKeys(), ...selectedRobotHostKeys()].forEach((key) => {
+    if (running) runningNodeKeys.add(key);
+    else runningNodeKeys.delete(key);
+  });
+}
+
 function setHostRunning(host, running) {
-  const keys = [`host:${host}`, ...runtimeKeysForHost(host).filter((key) => !key.startsWith("source:"))];
+  const keys = [`host:${host}`, ...runtimeKeysForHost(host)];
   keys.forEach((key) => {
     if (running) runningNodeKeys.add(key);
     else runningNodeKeys.delete(key);
@@ -802,7 +894,7 @@ function setHostRunning(host, running) {
 function isNodeRunning(key) {
   if (runningNodeKeys.has(key)) return true;
   const host = hostForNodeKey(key);
-  return Boolean(host && runningNodeKeys.has(`host:${host}`) && !key.startsWith("source:"));
+  return Boolean(host && runningNodeKeys.has(`host:${host}`));
 }
 
 function isSelected(node) {
@@ -845,6 +937,14 @@ function hostEdgePoints(from, to) {
   return `${x1},${y1} ${x1},${midY} ${x2},${midY} ${x2},${y2}`;
 }
 
+function brokerEdgePoints(hostBox, brokerNode) {
+  const x1 = hostBox.x + hostBox.width;
+  const y1 = hostBox.y + hostBox.height / 2;
+  const x2 = brokerNode.x;
+  const y2 = brokerNode.y + NODE_HEIGHT / 2;
+  return `${x1},${y1} ${x2},${y2}`;
+}
+
 function polylineLabelPoint(points) {
   const pairs = points.split(" ").map((point) => point.split(",").map(Number));
   const midpoint = pairs[Math.floor(pairs.length / 2)] || pairs[0] || [0, 0];
@@ -869,7 +969,7 @@ function setZoom(nextZoom) {
 
 function updateToolbarState() {
   const hostSelected = Boolean(selectedHost());
-  ["addRobot", "addMonitor", "addConverter", "addVerdict"].forEach((id) => {
+  ["addMonitor", "addConverter", "addVerdict"].forEach((id) => {
     const button = $(id);
     if (button) button.disabled = !hostSelected;
   });
@@ -888,17 +988,17 @@ function topologyWarnings() {
   sources.forEach((source) => {
     const key = sourceKey(source);
     if (!monitoredKeys.has(key) && !consumedKeys.has(key)) {
-      warnings.push(`Robot source ${source.name} is not observed by any monitor.`);
+      warnings.push(`ROS source ${source.name} is not observed by any monitor.`);
     }
   });
   monitors.forEach((monitor) => {
-    if (!monitor.sourceKeys.length) warnings.push(`Monitor ${monitor.id} subscribes to no robot sources.`);
+    if (!monitor.sourceKeys.length) warnings.push(`Monitor ${monitor.id} subscribes to no ROS sources.`);
   });
   const chainDownstreams = new Set(converters.flatMap((converter) => converter.inputConverterIds || []));
   converters.forEach((converter) => {
     const chainInputs = converter.inputConverterIds || [];
     if (!converter.inputSourceKeys.length && !chainInputs.length) {
-      warnings.push(`Converter ${converter.id} has no inputs — connect robot, monitor, or converter blocks to it.`);
+      warnings.push(`Converter ${converter.id} has no inputs — connect monitor or converter blocks to it.`);
     }
     converter.inputSourceKeys.forEach((key) => {
       if (!monitoredKeys.has(key)) {
@@ -934,11 +1034,12 @@ function pruneSelection(layout) {
   const validKeys = new Set([
     ...layout.hostBoxes.map((box) => box.key),
     ...layout.nodes.map((node) => node.key),
+    ...(layout.brokerNode ? [layout.brokerNode.key] : []),
   ]);
   [...selectedNodeKeys].forEach((key) => {
     if (!validKeys.has(key)) selectedNodeKeys.delete(key);
   });
-  if (selectedLink && ![...layout.runtimeLinks, ...layout.hostLinks].some((link) => link.key === selectedLink)) {
+  if (selectedLink && ![...layout.runtimeLinks, ...layout.directHostLinks].some((link) => link.key === selectedLink)) {
     selectedLink = null;
   }
 }
@@ -946,8 +1047,8 @@ function pruneSelection(layout) {
 function renderTopology() {
   const layout = topologyLayout();
   pruneSelection(layout);
-  const nodes = layout.nodes;
-  const visibleEdges = [...layout.runtimeLinks, ...layout.hostLinks];
+  const nodes = layout.brokerNode ? [...layout.nodes, layout.brokerNode] : layout.nodes;
+  const visibleEdges = [...layout.runtimeLinks, ...layout.directHostLinks, ...layout.brokerEdges];
   const width = Math.max(
     900,
     ...nodes.map((node) => node.x + NODE_WIDTH + 42),
@@ -1028,14 +1129,25 @@ function renderTopology() {
     if (!from || !to) return "";
     return edgeMarkup(edge, edgePoints(from, to), "runtime-edge", edge.payload);
   }).join("");
-  const hostPaths = layout.hostLinks.map((edge) => {
+  const hostPaths = layout.directHostLinks.map((edge) => {
     const from = layout.hostById[edge.from];
     const to = layout.hostById[edge.to];
     if (!from || !to) return "";
     const count = edge.pairs.length > 1 ? ` x${edge.pairs.length}` : "";
     return edgeMarkup(edge, hostEdgePoints(from, to), "host-edge", `${edge.payload}${count}`);
   }).join("");
-  $("edgeLayer").innerHTML = runtimePaths + hostPaths;
+  const brokerPaths = layout.brokerEdges.map((edge) => {
+    const from = layout.hostById[edge.from];
+    const to = layout.brokerNode;
+    if (!from || !to) return "";
+    const points = brokerEdgePoints(from, to);
+    const label = polylineLabelPoint(points);
+    return `
+      <polyline class="edge broker-edge broker" points="${points}"></polyline>
+      <text class="edge-label broker-label" x="${label.x}" y="${label.y}">mqtt</text>
+    `;
+  }).join("");
+  $("edgeLayer").innerHTML = runtimePaths + hostPaths + brokerPaths;
   $("edgeLayer").querySelectorAll("[data-link-key]").forEach((element) => {
     element.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -1046,7 +1158,7 @@ function renderTopology() {
     });
   });
 
-  $("graphSummary").textContent = `${layout.hostBoxes.length} host(s), ${sources.length} robot source(s), ${monitors.length} monitor runtime(s), ${converters.length} converter(s), ${verdictServices.length} verdict service(s), ${visibleEdges.length} visible link(s), ${selectedNodeKeys.size} selected.`;
+  $("graphSummary").textContent = `${layout.hostBoxes.length} host(s), ${sources.length} ROS source(s), ${monitors.length} monitor runtime(s), ${converters.length} converter(s), ${verdictServices.length} verdict service(s), ${visibleEdges.length} visible link(s), ${selectedNodeKeys.size} selected.`;
   renderWarnings();
 
   document.querySelectorAll("[data-node-kind]").forEach((button) => {
@@ -1087,6 +1199,10 @@ function selectedMonitorHost() {
 function selectedMonitor() {
   if (selectedNode?.kind !== "monitor") return null;
   return monitors.find((monitor) => monitor.id === selectedNode.id) || null;
+}
+
+function selectedBroker() {
+  return selectedNode?.kind === "broker" ? selectedNode.id : "";
 }
 
 function paramValueInput(target, row, index) {
@@ -1161,13 +1277,33 @@ function paramRows(target, rows) {
   `).join("");
 }
 
+function pluginParamSection(target, rows, addButtonId) {
+  return `
+    <h3>Parameters</h3>
+    ${rows.length ? `<div class="param-list">${paramRows(target, rows)}</div>` : ""}
+    <div class="config-actions">
+      <button id="${addButtonId}" type="button">+ Param</button>
+    </div>
+  `;
+}
+
 function hasMqttTransport() {
   return topologyModel().hostLinks.some((link) => link.payload === "records" || link.payload === "dsl");
 }
 
+function servicesWithImplicitBroker(services) {
+  const uniqueServices = [...new Set(services)];
+  const needsBroker = hasMqttTransport() && uniqueServices.some((service) => (
+    service === "mosquitto" || service.startsWith("generated_")
+  ));
+  return needsBroker && !uniqueServices.includes("mosquitto")
+    ? ["mosquitto", ...uniqueServices]
+    : uniqueServices;
+}
+
 function configOverview() {
   return `
-    <p class="notice">Create a host first, then select it to add robot, monitor, converter, or verdict runtimes.</p>
+    <p class="notice">Create a host for the ROS application, start it, scan the graph, then declare the sources you want to monitor.</p>
     <hr>
     <h3>Hosts</h3>
     ${hosts.length ? hosts.map((host) => `<label class="inline-check"><span>${escapeText(host)}</span></label>`).join("") : `<div class="empty">No hosts yet.</div>`}
@@ -1177,11 +1313,11 @@ function configOverview() {
 function robotConfig(source) {
   const subscribers = monitors.filter((monitor) => monitor.sourceKeys.includes(sourceKey(source)));
   return `
-    <p class="notice">A robot is an external ROS system — what it publishes is a property of the robot, not monitor configuration. Use Scan graph to discover its sources, then connect them to monitors.</p>
-    <label>Advertised source<input value="${escapeAttr(`${source.name} (${source.source_kind}, ${source.interface})`)}" readonly></label>
-    <label>Host<input id="sourceHost" value="${escapeAttr(source.host)}" spellcheck="false"></label>
+    <p class="notice">This is one ROS source from the selected robot/application. A robot can publish or offer many sources.</p>
+    <label>Source<input value="${escapeAttr(`${source.name} (${source.source_kind}, ${source.interface})`)}" readonly></label>
+    <label>Robot host<input id="sourceHost" value="${escapeAttr(source.host)}" spellcheck="false"></label>
     <label>Observed by<input value="${escapeAttr(subscribers.length ? subscribers.map((monitor) => monitor.id).join(", ") : "no monitor yet")}" readonly></label>
-    <h3>Robot container</h3>
+    <h3>ROS application</h3>
     <label>Robot Dockerfile<input id="robotDockerfile" value="${escapeAttr(robotDockerfile)}" spellcheck="false"></label>
     <label>Start command<textarea id="robotCommand" spellcheck="false">${escapeText(robotCommand)}</textarea></label>
     <details class="advanced">
@@ -1199,31 +1335,35 @@ function robotConfig(source) {
 }
 
 function monitorConfig(monitor) {
+  const subscribed = sources.filter((source) => monitor.sourceKeys.includes(sourceKey(source)));
   return `
-    <p class="notice">A monitor runtime subscribes to selected robot sources and emits records.</p>
+    <p class="notice">A monitor runtime subscribes to selected ROS sources and emits records.</p>
     <label>Monitor id<input id="monitorId" value="${escapeAttr(monitor.id)}" spellcheck="false"></label>
     <label>Host<input id="monitorHost" value="${escapeAttr(monitor.host)}" spellcheck="false"></label>
     <h3>Subscribed sources</h3>
-    ${sources.length ? sources.map((source) => `
-      <label class="inline-check">
-        <input type="checkbox" data-monitor-source="${escapeAttr(sourceKey(source))}" ${monitor.sourceKeys.includes(sourceKey(source)) ? "checked" : ""}>
-        <span>${escapeText(source.name)}</span>
-      </label>`).join("") : `<div class="empty">Add robots first.</div>`}
+    ${subscribed.length ? subscribed.map((source) => `
+      <button class="runtime-jump" data-jump-node="${escapeAttr(sourceId(source))}" type="button">
+        ${escapeText(source.name)} (${escapeText(source.source_kind)})
+      </button>
+    `).join("") : `<div class="empty">Select source blocks, shift-click this monitor, then Connect.</div>`}
   `;
 }
 
 function converterConfig(converter) {
+  const inputMonitors = monitors.filter((monitor) => (
+    monitor.sourceKeys.some((key) => converter.inputSourceKeys.includes(key))
+  ));
   return `
     <label>Converter id<input id="converterId" value="${escapeAttr(converter.id)}" spellcheck="false"></label>
     ${manifestPicker("converterManifest", "converter", converter.class_path)}
     <label>Class path<input id="converterClass" value="${escapeAttr(converter.class_path)}" spellcheck="false"></label>
     <label>Host<input id="converterHost" value="${escapeAttr(converter.host)}" spellcheck="false"></label>
-    <h3>Input robots</h3>
-    ${sources.length ? sources.map((source) => `
-      <label class="inline-check">
-        <input type="checkbox" data-use-source="${escapeAttr(sourceKey(source))}" ${converter.inputSourceKeys.includes(sourceKey(source)) ? "checked" : ""}>
-        <span>${escapeText(source.name)}</span>
-      </label>`).join("") : `<div class="empty">Add robots first.</div>`}
+    <h3>Input monitors</h3>
+    ${inputMonitors.length ? inputMonitors.map((monitor) => `
+      <button class="runtime-jump" data-jump-node="${escapeAttr(monitorKey(monitor))}" type="button">
+        ${escapeText(monitor.id)} (${escapeText(monitor.sourceKeys.length)} source(s))
+      </button>
+    `).join("") : `<div class="empty">Select monitor blocks, shift-click this converter, then Connect.</div>`}
     <h3>Input converters (chain)</h3>
     ${converters.filter((item) => item.id !== converter.id).length ? converters.filter((item) => item.id !== converter.id).map((item) => `
       <label class="inline-check">
@@ -1236,11 +1376,7 @@ function converterConfig(converter) {
         <input type="checkbox" data-use-verdict="${escapeAttr(verdict.id)}" ${converter.verdictServiceIds.includes(verdict.id) ? "checked" : ""}>
         <span>${escapeText(verdict.id)}</span>
       </label>`).join("") : `<div class="empty">Add verdict services first.</div>`}
-    <h3>Parameters</h3>
-    <div class="param-list">${paramRows("converter", converter.params)}</div>
-    <div class="config-actions">
-      <button id="addConverterParam" type="button">+ Param</button>
-    </div>
+    ${pluginParamSection("converter", converter.params, "addConverterParam")}
   `;
 }
 
@@ -1256,11 +1392,7 @@ function verdictConfig(verdict) {
         <input type="checkbox" data-fed-by-converter="${escapeAttr(converter.id)}" ${converter.verdictServiceIds.includes(verdict.id) ? "checked" : ""}>
         <span>${escapeText(converter.id)}</span>
       </label>`).join("") : `<div class="empty">Add converters first.</div>`}
-    <h3>Parameters</h3>
-    <div class="param-list">${paramRows("verdict", verdict.params)}</div>
-    <div class="config-actions">
-      <button id="addVerdictParam" type="button">+ Param</button>
-    </div>
+    ${pluginParamSection("verdict", verdict.params, "addVerdictParam")}
   `;
 }
 
@@ -1296,7 +1428,7 @@ function linkConfig(link) {
 
 function brokerConfig() {
   return `
-    <p class="notice">This broker is used for cross-host record links. Select source blocks, click a converter, then use Connect to target to create broker fan-in.</p>
+    <p class="notice">This broker is used when monitor, converter, or verdict links cross host boundaries.</p>
     <label>Broker host<input id="brokerHostConfig" value="${escapeAttr(brokerHost)}" spellcheck="false"></label>
     <label>Port<input id="brokerPortConfig" value="${escapeAttr(brokerPort)}" type="number"></label>
   `;
@@ -1305,11 +1437,23 @@ function brokerConfig() {
 function hostConfig(host) {
   const layout = topologyLayout();
   const hostBox = layout.hostBoxes.find((box) => box.host === host);
-  const runtimeRows = (hostBox?.nodes || []).sort((a, b) => a.stage - b.stage || a.title.localeCompare(b.title));
+  const runtimeRows = (hostBox?.nodes || [])
+    .filter((node) => node.kind !== "robot")
+    .sort((a, b) => a.stage - b.stage || a.title.localeCompare(b.title));
+  const sourceRows = sources.filter((source) => source.host === host);
   return `
-    <p class="notice">A host is the deployment container boundary. Runtime logs and lifecycle are shared by all non-robot runtimes in this host.</p>
+    <p class="notice">A host is the container boundary. It can represent a robot/application host with many ROS sources, or a monitor/converter/verdict runtime host.</p>
     <label>Host id<input id="hostIdConfig" value="${escapeAttr(host)}" spellcheck="false"></label>
     <label>Compose service<input value="${escapeAttr(serviceNameForHost(host))}" readonly></label>
+    <h3>ROS application</h3>
+    <label>Robot Dockerfile<input id="robotDockerfile" value="${escapeAttr(robotDockerfile)}" spellcheck="false"></label>
+    <label>Start command<textarea id="robotCommand" spellcheck="false">${escapeText(robotCommand)}</textarea></label>
+    <h3>ROS sources</h3>
+    ${sourceRows.length ? sourceRows.map((source) => `
+      <button class="runtime-jump" data-jump-node="${escapeAttr(sourceId(source))}" type="button">
+        ${escapeText(source.name)} (${escapeText(source.source_kind)})
+      </button>
+    `).join("") : `<div class="empty">Start the ROS application, then Scan graph and declare sources here.</div>`}
     <h3>Runtimes</h3>
     ${runtimeRows.length ? runtimeRows.map((node) => `
       <button class="runtime-jump" data-jump-node="${escapeAttr(node.key)}" type="button">
@@ -1334,13 +1478,17 @@ function renderConfig() {
   const verdict = selectedNode?.kind === "verdict" ? verdictServices.find((item) => item.id === selectedNode.id) : null;
   const monitor = selectedMonitor();
   const host = selectedNode?.kind === "host" ? selectedNode.id : "";
+  const broker = selectedBroker();
 
   if (source) {
-    $("selectionHint").textContent = `Robot source on ${source.host}`;
+    $("selectionHint").textContent = `ROS source on ${source.host}`;
     form.innerHTML = robotConfig(source);
   } else if (host) {
     $("selectionHint").textContent = `Host ${host}`;
     form.innerHTML = hostConfig(host);
+  } else if (broker) {
+    $("selectionHint").textContent = "MQTT broker";
+    form.innerHTML = brokerConfig();
   } else if (monitor) {
     $("selectionHint").textContent = `Monitor ${monitor.id}`;
     form.innerHTML = monitorConfig(monitor);
@@ -1450,16 +1598,32 @@ function bindConfigEvents() {
   });
   bind("converterManifest", "change", () => {
     const converter = selectedConverter();
-    const manifest = manifests.find((item) => item.id === $("converterManifest").value);
-    if (!converter || !manifest) return;
+    if (!converter) return;
+    const manifestId = $("converterManifest").value;
+    if (!manifestId) {
+      converter.class_path = "";
+      converter.params = [];
+      renderAll();
+      return;
+    }
+    const manifest = manifests.find((item) => item.id === manifestId);
+    if (!manifest) return;
     converter.class_path = manifest.class_path;
     converter.params = manifestParamRows(manifest);
     renderAll();
   });
   bind("verdictManifest", "change", () => {
     const verdict = selectedVerdict();
-    const manifest = manifests.find((item) => item.id === $("verdictManifest").value);
-    if (!verdict || !manifest) return;
+    if (!verdict) return;
+    const manifestId = $("verdictManifest").value;
+    if (!manifestId) {
+      verdict.class_path = "";
+      verdict.params = [];
+      renderAll();
+      return;
+    }
+    const manifest = manifests.find((item) => item.id === manifestId);
+    if (!manifest) return;
     verdict.class_path = manifest.class_path;
     verdict.params = manifestParamRows(manifest);
     renderAll();
@@ -1519,16 +1683,6 @@ function bindConfigEvents() {
     renderTopology();
   });
 
-  document.querySelectorAll("[data-use-source]").forEach((checkbox) => {
-    checkbox.addEventListener("change", () => {
-      const converter = selectedConverter();
-      if (!converter) return;
-      const key = checkbox.dataset.useSource;
-      if (checkbox.checked && !converter.inputSourceKeys.includes(key)) converter.inputSourceKeys.push(key);
-      if (!checkbox.checked) converter.inputSourceKeys = converter.inputSourceKeys.filter((item) => item !== key);
-      renderTopology();
-    });
-  });
   document.querySelectorAll("[data-chain-converter]").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
       const converter = selectedConverter();
@@ -1557,16 +1711,6 @@ function bindConfigEvents() {
       if (!verdict || !converter) return;
       if (checkbox.checked && !converter.verdictServiceIds.includes(verdict.id)) converter.verdictServiceIds.push(verdict.id);
       if (!checkbox.checked) converter.verdictServiceIds = converter.verdictServiceIds.filter((id) => id !== verdict.id);
-      renderTopology();
-    });
-  });
-  document.querySelectorAll("[data-monitor-source]").forEach((checkbox) => {
-    checkbox.addEventListener("change", () => {
-      const monitor = selectedMonitor();
-      if (!monitor) return;
-      const key = checkbox.dataset.monitorSource;
-      if (checkbox.checked && !monitor.sourceKeys.includes(key)) monitor.sourceKeys.push(key);
-      if (!checkbox.checked) monitor.sourceKeys = monitor.sourceKeys.filter((item) => item !== key);
       renderTopology();
     });
   });
@@ -1625,7 +1769,12 @@ function updateEditorTarget() {
   if (selectedNode?.kind === "monitor") path = "monitor/monitor_node.py";
   if (selectedNode?.kind === "converter") path = classPathToFile(selectedConverter()?.class_path);
   if (selectedNode?.kind === "verdict") path = classPathToFile(selectedVerdict()?.class_path);
-  if (selectedNode?.kind === "host") path = `generated/showcase/${slug(selectedNode.id, "host")}.yaml`;
+  if (selectedNode?.kind === "broker") path = "generated/showcase/mosquitto.conf";
+  if (selectedNode?.kind === "host") {
+    path = sourceOnlyHostKey(`host:${selectedNode.id}`)
+      ? robotDockerfile
+      : `generated/showcase/${slug(selectedNode.id, "host")}.yaml`;
+  }
   $("filePath").value = path;
   if (path && path !== editorTargetPath) {
     editorTargetPath = path;
@@ -1681,6 +1830,7 @@ function switchEditorTab(name) {
 
 function renderDiscoveryGroup(title, rows, kind) {
   if (!rows.length) return "";
+  const canDeclare = Boolean(selectedHost());
   return `
     <div class="discovered-group">
       <h3>${title}</h3>
@@ -1689,74 +1839,51 @@ function renderDiscoveryGroup(title, rows, kind) {
           <strong>${kind}</strong>
           <span>${escapeText(row.name)}</span>
           <code>${escapeText(row.interface)}</code>
-          <button data-add-discovered="${escapeAttr(JSON.stringify({ ...row, source_kind: kind }))}" type="button">Add</button>
+          <button data-add-discovered="${escapeAttr(JSON.stringify({ ...row, source_kind: kind }))}" type="button" ${canDeclare ? "" : "disabled"}>${canDeclare ? "Declare" : "Select host"}</button>
         </div>
       `).join("")}
     </div>
   `;
 }
 
-function renderGraph(data) {
-  $("graphResults").innerHTML = [
+function discoveryAttemptText(data) {
+  return [...(data.warnings || []), ...(data.attempts || [])]
+    .map((attempt) => {
+      if (attempt.empty) return `${attempt.method}: empty`;
+      if (attempt.error) return `${attempt.method}: ${attempt.error}`;
+      return attempt.method;
+    })
+    .filter(Boolean)
+    .join("; ");
+}
+
+function renderGraph(data, preserveLast = false) {
+  if (!preserveLast) lastGraphData = data;
+  const groups = [
     renderDiscoveryGroup("Topics", data.topics || [], "topic"),
     renderDiscoveryGroup("Services", data.services || [], "service"),
     renderDiscoveryGroup("Actions", data.actions || [], "action"),
-  ].join("") || `<div class="notice">No graph resources found.</div>`;
+  ].join("");
+  const attempts = discoveryAttemptText(data);
+  $("graphResults").innerHTML = groups || `<div class="notice">No graph resources found${attempts ? ` (${escapeText(attempts)})` : ""}.</div>`;
   document.querySelectorAll("[data-add-discovered]").forEach((button) => {
     button.addEventListener("click", () => addDiscoveredSource(JSON.parse(button.dataset.addDiscovered)));
   });
 }
 
-function ensureDiscoveredSource(seed, fallbackHost) {
-  const normalized = {
-    source_kind: seed.source_kind || "topic",
-    name: seed.name,
-    interface: seed.interface || "",
-  };
-  const key = sourceKey(normalized);
-  let source = sources.find((item) => sourceKey(item) === key);
-  let created = false;
-  if (!source) {
-    source = { ...normalized, host: ensureHost(fallbackHost) };
-    sources.push(source);
-    created = true;
-  }
-  return { source, key, created };
+function refreshGraphActions() {
+  if (!lastGraphData || !$("graphResults").innerHTML.trim()) return;
+  renderGraph(lastGraphData, true);
 }
 
 function addDiscoveredSource(seed) {
-  if (selectedNode?.kind === "monitor") {
-    const monitor = monitors.find((item) => item.id === selectedNode.id);
-    if (!monitor) return;
-    const { key, created } = ensureDiscoveredSource(seed, monitor.host);
-    if (!monitor.sourceKeys.includes(key)) monitor.sourceKeys.push(key);
-    $("scanStatus").textContent = created
-      ? `Subscribed ${monitor.id} to ${seed.name}. A robot block was created on ${monitor.host} — move it to the robot's host if needed.`
-      : `Subscribed ${monitor.id} to ${seed.name}.`;
-    renderAll();
-    return;
-  }
-  if (selectedNode?.kind === "converter") {
-    const converter = converters.find((item) => item.id === selectedNode.id);
-    if (!converter) return;
-    const { key, created } = ensureDiscoveredSource(seed, converter.host);
-    if (!converter.inputSourceKeys.includes(key)) converter.inputSourceKeys.push(key);
-    $("scanStatus").textContent = created
-      ? `Added ${seed.name} as an input of ${converter.id}. A robot block was created on ${converter.host} — move it to the robot's host if needed.`
-      : `Added ${seed.name} as an input of ${converter.id}.`;
-    renderAll();
-    return;
-  }
-  const robotHost = selectedNode?.kind === "robot"
-    ? sources.find((item) => sourceId(item) === selectedNode.id)?.host
-    : "";
-  const targetHost = selectedHost() || robotHost;
+  const targetHost = selectedHost();
   if (!targetHost) {
-    $("scanStatus").textContent = "Select where this source goes first: a host or robot (declares the source there), or a monitor / converter (subscribes it).";
+    $("scanStatus").textContent = "Select the robot/application host before declaring scanned sources.";
     return;
   }
-  addRobot({ ...seed, host: targetHost });
-  $("scanStatus").textContent = `Declared ${seed.name} as a robot source on ${targetHost}. Connect it to a monitor to observe it.`;
+  declareSource({ ...seed, host: targetHost });
+  $("scanStatus").textContent = `Declared ${seed.name} on ${targetHost}. Select this source and a monitor, then Connect to subscribe.`;
 }
 
 function applyTemplate(templateId, options = {}) {
@@ -1772,6 +1899,7 @@ function applyTemplate(templateId, options = {}) {
     selectedNode = null;
     $("scanStatus").textContent = "";
     $("graphResults").innerHTML = "";
+    lastGraphData = null;
     renderAll();
     return;
   }
@@ -1788,7 +1916,7 @@ function applyTemplate(templateId, options = {}) {
   verdictServices.push(verdict);
   const converter = {
     id: slug(converterId, "converter_1"),
-    class_path: plugin.converter || "custom.rule_based:RuleBasedConverter",
+    class_path: plugin.converter || "custom.speed:CmdVelSpeedConverter",
     params: structuredClone(plugin.converter_params || []),
     host: ensureHost(placement.converter || hosts[0]),
     inputSourceKeys: [],
@@ -1837,7 +1965,9 @@ function applyRunState(data) {
 function applyRobotState(data) {
   robotRunning = Boolean(data.running);
   if (!robotRunning) {
-    [...runningNodeKeys].filter((key) => key.startsWith("source:")).forEach((key) => runningNodeKeys.delete(key));
+    [...runningNodeKeys]
+      .filter((key) => key.startsWith("source:") || sourceOnlyHostKey(key))
+      .forEach((key) => runningNodeKeys.delete(key));
   }
   renderTopology();
 }
@@ -1862,6 +1992,10 @@ function appendRobotLogRows(rows) {
   renderFocusedLogs();
 }
 
+function keyUsesRobotLogs(key) {
+  return key.startsWith("source:") || robotApplicationHostKey(key);
+}
+
 function renderFocusedLogs() {
   const key = primarySelectedKey();
   const logs = $("logs");
@@ -1871,22 +2005,30 @@ function renderFocusedLogs() {
     return;
   }
   let rows = [];
-  if (key.startsWith("source:")) {
+  if (keyUsesRobotLogs(key)) {
     rows = robotLogRows;
+    if (key.startsWith("host:")) {
+      const terms = logTermsForKey(key);
+      const runtimeRows = runLogRows.filter((row) => {
+        const line = String(row.line || "").toLowerCase();
+        return terms.some((term) => line.includes(term));
+      });
+      rows = [...rows, ...runtimeRows].sort((a, b) => Number(a.ts || 0) - Number(b.ts || 0));
+    }
   } else {
     const terms = logTermsForKey(key);
     rows = runLogRows.filter((row) => {
       const line = String(row.line || "").toLowerCase();
       return terms.some((term) => line.includes(term));
     });
-    if (!rows.length && runLogRows.length && runningNodeKeys.has(key)) {
-      rows = runLogRows.slice(-120);
-    }
   }
   const label = labelForNodeKey(key);
+  const waiting = runningNodeKeys.has(key) || (keyUsesRobotLogs(key) && robotRunning);
   logs.textContent = rows.length
     ? rows.slice(-300).map((row) => row.line).join("\n")
-    : `No live output for ${label} yet.`;
+    : waiting
+      ? `Waiting for live output from ${label}...`
+      : `No live output for ${label} yet.`;
   logs.scrollTop = logs.scrollHeight;
   $("logStatus").textContent = `${label} · ${rows.length} line(s)`;
 }
@@ -1937,7 +2079,7 @@ function connectEventStream() {
 
 async function startRobot() {
   switchEditorTab("logs");
-  $("logs").textContent = "Building image and starting robot container...";
+  $("logs").textContent = "Building image and starting ROS application container...";
   lastRobotLogId = 0;
   try {
     const data = await api("/api/robots/start", {
@@ -1945,11 +2087,11 @@ async function startRobot() {
       body: JSON.stringify({ dockerfile: robotDockerfile, command: robotCommand }),
     });
     applyRobotState(data);
-    selectedKeys().filter((key) => key.startsWith("source:")).forEach((key) => runningNodeKeys.add(key));
+    setSelectedRobotRunning(true);
     renderFocusedLogs();
   } catch (error) {
     if (String(error.message).includes("already running")) {
-      selectedKeys().filter((key) => key.startsWith("source:")).forEach((key) => runningNodeKeys.add(key));
+      setSelectedRobotRunning(true);
       renderTopology();
       renderFocusedLogs();
       return;
@@ -1963,7 +2105,7 @@ async function stopRobot() {
     const data = await api("/api/robots/stop", { method: "POST", body: "{}" });
     lastRobotLogId = 0;
     applyRobotState(data);
-    selectedKeys().filter((key) => key.startsWith("source:")).forEach((key) => runningNodeKeys.delete(key));
+    setSelectedRobotRunning(false);
     renderFocusedLogs();
   } catch (error) {
     $("logs").textContent += `\n${error.message}`;
@@ -1977,16 +2119,19 @@ async function startSelectedComponents() {
     $("logs").textContent = "Select one or more blocks before starting.";
     return;
   }
+  const robotHostKeys = keys.filter(robotApplicationHostKey);
+  const sourceOnlyHostKeys = keys.filter(sourceOnlyHostKey);
   const robotKeys = keys.filter((key) => key.startsWith("source:"));
-  const runtimeKeys = keys.filter((key) => !key.startsWith("source:"));
+  const runtimeKeys = keys.filter((key) => !key.startsWith("source:") && !sourceOnlyHostKeys.includes(key));
   if (robotKeys.length) {
     await startRobot();
   }
+  if (robotHostKeys.length && !robotKeys.length) {
+    await startRobot();
+  }
   if (!runtimeKeys.length) return;
-  const targetServices = servicesForKeys(runtimeKeys);
-  $("logs").textContent = runActive
-    ? `Runtime stack is already active. Focusing ${labelForNodeKey(primarySelectedKey())}.`
-    : `Generating runtime files and starting ${targetServices.join(", ")}...`;
+  const targetServices = servicesWithImplicitBroker(servicesForKeys(runtimeKeys));
+  $("logs").textContent = `Starting ${targetServices.join(", ")}...`;
   try {
     const data = await api("/api/runs/start", {
       method: "POST",
@@ -1999,6 +2144,7 @@ async function startSelectedComponents() {
       if (host) setHostRunning(host, true);
       runningNodeKeys.add(key);
     });
+    if (targetServices.includes("mosquitto")) runningNodeKeys.add("broker:mqtt");
     renderTopology();
     renderFocusedLogs();
   } catch (error) {
@@ -2012,9 +2158,14 @@ async function stopSelectedComponents() {
     $("logs").textContent = "Select one or more blocks before stopping.";
     return;
   }
+  const robotHostKeys = keys.filter(robotApplicationHostKey);
+  const sourceOnlyHostKeys = keys.filter(sourceOnlyHostKey);
   const robotKeys = keys.filter((key) => key.startsWith("source:"));
-  const runtimeKeys = keys.filter((key) => !key.startsWith("source:"));
+  const runtimeKeys = keys.filter((key) => !key.startsWith("source:") && !sourceOnlyHostKeys.includes(key));
   if (robotKeys.length) {
+    await stopRobot();
+  }
+  if (robotHostKeys.length && !robotKeys.length) {
     await stopRobot();
   }
   if (!runtimeKeys.length) return;
@@ -2099,6 +2250,7 @@ function setupMarqueeSelection() {
 function renderAll() {
   renderTopology();
   renderConfig();
+  refreshGraphActions();
 }
 
 async function init() {
@@ -2118,7 +2270,6 @@ async function init() {
 
 $("template").addEventListener("change", () => applyTemplate($("template").value));
 $("addHost").addEventListener("click", () => addHost());
-$("addRobot").addEventListener("click", () => addRobot());
 $("addMonitor").addEventListener("click", () => addMonitor());
 $("addConverter").addEventListener("click", () => addConverter());
 $("addVerdict").addEventListener("click", () => addVerdict());
@@ -2140,14 +2291,19 @@ document.querySelectorAll(".editor-tab").forEach((tab) => {
 $("scanGraph").addEventListener("click", async () => {
   $("scanStatus").textContent = "Scanning ROS graph...";
   $("graphResults").innerHTML = "";
+  lastGraphData = null;
   try {
     const data = await api("/api/discovery/graph");
     if (!data.available) {
       $("scanStatus").textContent = data.error || "Discovery failed.";
-      $("graphResults").innerHTML = `<div class="notice">Discovery failed. You can still add robot sources manually.</div>`;
+      $("graphResults").innerHTML = `<div class="notice">Discovery failed. Check the ROS application and scan again.</div>`;
+      lastGraphData = null;
       return;
     }
-    $("scanStatus").textContent = `Scan complete via ${data.method}.`;
+    const total = Number(data.resource_count ?? 0);
+    $("scanStatus").textContent = total
+      ? `Scan complete via ${data.method}: ${total} resource(s).`
+      : `Scan complete via ${data.method}: no application resources found.`;
     renderGraph(data);
   } catch (error) {
     $("scanStatus").textContent = error.message;

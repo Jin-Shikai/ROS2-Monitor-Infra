@@ -26,6 +26,14 @@ def test_emits_relative_speed_once_both_robots_seen():
     assert len(result["_input_record_ids"]) == 2
 
 
+def test_can_infer_robot_pair_from_runtime_filtered_inputs():
+    conv = RelativeSpeedConverter()
+    assert conv.convert(_odom("/robot1", 0.6)) is None
+    result = conv.convert(_odom("/robot2", 0.1, seq=2))
+    assert result is not None
+    assert result["relative_speed"] == pytest.approx(0.5)
+
+
 def test_ignores_unrelated_sources():
     conv = RelativeSpeedConverter(robot_a="/robot1", robot_b="/robot2")
     assert conv.convert(_odom("/robot3", 1.0)) is None

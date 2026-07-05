@@ -114,7 +114,7 @@ textarea {
 
 .toolbar {
   display: grid;
-  grid-template-columns: 230px repeat(12, minmax(68px, 1fr));
+  grid-template-columns: 230px repeat(11, minmax(68px, 1fr));
   align-items: center;
   gap: 0;
   min-width: 900px;
@@ -342,6 +342,10 @@ textarea {
   min-height: 37px;
 }
 
+.notice.subtle:empty {
+  display: none;
+}
+
 .notice.warnings {
   grid-row: 3;
   max-height: 92px;
@@ -521,6 +525,12 @@ textarea {
   stroke: var(--accent);
 }
 
+.edge.broker-edge {
+  stroke: var(--code);
+  stroke-dasharray: 6 6;
+  stroke-width: 1.8;
+}
+
 .edge-label {
   fill: var(--accent);
   font: 11px ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -534,6 +544,11 @@ textarea {
 .edge-label.link-selected {
   fill: var(--accent-dark);
   font-weight: 700;
+}
+
+.edge-label.broker-label {
+  fill: var(--code);
+  pointer-events: none;
 }
 
 .link-row {
@@ -621,6 +636,10 @@ textarea {
 
 .node.checked {
   background: #eef4ff;
+}
+
+.node.broker {
+  border-style: dashed;
 }
 
 .node.running .node-status {

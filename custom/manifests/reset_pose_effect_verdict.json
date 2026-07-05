@@ -3,7 +3,5 @@
   "kind": "verdict",
   "name": "Reset Pose Effect Verdict",
   "class_path": "custom.reset_pose_effect:ResetPoseEffectVerdict",
-  "params": [
-    {"key": "property_id", "label": "Property ID", "type": "string", "default": "reset_pose_effect"}
-  ]
+  "params": []
 }

@@ -17,13 +17,12 @@ def test_monitor_config_parses_typed_specs():
         "exporters": [{"type": "mqtt", "broker": "localhost"}],
         "converters": [{
             "id": "c1",
-            "type": "custom.rule_based:RuleBasedConverter",
-            "params": {"source_match": "^/odom$", "field_map": {"v": "x"}},
+            "type": "custom.speed:CmdVelSpeedConverter",
         }],
         "verdict_services": [{
             "id": "v1",
             "type": "custom.threshold:ThresholdVerdict",
-            "params": {"property_id": "p", "field": "v", "op": ">", "threshold": 1},
+            "params": {"property_id": "p", "threshold": 1},
             "exporters": [{"type": "stdout"}],
         }],
         "outputs": [{
@@ -45,7 +44,7 @@ def test_monitor_config_parses_typed_specs():
     assert cfg.topics[0].transformers[0].kwargs == {"max_rate_hz": 5.0}
     assert cfg.exporters[0].kwargs == {"broker": "localhost"}
     assert cfg.converters[0].id == "c1"
-    assert cfg.converters[0].kwargs["source_match"] == "^/odom$"
+    assert cfg.converters[0].kwargs == {}
     assert cfg.verdict_services[0].exporters[0].type == "stdout"
     assert cfg.outputs[0].payload == "dsl"
     assert cfg.outputs[0].kwargs == {"topic": "dsl/x"}

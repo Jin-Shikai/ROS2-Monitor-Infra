@@ -6,12 +6,15 @@ import yaml
 
 from webui.server import (
     EventHub,
+    RunState,
     _line_looks_like_verdict,
     build_generation_request,
     clear_verdicts,
+    discover_graph,
     generate_configs,
     plugin_payload,
     recent_verdicts,
+    start_generated_run,
     start_robot,
 )
 
@@ -58,16 +61,10 @@ def test_showcase_builds_single_host_generation_request():
             "monitors": [
                 {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel", "topic:/odom"]}
             ],
-            "converter_class": "custom.rule_based:RuleBasedConverter",
+            "converter_class": "custom.speed:CmdVelSpeedConverter",
             "verdict_class": "custom.threshold:ThresholdVerdict",
-            "converter_params": [
-                {"key": "source_match", "value": "^/cmd_vel$", "type": "string"},
-                {"key": "field_map", "value": '{"speed": "linear.x"}', "type": "json"},
-            ],
             "verdict_params": [
                 {"key": "property_id", "value": "cmd_vel_limit", "type": "string"},
-                {"key": "field", "value": "speed", "type": "string"},
-                {"key": "op", "value": ">", "type": "string"},
                 {"key": "threshold", "value": "0.3", "type": "number"},
             ],
         }
@@ -84,9 +81,8 @@ def test_showcase_builds_single_host_generation_request():
     ]
     assert len(runtimes[0]["sources"]) == 2
     assert runtimes[1]["subscribe"] == ["cmd_vel", "odom"]
-    assert runtimes[2]["class_path"] == "custom.rule_based:RuleBasedConverter"
+    assert runtimes[2]["class_path"] == "custom.speed:CmdVelSpeedConverter"
     assert runtimes[2]["input_from"] == ["cmd_vel", "odom"]
-    assert runtimes[2]["field_map"] == {"speed": "linear.x"}
     assert runtimes[3]["property_id"] == "cmd_vel_limit"
     assert runtimes[3]["threshold"] == 0.3
 
@@ -115,7 +111,7 @@ def test_showcase_builds_service_and_action_sources():
             "converters": [
                 {
                     "id": "action_converter",
-                    "class_path": "custom.rule_based:RuleBasedConverter",
+                    "class_path": "custom.speed:CmdVelSpeedConverter",
                     "input_source_keys": ["action:/navigate_to_pose"],
                 }
             ],
@@ -228,9 +224,10 @@ def test_showcase_plugin_payload_expands_manifest_schema():
     ]
 
     speed = next(item for item in payload["plugins"] if item["id"] == "speed_check")
-    assert speed["converter"] == "custom.rule_based:RuleBasedConverter"
+    assert speed["converter"] == "custom.speed:CmdVelSpeedConverter"
     assert speed["verdict"] == "custom.threshold:ThresholdVerdict"
-    assert any(row["key"] == "field_map" for row in speed["converter_params"])
+    assert speed["converter_params"] == []
+    assert [row["key"] for row in speed["verdict_params"]] == ["threshold"]
 
     fleet = next(
         item for item in payload["plugins"] if item["id"] == "two_robot_relative_speed"
@@ -238,6 +235,8 @@ def test_showcase_plugin_payload_expands_manifest_schema():
     assert fleet["hosts"] == ["robot1", "robot2", "converter_host", "verdict_host"]
     assert fleet["placement"] == {"converter": "converter_host", "verdict": "verdict_host"}
     assert fleet["converter"] == "custom.relative_speed:RelativeSpeedConverter"
+    assert fleet["converter_params"] == []
+    assert [row["key"] for row in fleet["verdict_params"]] == ["threshold"]
 
     reset = next(
         item for item in payload["plugins"] if item["id"] == "service_effect_consistency"
@@ -245,6 +244,44 @@ def test_showcase_plugin_payload_expands_manifest_schema():
     assert reset["converter"] == "custom.reset_pose_effect:ResetPoseEffectConverter"
     assert reset["verdict"] == "custom.reset_pose_effect:ResetPoseEffectVerdict"
     assert {source["source_kind"] for source in reset["sources"]} == {"service", "topic"}
+    assert [row["key"] for row in reset["converter_params"]] == [
+        "deadline_sec",
+        "tolerance_m",
+    ]
+    assert reset["verdict_params"] == []
+
+
+def test_showcase_discovery_falls_back_when_local_graph_is_empty(monkeypatch):
+    import webui.server as server
+
+    monkeypatch.setattr(
+        server,
+        "_discover_graph_locally",
+        lambda: {"topics": [], "services": [], "actions": []},
+    )
+    monkeypatch.setattr(
+        server,
+        "_discover_graph_with_docker",
+        lambda: {
+            "topics": [
+                {
+                    "name": "/odom",
+                    "interface": "nav_msgs/msg/Odometry",
+                    "source_kind": "topic",
+                }
+            ],
+            "services": [],
+            "actions": [],
+        },
+    )
+
+    result = discover_graph()
+
+    assert result["available"] is True
+    assert result["method"] == "docker"
+    assert result["resource_count"] == 1
+    assert result["warnings"] == [{"method": "local", "empty": True}]
+    assert result["topics"][0]["name"] == "/odom"
 
 
 def test_showcase_generation_uses_manifest_defaults_for_empty_preset_params():
@@ -280,9 +317,9 @@ def test_showcase_generation_uses_manifest_defaults_for_empty_preset_params():
     runtimes = [rt for host in request["hosts"] for rt in host["runtimes"]]
     converter = next(rt for rt in runtimes if rt["id"] == "relative_speed")
     verdict = next(rt for rt in runtimes if rt["id"] == "relative_speed_check")
-    assert converter["robot_a"] == "/robot1"
-    assert converter["robot_b"] == "/robot2"
-    assert verdict["field"] == "speed"
+    assert "robot_a" not in converter
+    assert "robot_b" not in converter
+    assert "field" not in verdict
     assert verdict["threshold"] == 0.3
 
 
@@ -297,16 +334,10 @@ def test_showcase_generate_configs_writes_yaml(tmp_path, monkeypatch):
             "monitors": [
                 {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel"]}
             ],
-            "converter_class": "custom.rule_based:RuleBasedConverter",
+            "converter_class": "custom.speed:CmdVelSpeedConverter",
             "verdict_class": "custom.threshold:ThresholdVerdict",
-            "converter_params": [
-                {"key": "source_match", "value": "^/cmd_vel$", "type": "string"},
-                {"key": "field_map", "value": '{"speed": "linear.x"}', "type": "json"},
-            ],
             "verdict_params": [
                 {"key": "property_id", "value": "cmd_vel_limit", "type": "string"},
-                {"key": "field", "value": "speed", "type": "string"},
-                {"key": "op", "value": ">", "type": "string"},
                 {"key": "threshold", "value": "0.3", "type": "number"},
             ],
         }
@@ -359,19 +390,13 @@ def test_showcase_generate_configs_writes_service_action_sections(tmp_path, monk
             "converters": [
                 {
                     "id": "showcase_converter",
-                    "class_path": "custom.rule_based:RuleBasedConverter",
+                    "class_path": "custom.reset_pose_effect:ResetPoseEffectConverter",
                     "input_source_keys": ["service:/reset"],
-                    "params": [
-                        {"key": "source_match", "value": "^/reset$", "type": "string"},
-                        {"key": "field_map", "value": '{"ok": "success"}', "type": "json"},
-                    ],
                 }
             ],
             "verdict_params": [
                 {"key": "property_id", "value": "reset_ok", "type": "string"},
-                {"key": "field", "value": "ok", "type": "string"},
-                {"key": "op", "value": "==", "type": "string"},
-                {"key": "threshold", "value": "true", "type": "auto"},
+                {"key": "threshold", "value": "0.3", "type": "number"},
             ],
         }
     )
@@ -406,13 +431,9 @@ def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeyp
             "converters": [
                 {
                     "id": "showcase_converter",
-                    "class_path": "custom.rule_based:RuleBasedConverter",
+                    "class_path": "custom.speed:CmdVelSpeedConverter",
                     "host": "verifier",
                     "verdict_service_ids": ["showcase_verdict"],
-                    "params": [
-                        {"key": "source_match", "value": "^/cmd_vel$", "type": "string"},
-                        {"key": "field_map", "value": '{"speed": "linear.x"}', "type": "json"},
-                    ],
                 }
             ],
             "verdict_services": [
@@ -422,8 +443,6 @@ def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeyp
                     "host": "verifier",
                     "params": [
                         {"key": "property_id", "value": "cmd_vel_limit", "type": "string"},
-                        {"key": "field", "value": "speed", "type": "string"},
-                        {"key": "op", "value": ">", "type": "string"},
                         {"key": "threshold", "value": "0.3", "type": "number"},
                     ],
                 }
@@ -497,7 +516,7 @@ def test_showcase_rejects_converter_input_without_monitor():
                 "converters": [
                     {
                         "id": "showcase_converter",
-                        "class_path": "custom.rule_based:RuleBasedConverter",
+                        "class_path": "custom.speed:CmdVelSpeedConverter",
                         "input_source_keys": ["topic:/cmd_vel"],
                         "verdict_service_ids": [],
                     }
@@ -550,6 +569,81 @@ def test_showcase_robot_start_uses_host_network_and_ipc(monkeypatch):
     assert run_command[run_command.index("--ipc") + 1] == "host"
     assert "source /opt/ros/kilted/setup.bash && ros2 topic list" in run_command
     assert started_log_streams == ["robot-container-id"]
+
+
+def test_showcase_start_run_adds_services_when_stack_is_active(tmp_path, monkeypatch):
+    import webui.server as server
+
+    class FakeProcess:
+        stdout = None
+
+        def __init__(self) -> None:
+            self.terminated = False
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            self.terminated = True
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            self.terminated = True
+
+    commands = []
+    previous = FakeProcess()
+
+    monkeypatch.setattr(server, "GENERATED_DIR", tmp_path)
+    monkeypatch.setattr(server, "GENERATED_COMPOSE", tmp_path / "docker-compose.yml")
+    server.GENERATED_COMPOSE.write_text("services: {}\n", encoding="utf-8")
+    monkeypatch.setattr(
+        server,
+        "generate_configs",
+        lambda payload: {"compose_path": str(server.GENERATED_COMPOSE)},
+    )
+    monkeypatch.setattr(
+        server.subprocess,
+        "run",
+        lambda command, **kwargs: commands.append(command)
+        or subprocess.CompletedProcess(command, 0, "started\n"),
+    )
+
+    def fake_log_stream(target_id, command):
+        return RunState(
+            target_id=target_id,
+            command=command,
+            compose_path=server.GENERATED_COMPOSE,
+            started_at=1.0,
+            process=FakeProcess(),
+        )
+
+    monkeypatch.setattr(server, "_start_compose_log_stream", fake_log_stream)
+    monkeypatch.setattr(
+        server.STATE,
+        "run",
+        RunState(
+            target_id="generated_host2",
+            command=["old"],
+            compose_path=server.GENERATED_COMPOSE,
+            started_at=0.0,
+            process=previous,
+        ),
+    )
+    monkeypatch.setattr(server.STATE, "generated", {"compose_path": str(server.GENERATED_COMPOSE)})
+
+    result = start_generated_run(
+        {
+            "target_services": ["mosquitto", "generated_host3", "generated_host4"],
+        }
+    )
+
+    assert commands[-1][-3:] == ["mosquitto", "generated_host3", "generated_host4"]
+    assert "-d" in commands[-1]
+    assert previous.terminated is True
+    assert result["running"] is True
+    assert result["message"] == "Started mosquitto, generated_host3, generated_host4."
 
 
 def test_showcase_clear_verdicts_truncates_showcase_jsonl(tmp_path, monkeypatch):

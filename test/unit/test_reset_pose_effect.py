@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 from custom.reset_pose_effect import ResetPoseEffectConverter, ResetPoseEffectVerdict
 from data_record import DataRecord
 
@@ -49,18 +47,6 @@ def test_reset_success_without_origin_emits_fail_record():
 
     assert record["reset_effect_ok"] is False
     assert record["distance_to_origin"] == 0.5
-
-
-def test_reset_timeout_can_fire_without_new_odom():
-    emitted = []
-    conv = ResetPoseEffectConverter(deadline_sec=0.05)
-    conv.start(emitted.append)
-    try:
-        conv.convert(_reset(ts=time.time()))
-        time.sleep(0.15)
-        assert emitted[0]["reset_effect_ok"] is False
-    finally:
-        conv.stop()
 
 
 def test_verdict_passes_through_service_effect_result():
