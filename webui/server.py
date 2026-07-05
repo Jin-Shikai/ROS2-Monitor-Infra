@@ -185,7 +185,6 @@ class RunState:
     compose_path: Path
     started_at: float
     process: subprocess.Popen[str]
-    next_log_id: int = 1
 
 
 @dataclass
@@ -207,27 +206,27 @@ class ShowcaseState:
         self.logs: deque[dict[str, Any]] = deque(maxlen=3000)
         self.robot_logs: deque[dict[str, Any]] = deque(maxlen=1000)
         self.generated: dict[str, Any] | None = None
+        # Ids grow monotonically for the server's lifetime, even across run
+        # restarts and log clears: SSE clients drop rows with ids they have
+        # already seen, so reused ids would make new logs invisible to them.
+        self._next_log_id = 1
+        self._next_robot_log_id = 1
 
-    def append_log(self, line: str) -> None:
+    def append_log(self, line: str) -> dict[str, Any]:
         with self.lock:
-            log_id = self.run.next_log_id if self.run else len(self.logs) + 1
-            if self.run:
-                self.run.next_log_id += 1
-            self.logs.append(
-                {"id": log_id, "ts": time.time(), "line": line.rstrip("\n")}
-            )
+            row = {"id": self._next_log_id, "ts": time.time(), "line": line.rstrip("\n")}
+            self._next_log_id += 1
+            self.logs.append(row)
+            return row
 
-    def snapshot_logs(self, since: int = 0, limit: int = 400) -> list[dict[str, Any]]:
+    def snapshot_logs(self, limit: int = 400) -> list[dict[str, Any]]:
         with self.lock:
-            rows = [row for row in self.logs if int(row["id"]) > since]
-        return rows[-limit:]
+            return list(self.logs)[-limit:]
 
     def append_robot_log(self, line: str) -> dict[str, Any]:
         with self.lock:
-            log_id = len(self.robot_logs) + 1
-            if self.robot_logs:
-                log_id = int(self.robot_logs[-1]["id"]) + 1
-            row = {"id": log_id, "ts": time.time(), "line": line.rstrip("\n")}
+            row = {"id": self._next_robot_log_id, "ts": time.time(), "line": line.rstrip("\n")}
+            self._next_robot_log_id += 1
             self.robot_logs.append(row)
             return row
 
@@ -549,20 +548,6 @@ def stop_robot() -> dict[str, Any]:
     return result
 
 
-def robot_logs(limit: int = 120) -> dict[str, Any]:
-    with STATE.lock:
-        robot = STATE.robot
-    container_id = robot.container_id if robot else _container_id_by_name(ROBOT_CONTAINER_NAME)
-    if not container_id:
-        return {"logs": []}
-    completed = _run_completed(
-        ["docker", "logs", "--tail", str(limit), container_id], timeout=20
-    )
-    if completed.returncode != 0:
-        return {"logs": [completed.stdout.strip()]}
-    return {"logs": completed.stdout.splitlines()}
-
-
 def safe_slug(value: str) -> str:
     cleaned = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in value)
     return cleaned.strip("_") or "source"
@@ -824,11 +809,8 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
 
     verdict_inputs: dict[str, list[str]] = {}
     verdict_feeders: dict[str, list[str]] = {}
-    for raw_converter in converter_payloads:
-        converter_id = _node_id(raw_converter.get("id"), "showcase_converter")
-        output_id = converter_output.get(converter_id)
-        if output_id is None:
-            continue
+    for converter_id, raw_converter in converter_specs:
+        output_id = converter_output[converter_id]
         verdict_ids = [
             _node_id(item, str(item))
             for item in list(raw_converter.get("verdict_service_ids") or [])
@@ -1162,28 +1144,8 @@ def current_run_payload() -> dict[str, Any]:
 def _read_process_logs(process: subprocess.Popen[str]) -> None:
     assert process.stdout is not None
     for line in process.stdout:
-        STATE.append_log(line)
-        with STATE.lock:
-            log = STATE.logs[-1] if STATE.logs else None
-        if log is not None:
-            EVENTS.publish("log", log)
-            if _line_looks_like_verdict(line):
-                publish_recent_verdicts(delay=0.2)
+        EVENTS.publish("log", STATE.append_log(line))
     EVENTS.publish("run_state", current_run_payload())
-
-
-def _line_looks_like_verdict(line: str) -> bool:
-    return "Verdict(" in line or '"property_id"' in line or "verdicts_" in line
-
-
-def publish_recent_verdicts(delay: float = 0.0) -> None:
-    def _publish() -> None:
-        EVENTS.publish("verdicts", {"verdicts": recent_verdicts(limit=50)})
-
-    if delay <= 0:
-        _publish()
-        return
-    threading.Timer(delay, _publish).start()
 
 
 def _target_id_for_services(target_services: list[str]) -> str:
@@ -1309,25 +1271,19 @@ def stop_run(payload: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def recent_verdicts(limit: int = 50) -> list[dict[str, Any]]:
     verdicts: list[dict[str, Any]] = []
-    roots = [ROOT / "output" / "showcase", GENERATED_DIR]
-    for root in roots:
-        if not root.exists():
+    for path in _verdict_jsonl_paths():
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError:
             continue
-        for path in root.rglob("*.jsonl"):
-            if "verdict" not in path.name:
-                continue
+        for line in lines[-limit:]:
             try:
-                lines = path.read_text(encoding="utf-8").splitlines()
-            except OSError:
+                row = json.loads(line)
+            except json.JSONDecodeError:
                 continue
-            for line in lines[-limit:]:
-                try:
-                    row = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if "property_id" in row and "result" in row:
-                    row["_file"] = str(path.relative_to(ROOT))
-                    verdicts.append(row)
+            if "property_id" in row and "result" in row:
+                row["_file"] = str(path.relative_to(ROOT))
+                verdicts.append(row)
     verdicts.sort(key=lambda row: float(row.get("timestamp") or 0.0), reverse=True)
     return verdicts[:limit]
 
@@ -1351,7 +1307,7 @@ def _watch_verdict_files(interval: float = 1.0) -> None:
         signature = _verdict_file_signature()
         if signature != last_signature:
             last_signature = signature
-            publish_recent_verdicts()
+            EVENTS.publish("verdicts", {"verdicts": recent_verdicts(limit=50)})
 
 
 def ensure_verdict_watcher() -> None:
@@ -1485,16 +1441,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._send_event_stream()
             if parsed.path == "/api/robots/current":
                 return self._send_json(current_robot_payload())
-            if parsed.path == "/api/robots/logs":
-                qs = parse_qs(parsed.query)
-                limit = int((qs.get("limit") or ["120"])[0])
-                return self._send_json(robot_logs(limit=limit))
             if parsed.path == "/api/runs/current":
                 return self._send_json(current_run_payload())
-            if parsed.path == "/api/runs/logs":
-                qs = parse_qs(parsed.query)
-                since = int((qs.get("since") or ["0"])[0])
-                return self._send_json({"logs": STATE.snapshot_logs(since=since)})
             if parsed.path == "/api/verdicts":
                 qs = parse_qs(parsed.query)
                 limit = int((qs.get("limit") or ["50"])[0])

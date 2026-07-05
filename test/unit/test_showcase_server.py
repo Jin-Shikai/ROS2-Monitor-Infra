@@ -7,7 +7,7 @@ import yaml
 from webui.server import (
     EventHub,
     RunState,
-    _line_looks_like_verdict,
+    ShowcaseState,
     build_generation_request,
     clear_verdicts,
     discover_graph,
@@ -37,10 +37,20 @@ def test_showcase_event_hub_broadcasts_to_subscribers():
     assert second.get_nowait() == next_event
 
 
-def test_showcase_detects_verdict_log_lines():
-    assert _line_looks_like_verdict('Verdict(timestamp=1.0, property_id="p")')
-    assert _line_looks_like_verdict('{"property_id": "p", "result": false}')
-    assert not _line_looks_like_verdict("Service: /reset_pose [std_srvs/srv/Trigger]")
+def test_showcase_log_ids_stay_monotonic_across_clears():
+    state = ShowcaseState()
+    first = state.append_log("first run")
+    state.logs.clear()
+    second = state.append_log("second run")
+
+    assert second["id"] > first["id"]
+    assert state.snapshot_logs() == [second]
+
+    robot_first = state.append_robot_log("robot up")
+    state.clear_robot_logs()
+    robot_second = state.append_robot_log("robot again")
+
+    assert robot_second["id"] > robot_first["id"]
 
 
 def test_showcase_builds_single_host_generation_request():
@@ -482,6 +492,40 @@ def test_showcase_honours_explicit_empty_pipeline_lists():
     kinds = [runtime["kind"] for runtime in request["hosts"][0]["runtimes"]]
     assert kinds == ["ros2", "monitor"]
     assert request["links"] == []
+
+
+def test_showcase_connects_verdicts_for_unnamed_converters():
+    request = build_generation_request(
+        {
+            "sources": [{"name": "/cmd_vel", "interface": "geometry_msgs/msg/Twist"}],
+            "monitors": [
+                {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel"]}
+            ],
+            "converters": [
+                {
+                    "class_path": "custom.speed:CmdVelSpeedConverter",
+                    "verdict_service_ids": ["shared_verdict"],
+                },
+                {
+                    "class_path": "custom.speed:CmdVelSpeedConverter",
+                    "verdict_service_ids": ["shared_verdict"],
+                },
+            ],
+            "verdict_services": [
+                {
+                    "id": "shared_verdict",
+                    "class_path": "custom.threshold:ThresholdVerdict",
+                }
+            ],
+        }
+    )
+
+    runtimes = request["hosts"][0]["runtimes"]
+    verdict = next(rt for rt in runtimes if rt["kind"] == "verdict_service")
+    assert sorted(verdict["input_from"]) == [
+        "showcase_converter_1_dsl_record",
+        "showcase_converter_2_dsl_record",
+    ]
 
 
 def test_showcase_rejects_verdict_service_without_feeding_converter():

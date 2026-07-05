@@ -12,10 +12,8 @@ let selectedNodeKeys = new Set();
 let selectedLink = null;
 let lastLogId = 0;
 let lastRobotLogId = 0;
-let generated = false;
 let eventSource = null;
 let robotRunning = false;
-let runActive = false;
 let robotDockerfile = "Dockerfile";
 let robotCommand = "source /opt/ros/kilted/setup.bash && python3 /demo/common/topic_robot.py cmd-velocity-cycle --ros-args -r __node:=showcase_robot";
 let editorTargetPath = "";
@@ -747,10 +745,6 @@ function iconFor(kind) {
 }
 
 function nodeSelectionKind(node) {
-  if (node.kind === "host") return { kind: "host", id: node.id };
-  if (node.kind === "robot") return { kind: "robot", id: node.id };
-  if (node.kind === "monitor") return { kind: "monitor", id: node.id };
-  if (node.kind === "broker") return { kind: "broker", id: node.id };
   return { kind: node.kind, id: node.id };
 }
 
@@ -898,28 +892,14 @@ function isNodeRunning(key) {
 }
 
 function isSelected(node) {
-  return selectedNode && selectedNode.kind === nodeSelectionKind(node).kind && selectedNode.id === nodeSelectionKind(node).id;
+  return Boolean(selectedNode && selectedNode.kind === node.kind && selectedNode.id === node.id);
 }
 
-function edgePoints(from, to) {
-  if (Math.abs(from.y - to.y) < 2) {
-    const x1 = from.x + NODE_WIDTH;
-    const y1 = from.y + NODE_HEIGHT / 2;
-    const x2 = to.x;
-    const y2 = to.y + NODE_HEIGHT / 2;
-    return `${x1},${y1} ${x2},${y2}`;
-  }
-  const upward = to.y < from.y;
-  const x1 = from.x + NODE_WIDTH / 2;
-  const y1 = upward ? from.y : from.y + NODE_HEIGHT;
-  const x2 = to.x + NODE_WIDTH / 2;
-  const y2 = upward ? to.y + NODE_HEIGHT : to.y;
-  if (Math.abs(x1 - x2) < 2) return `${x1},${y1} ${x2},${y2}`;
-  const midY = Math.round((y1 + y2) / 2);
-  return `${x1},${y1} ${x1},${midY} ${x2},${midY} ${x2},${y2}`;
+function nodeRect(node) {
+  return { x: node.x, y: node.y, width: NODE_WIDTH, height: NODE_HEIGHT };
 }
 
-function hostEdgePoints(from, to) {
+function rectEdgePoints(from, to) {
   if (Math.abs(from.y - to.y) < 2) {
     const x1 = from.x + from.width;
     const y1 = from.y + from.height / 2;
@@ -1053,13 +1033,11 @@ function renderTopology() {
     900,
     ...nodes.map((node) => node.x + NODE_WIDTH + 42),
     ...layout.hostBoxes.map((host) => host.x + host.width + 42),
-    900,
   );
   const height = Math.max(
     680,
     ...nodes.map((node) => node.y + NODE_HEIGHT + 42),
     ...layout.hostBoxes.map((host) => host.y + host.height + 42),
-    680,
   );
   $("edgeLayer").setAttribute("viewBox", `0 0 ${width} ${height}`);
   $("edgeLayer").style.minWidth = `${width * zoom}px`;
@@ -1127,14 +1105,14 @@ function renderTopology() {
     const from = layout.nodeByKey[edge.from];
     const to = layout.nodeByKey[edge.to];
     if (!from || !to) return "";
-    return edgeMarkup(edge, edgePoints(from, to), "runtime-edge", edge.payload);
+    return edgeMarkup(edge, rectEdgePoints(nodeRect(from), nodeRect(to)), "runtime-edge", edge.payload);
   }).join("");
   const hostPaths = layout.directHostLinks.map((edge) => {
     const from = layout.hostById[edge.from];
     const to = layout.hostById[edge.to];
     if (!from || !to) return "";
     const count = edge.pairs.length > 1 ? ` x${edge.pairs.length}` : "";
-    return edgeMarkup(edge, hostEdgePoints(from, to), "host-edge", `${edge.payload}${count}`);
+    return edgeMarkup(edge, rectEdgePoints(from, to), "host-edge", `${edge.payload}${count}`);
   }).join("");
   const brokerPaths = layout.brokerEdges.map((edge) => {
     const from = layout.hostById[edge.from];
@@ -1162,25 +1140,25 @@ function renderTopology() {
   renderWarnings();
 
   document.querySelectorAll("[data-node-kind]").forEach((button) => {
-    button.addEventListener("click", (event) => {
+    const selectOnly = () => {
       selectedLink = null;
-      if (event.shiftKey || event.metaKey || event.ctrlKey) {
-        toggleNodeSelection(button.dataset.nodeKey, { kind: button.dataset.nodeKind, id: button.dataset.nodeId });
-        return;
-      }
-      selectedNode = nodeSelectionKind({ kind: button.dataset.nodeKind, id: button.dataset.nodeId });
+      selectedNode = { kind: button.dataset.nodeKind, id: button.dataset.nodeId };
       selectedNodeKeys = new Set([button.dataset.nodeKey]);
       renderAll();
       renderFocusedLogs();
+    };
+    button.addEventListener("click", (event) => {
+      if (event.shiftKey || event.metaKey || event.ctrlKey) {
+        selectedLink = null;
+        toggleNodeSelection(button.dataset.nodeKey, { kind: button.dataset.nodeKind, id: button.dataset.nodeId });
+        return;
+      }
+      selectOnly();
     });
     button.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      selectedLink = null;
-      selectedNode = nodeSelectionKind({ kind: button.dataset.nodeKind, id: button.dataset.nodeId });
-      selectedNodeKeys = new Set([button.dataset.nodeKey]);
-      renderAll();
-      renderFocusedLogs();
+      selectOnly();
     });
   });
   updateToolbarState();
@@ -1905,8 +1883,8 @@ function applyTemplate(templateId, options = {}) {
   }
   const placement = plugin.placement || {};
   if (plugin.robot_command) robotCommand = plugin.robot_command;
-  const converterId = plugin.converter_manifest || (templateId === "blank" ? "custom-converter" : templateId);
-  const verdictId = plugin.verdict_manifest || (templateId === "blank" ? "custom-verdict" : `${templateId}-verdict`);
+  const converterId = plugin.converter_manifest || templateId;
+  const verdictId = plugin.verdict_manifest || `${templateId}-verdict`;
   const verdict = {
     id: slug(verdictId, "verdict_1"),
     class_path: plugin.verdict || "custom.threshold:ThresholdVerdict",
@@ -1949,17 +1927,6 @@ function applyTemplate(templateId, options = {}) {
   selectedNode = converters.length ? { kind: "converter", id: converters[0].id } : null;
   selectedNodeKeys = selectedNode ? new Set([`converter:${converters[0].id}`]) : new Set();
   renderAll();
-}
-
-function renderGenerated(data) {
-  if (!data) return;
-  generated = true;
-}
-
-function applyRunState(data) {
-  generated = data.generated || generated;
-  runActive = Boolean(data.running);
-  renderTopology();
 }
 
 function applyRobotState(data) {
@@ -2047,10 +2014,7 @@ function connectEventStream() {
   eventSource = new EventSource("/api/events");
   eventSource.addEventListener("open", () => { $("logStatus").textContent = "connected"; });
   eventSource.addEventListener("error", () => { $("logStatus").textContent = "SSE reconnecting"; });
-  eventSource.addEventListener("run_state", (event) => {
-    const data = parseEventData(event);
-    if (data) applyRunState(data);
-  });
+  eventSource.addEventListener("run_state", () => renderTopology());
   eventSource.addEventListener("robot_state", (event) => {
     const data = parseEventData(event);
     if (data) applyRobotState(data);
@@ -2071,16 +2035,11 @@ function connectEventStream() {
     const data = parseEventData(event);
     if (data) appendRobotLogRows([data]);
   });
-  eventSource.addEventListener("generated", (event) => {
-    const data = parseEventData(event);
-    if (data) renderGenerated(data);
-  });
 }
 
 async function startRobot() {
   switchEditorTab("logs");
   $("logs").textContent = "Building image and starting ROS application container...";
-  lastRobotLogId = 0;
   try {
     const data = await api("/api/robots/start", {
       method: "POST",
@@ -2103,7 +2062,6 @@ async function startRobot() {
 async function stopRobot() {
   try {
     const data = await api("/api/robots/stop", { method: "POST", body: "{}" });
-    lastRobotLogId = 0;
     applyRobotState(data);
     setSelectedRobotRunning(false);
     renderFocusedLogs();
@@ -2112,33 +2070,35 @@ async function stopRobot() {
   }
 }
 
+function partitionSelection() {
+  const keys = selectedKeys();
+  const sourceOnlyHostKeys = keys.filter(sourceOnlyHostKey);
+  return {
+    keys,
+    // The docker robot container backs both source blocks and robot/application hosts.
+    wantsRobot: keys.some((key) => key.startsWith("source:") || robotApplicationHostKey(key)),
+    runtimeKeys: keys.filter((key) => !key.startsWith("source:") && !sourceOnlyHostKeys.includes(key)),
+  };
+}
+
 async function startSelectedComponents() {
   switchEditorTab("logs");
-  const keys = selectedKeys();
+  const { keys, wantsRobot, runtimeKeys } = partitionSelection();
   if (!keys.length) {
     $("logs").textContent = "Select one or more blocks before starting.";
     return;
   }
-  const robotHostKeys = keys.filter(robotApplicationHostKey);
-  const sourceOnlyHostKeys = keys.filter(sourceOnlyHostKey);
-  const robotKeys = keys.filter((key) => key.startsWith("source:"));
-  const runtimeKeys = keys.filter((key) => !key.startsWith("source:") && !sourceOnlyHostKeys.includes(key));
-  if (robotKeys.length) {
-    await startRobot();
-  }
-  if (robotHostKeys.length && !robotKeys.length) {
+  if (wantsRobot) {
     await startRobot();
   }
   if (!runtimeKeys.length) return;
   const targetServices = servicesWithImplicitBroker(servicesForKeys(runtimeKeys));
   $("logs").textContent = `Starting ${targetServices.join(", ")}...`;
   try {
-    const data = await api("/api/runs/start", {
+    await api("/api/runs/start", {
       method: "POST",
       body: JSON.stringify({ ...currentPayload(), target_services: targetServices }),
     });
-    renderGenerated(data.generated_files);
-    applyRunState(data);
     runtimeKeys.forEach((key) => {
       const host = hostForNodeKey(key);
       if (host) setHostRunning(host, true);
@@ -2153,29 +2113,21 @@ async function startSelectedComponents() {
 }
 
 async function stopSelectedComponents() {
-  const keys = selectedKeys();
+  const { keys, wantsRobot, runtimeKeys } = partitionSelection();
   if (!keys.length) {
     $("logs").textContent = "Select one or more blocks before stopping.";
     return;
   }
-  const robotHostKeys = keys.filter(robotApplicationHostKey);
-  const sourceOnlyHostKeys = keys.filter(sourceOnlyHostKey);
-  const robotKeys = keys.filter((key) => key.startsWith("source:"));
-  const runtimeKeys = keys.filter((key) => !key.startsWith("source:") && !sourceOnlyHostKeys.includes(key));
-  if (robotKeys.length) {
-    await stopRobot();
-  }
-  if (robotHostKeys.length && !robotKeys.length) {
+  if (wantsRobot) {
     await stopRobot();
   }
   if (!runtimeKeys.length) return;
   try {
     const targetServices = servicesForKeys(runtimeKeys);
-    const data = await api("/api/runs/stop", {
+    await api("/api/runs/stop", {
       method: "POST",
       body: JSON.stringify({ target_services: targetServices }),
     });
-    applyRunState(data);
     runtimeKeys.forEach((key) => {
       const host = hostForNodeKey(key);
       if (host) setHostRunning(host, false);
@@ -2254,7 +2206,7 @@ function renderAll() {
 }
 
 async function init() {
-  const health = await api("/api/health");
+  await api("/api/health");
   const pluginPayload = await api("/api/plugins");
   plugins = pluginPayload.plugins || [];
   manifests = pluginPayload.manifests || [];
