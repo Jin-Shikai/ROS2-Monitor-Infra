@@ -55,6 +55,9 @@ def test_showcase_builds_single_host_generation_request():
                     "source_kind": "topic",
                 },
             ],
+            "monitors": [
+                {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel", "topic:/odom"]}
+            ],
             "converter_class": "custom.rule_based_converter:RuleBasedConverter",
             "verdict_class": "custom.threshold_verdict:ThresholdVerdict",
             "converter_params": [
@@ -103,6 +106,12 @@ def test_showcase_builds_service_and_action_sources():
                     "source_kind": "action",
                 },
             ],
+            "monitors": [
+                {
+                    "id": "monitor_robot",
+                    "source_keys": ["service:/reset", "action:/navigate_to_pose"],
+                }
+            ],
             "converters": [
                 {
                     "id": "action_converter",
@@ -146,6 +155,9 @@ def test_showcase_builds_graph_payload_with_shared_verdict_service():
                     "interface": "nav_msgs/msg/Odometry",
                     "source_kind": "topic",
                 },
+            ],
+            "monitors": [
+                {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel", "topic:/odom"]}
             ],
             "converters": [
                 {
@@ -213,6 +225,18 @@ def test_showcase_placement_derives_cross_host_links():
                     "interface": "nav_msgs/msg/Odometry",
                     "source_kind": "topic",
                     "host": "robot2",
+                },
+            ],
+            "monitors": [
+                {
+                    "id": "monitor_robot1",
+                    "host": "robot1",
+                    "source_keys": ["topic:/robot1/odom"],
+                },
+                {
+                    "id": "monitor_robot2",
+                    "host": "robot2",
+                    "source_keys": ["topic:/robot2/odom"],
                 },
             ],
             "converters": [
@@ -288,6 +312,9 @@ def test_showcase_generate_configs_writes_yaml(tmp_path, monkeypatch):
     result = generate_configs(
         {
             "sources": [{"name": "/cmd_vel", "interface": "geometry_msgs/msg/Twist"}],
+            "monitors": [
+                {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel"]}
+            ],
             "converter_class": "custom.rule_based_converter:RuleBasedConverter",
             "verdict_class": "custom.threshold_verdict:ThresholdVerdict",
             "converter_params": [
@@ -341,6 +368,12 @@ def test_showcase_generate_configs_writes_service_action_sections(tmp_path, monk
                     "source_kind": "action",
                 },
             ],
+            "monitors": [
+                {
+                    "id": "monitor_robot",
+                    "source_keys": ["service:/reset", "action:/navigate_to_pose"],
+                }
+            ],
             "converters": [
                 {
                     "id": "showcase_converter",
@@ -381,6 +414,13 @@ def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeyp
         {
             "hosts": ["robot", "verifier"],
             "sources": [{"name": "/cmd_vel", "interface": "geometry_msgs/msg/Twist"}],
+            "monitors": [
+                {
+                    "id": "monitor_robot",
+                    "host": "robot",
+                    "source_keys": ["topic:/cmd_vel"],
+                }
+            ],
             "converters": [
                 {
                     "id": "showcase_converter",
@@ -424,6 +464,126 @@ def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeyp
     )
     assert verifier["inputs"][0]["type"] == "mqtt"
     assert verifier["inputs"][0]["payload"] == "records"
+
+
+def _chain_payload(**converter_overrides):
+    converters = [
+        {
+            "id": "stage_filter",
+            "class_path": "custom.odom_speed_filter:OdomSpeedFilter",
+            "input_source_keys": ["topic:/odom"],
+            "verdict_service_ids": [],
+        },
+        {
+            "id": "stage_aggregate",
+            "class_path": "custom.speed_aggregate_filter:SpeedAggregateFilter",
+            "input_source_keys": [],
+            "input_converter_ids": ["stage_filter"],
+            "verdict_service_ids": ["speed_check"],
+        },
+    ]
+    for key, value in converter_overrides.items():
+        index, field = key
+        converters[index][field] = value
+    return {
+        "sources": [{"name": "/odom", "interface": "nav_msgs/msg/Odometry"}],
+        "monitors": [{"id": "monitor_robot", "source_keys": ["topic:/odom"]}],
+        "converters": converters,
+        "verdict_services": [
+            {
+                "id": "speed_check",
+                "class_path": "custom.threshold_verdict:ThresholdVerdict",
+            }
+        ],
+    }
+
+
+def test_showcase_builds_converter_chain_on_shared_host():
+    request = build_generation_request(_chain_payload())
+
+    runtimes = {
+        runtime["id"]: runtime
+        for host in request["hosts"]
+        for runtime in host["runtimes"]
+    }
+    assert runtimes["stage_filter"]["input_from"] == ["odom"]
+    assert runtimes["stage_aggregate"]["input_from"] == ["stage_filter_dsl_record"]
+    assert runtimes["speed_check"]["input_from"] == ["stage_aggregate_dsl_record"]
+    assert request["links"] == []
+
+
+def test_showcase_rejects_cross_host_converter_chain():
+    payload = _chain_payload()
+    payload["hosts"] = ["robot", "other"]
+    payload["converters"][1]["host"] = "other"
+    with pytest.raises(ValueError, match="must share a host"):
+        build_generation_request(payload)
+
+
+def test_showcase_rejects_converter_chain_cycle():
+    payload = _chain_payload()
+    payload["converters"][0]["input_converter_ids"] = ["stage_aggregate"]
+    with pytest.raises(ValueError, match="cycle"):
+        build_generation_request(payload)
+
+
+def test_showcase_honours_explicit_empty_pipeline_lists():
+    request = build_generation_request(
+        {
+            "sources": [{"name": "/cmd_vel", "interface": "geometry_msgs/msg/Twist"}],
+            "monitors": [
+                {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel"]}
+            ],
+            "converters": [],
+            "verdict_services": [],
+        }
+    )
+
+    kinds = [runtime["kind"] for runtime in request["hosts"][0]["runtimes"]]
+    assert kinds == ["ros2", "monitor"]
+    assert request["links"] == []
+
+
+def test_showcase_rejects_verdict_service_without_feeding_converter():
+    with pytest.raises(ValueError, match="no feeding converter"):
+        build_generation_request(
+            {
+                "sources": [
+                    {"name": "/cmd_vel", "interface": "geometry_msgs/msg/Twist"}
+                ],
+                "monitors": [
+                    {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel"]}
+                ],
+                "converters": [],
+                "verdict_services": [
+                    {
+                        "id": "orphan_verdict",
+                        "class_path": "custom.threshold_verdict:ThresholdVerdict",
+                    }
+                ],
+            }
+        )
+
+
+def test_showcase_rejects_converter_input_without_monitor():
+    with pytest.raises(ValueError, match="without a monitor runtime"):
+        build_generation_request(
+            {
+                "sources": [
+                    {"name": "/cmd_vel", "interface": "geometry_msgs/msg/Twist"}
+                ],
+                "monitors": [],
+                "converters": [
+                    {
+                        "id": "showcase_converter",
+                        "class_path": "custom.rule_based_converter:RuleBasedConverter",
+                        "input_source_keys": ["topic:/cmd_vel"],
+                        "verdict_service_ids": [],
+                    }
+                ],
+                "verdict_services": [],
+            }
+        )
 
 
 def test_showcase_requires_at_least_one_source():

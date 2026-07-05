@@ -76,11 +76,11 @@ class EventHub:
 PLUGIN_PRESETS: list[dict[str, Any]] = [
     {
         "id": "blank",
-        "name": "Blank custom rule",
-        "summary": "Start from empty converter and verdict kwargs.",
+        "name": "New",
+        "summary": "Start from an empty topology.",
         "converter_manifest": "",
         "verdict_manifest": "",
-        "hosts": ["robot"],
+        "hosts": [],
         "placement": {},
         "sources": [],
         "overrides": {"converter": {}, "verdict": {}},
@@ -244,6 +244,41 @@ def _resolve_workspace_path(value: str | None, default: str) -> Path:
     if not path.exists() or not path.is_file():
         raise ValueError(f"Dockerfile not found: {path}")
     return path
+
+
+def _resolve_editable_path(value: str | None) -> Path:
+    raw = str(value or "").strip()
+    if not raw:
+        raise ValueError("File path is required.")
+    path = Path(raw)
+    if not path.is_absolute():
+        path = ROOT / path
+    path = path.resolve()
+    try:
+        relative = path.relative_to(ROOT)
+    except ValueError as ex:
+        raise ValueError("Editable files must be inside the project workspace.") from ex
+    blocked_parts = {".git", ".venv", "__pycache__"}
+    if any(part in blocked_parts for part in relative.parts):
+        raise ValueError("This workspace path is not editable from the dashboard.")
+    return path
+
+
+def read_workspace_file(path_value: str | None) -> dict[str, Any]:
+    path = _resolve_editable_path(path_value)
+    if not path.exists() or not path.is_file():
+        raise ValueError(f"File not found: {path.relative_to(ROOT)}")
+    return {
+        "path": str(path.relative_to(ROOT)),
+        "content": path.read_text(encoding="utf-8"),
+    }
+
+
+def write_workspace_file(payload: dict[str, Any]) -> dict[str, Any]:
+    path = _resolve_editable_path(str(payload.get("path") or ""))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(str(payload.get("content") or ""), encoding="utf-8")
+    return {"path": str(path.relative_to(ROOT)), "bytes": path.stat().st_size}
 
 
 def _json_default_to_form_value(value: Any, type_name: str) -> str:
@@ -611,6 +646,27 @@ def _sources_from_payload(
     return sources, id_by_key
 
 
+def _reject_chain_cycles(chain_inputs: dict[str, list[str]]) -> None:
+    DONE, IN_PROGRESS = 2, 1
+    state: dict[str, int] = {}
+
+    def visit(converter_id: str, path: list[str]) -> None:
+        if state.get(converter_id) == DONE:
+            return
+        if state.get(converter_id) == IN_PROGRESS:
+            cycle = path[path.index(converter_id):] + [converter_id]
+            raise ValueError(
+                "converter chain contains a cycle: " + " -> ".join(cycle)
+            )
+        state[converter_id] = IN_PROGRESS
+        for upstream_id in chain_inputs.get(converter_id, []):
+            visit(upstream_id, path + [converter_id])
+        state[converter_id] = DONE
+
+    for converter_id in chain_inputs:
+        visit(converter_id, [])
+
+
 def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
     """Build a config_gen request from the dashboard's placement form.
 
@@ -641,35 +697,80 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
     sources, id_by_key = _sources_from_payload(payload, default_host)
     source_ids = [source["id"] for source in sources]
     source_host = {source["id"]: add_host(source["host"]) for source in sources}
+    monitor_payloads = list(payload.get("monitors") or [])
+    monitor_runtimes: dict[str, dict[str, Any]] = {}
+    monitor_host: dict[str, str] = {}
+    monitors_by_source: dict[str, list[str]] = {sid: [] for sid in source_ids}
+    if monitor_payloads:
+        for index, raw_monitor in enumerate(monitor_payloads, start=1):
+            monitor_id = _node_id(raw_monitor.get("id"), f"monitor_{index}")
+            selected_keys = list(raw_monitor.get("source_keys") or [])
+            subscribe = [id_by_key[key] for key in selected_keys if key in id_by_key]
+            monitor_host[monitor_id] = add_host(raw_monitor.get("host"), default_host)
+            monitor_runtimes[monitor_id] = {
+                "id": monitor_id,
+                "kind": "monitor",
+                "subscribe": subscribe,
+            }
+            for sid in subscribe:
+                monitors_by_source.setdefault(sid, []).append(monitor_id)
 
+    # A missing key means a legacy single-pipeline request, so synthesize the
+    # default pair; an explicit (possibly empty) list is honoured as-is.
     converter_payloads = list(payload.get("converters") or [])
     verdict_payloads = list(payload.get("verdict_services") or [])
-    if not converter_payloads:
+    if not converter_payloads and "converters" not in payload:
         converter_payloads = [{
             "id": "showcase_converter",
             "class_path": payload.get("converter_class"),
             "verdict_service_ids": ["showcase_verdict"],
             "params": payload.get("converter_params"),
         }]
-    if not verdict_payloads:
+    if not verdict_payloads and "verdict_services" not in payload:
         verdict_payloads = [{
             "id": "showcase_verdict",
             "class_path": payload.get("verdict_class"),
             "params": payload.get("verdict_params"),
         }]
 
-    converter_runtimes: dict[str, dict[str, Any]] = {}
+    # First pass assigns every converter its id, host, and output record id so
+    # chain references (input_converter_ids) can point forward or backward.
+    converter_specs: list[tuple[str, dict[str, Any]]] = []
     converter_host: dict[str, str] = {}
     converter_output: dict[str, str] = {}
     for index, raw_converter in enumerate(converter_payloads, start=1):
         converter_id = _node_id(raw_converter.get("id"), f"showcase_converter_{index}")
+        converter_specs.append((converter_id, raw_converter))
+        converter_output[converter_id] = _node_id(
+            raw_converter.get("output_id"), f"{converter_id}_dsl_record"
+        )
+        converter_host[converter_id] = add_host(raw_converter.get("host"), default_host)
+
+    converter_runtimes: dict[str, dict[str, Any]] = {}
+    chain_inputs: dict[str, list[str]] = {}
+    for converter_id, raw_converter in converter_specs:
         selected_keys = list(raw_converter.get("input_source_keys") or [])
         converter_inputs = [id_by_key[key] for key in selected_keys if key in id_by_key]
-        if not converter_inputs:
+        if not converter_inputs and "input_source_keys" not in raw_converter:
             converter_inputs = list(source_ids)
-        output_id = _node_id(raw_converter.get("output_id"), f"{converter_id}_dsl_record")
-        converter_output[converter_id] = output_id
-        converter_host[converter_id] = add_host(raw_converter.get("host"), default_host)
+        upstream_ids = [
+            _node_id(item, str(item))
+            for item in list(raw_converter.get("input_converter_ids") or [])
+        ]
+        upstream_ids = [
+            uid for uid in upstream_ids
+            if uid in converter_output and uid != converter_id
+        ]
+        chain_inputs[converter_id] = upstream_ids
+        for upstream_id in upstream_ids:
+            if converter_host[upstream_id] != converter_host[converter_id]:
+                raise ValueError(
+                    f"chained converters '{upstream_id}' -> '{converter_id}' must "
+                    f"share a host ('{converter_host[upstream_id]}' vs "
+                    f"'{converter_host[converter_id]}'); converter chaining is "
+                    "in-process."
+                )
+            converter_inputs.append(converter_output[upstream_id])
         converter_runtimes[converter_id] = {
             "id": converter_id,
             "kind": "converter",
@@ -679,11 +780,11 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
                 or "custom.rule_based_converter:RuleBasedConverter"
             ),
             "input_from": converter_inputs,
-            "output_to": output_id,
+            "output_to": converter_output[converter_id],
             **_params_to_kwargs(raw_converter.get("params")),
         }
+    _reject_chain_cycles(chain_inputs)
 
-    first_output = next(iter(converter_output.values()), "showcase_dsl_record")
     verdict_inputs: dict[str, list[str]] = {}
     verdict_feeders: dict[str, list[str]] = {}
     for raw_converter in converter_payloads:
@@ -695,7 +796,11 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
             _node_id(item, str(item))
             for item in list(raw_converter.get("verdict_service_ids") or [])
         ]
-        if not verdict_ids and verdict_payloads:
+        if (
+            not verdict_ids
+            and "verdict_service_ids" not in raw_converter
+            and verdict_payloads
+        ):
             verdict_ids = [_node_id(verdict_payloads[0].get("id"), "showcase_verdict")]
         for verdict_id in verdict_ids:
             verdict_inputs.setdefault(verdict_id, []).append(output_id)
@@ -705,6 +810,12 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
     verdict_host: dict[str, str] = {}
     for index, raw_verdict in enumerate(verdict_payloads, start=1):
         verdict_id = _node_id(raw_verdict.get("id"), f"showcase_verdict_{index}")
+        inputs = verdict_inputs.get(verdict_id)
+        if not inputs:
+            raise ValueError(
+                f"verdict service '{verdict_id}' has no feeding converter; "
+                "connect a converter to this verdict service."
+            )
         verdict_host[verdict_id] = add_host(raw_verdict.get("host"), default_host)
         verdict_runtimes[verdict_id] = {
             "id": verdict_id,
@@ -713,7 +824,7 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
                 raw_verdict.get("class_path")
                 or "custom.threshold_verdict:ThresholdVerdict"
             ),
-            "input_from": verdict_inputs.get(verdict_id) or [first_output],
+            "input_from": inputs,
             "output_to": raw_verdict.get("output_to") or [
                 {"kind": "stdout"},
                 {"kind": "file", "path": "verdicts_{session_id}.jsonl"},
@@ -731,13 +842,8 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
             runtimes_by_host[host_id].append(
                 {"id": f"ros2_{host_id}", "kind": "ros2", "sources": host_sources}
             )
-            runtimes_by_host[host_id].append(
-                {
-                    "id": f"monitor_{host_id}",
-                    "kind": "monitor",
-                    "subscribe": [s["id"] for s in host_sources],
-                }
-            )
+    for monitor_id, runtime in monitor_runtimes.items():
+        runtimes_by_host[monitor_host[monitor_id]].append(runtime)
     for converter_id, runtime in converter_runtimes.items():
         runtimes_by_host[converter_host[converter_id]].append(runtime)
     for verdict_id, runtime in verdict_runtimes.items():
@@ -746,16 +852,28 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
     links: list[dict[str, Any]] = []
     for converter_id, runtime in converter_runtimes.items():
         to_host = converter_host[converter_id]
-        feeding_hosts = sorted({
-            source_host[sid] for sid in runtime["input_from"]
-            if sid in source_host and source_host[sid] != to_host
+        feeding_monitors = sorted({
+            monitor_id
+            for sid in runtime["input_from"]
+            for monitor_id in monitors_by_source.get(sid, [])
+            if monitor_host.get(monitor_id) != to_host
         })
-        for from_host in feeding_hosts:
+        missing_monitors = [
+            sid for sid in runtime["input_from"]
+            if sid in source_host and not monitors_by_source.get(sid)
+        ]
+        if missing_monitors:
+            raise ValueError(
+                f"converter '{converter_id}' consumes source(s) without a monitor runtime: "
+                + ", ".join(missing_monitors)
+            )
+        for monitor_id in feeding_monitors:
+            from_host = monitor_host[monitor_id]
             links.append({
-                "id": f"records_{from_host}_{converter_id}",
+                "id": f"records_{monitor_id}_{converter_id}",
                 "from_host": from_host,
                 "to_host": to_host,
-                "from_runtime": f"monitor_{from_host}",
+                "from_runtime": monitor_id,
                 "to_runtime": converter_id,
                 "payload": "records",
                 "transport": dict(transport),
@@ -1005,9 +1123,13 @@ def publish_recent_verdicts(delay: float = 0.0) -> None:
 
 
 def start_generated_run(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = payload or {}
+    target_services = [str(item) for item in list(payload.get("target_services") or [])]
     with STATE.lock:
         if STATE.run is not None and STATE.run.process.poll() is None:
-            raise RuntimeError("A monitor run is already active.")
+            result = current_run_payload()
+            result["message"] = "Runtime stack is already active."
+            return result
     generated_payload = None
     if payload:
         generated_payload = generate_configs(payload)
@@ -1015,7 +1137,7 @@ def start_generated_run(payload: dict[str, Any] | None = None) -> dict[str, Any]
         if STATE.generated is None or not GENERATED_COMPOSE.exists():
             raise RuntimeError("Configure monitor sources before starting the monitor.")
 
-    command = ["docker", "compose", "-f", str(GENERATED_COMPOSE), "up", "--build"]
+    command = ["docker", "compose", "-f", str(GENERATED_COMPOSE), "up", "--build", *target_services]
     process = subprocess.Popen(
         command,
         cwd=str(ROOT),
@@ -1027,7 +1149,7 @@ def start_generated_run(payload: dict[str, Any] | None = None) -> dict[str, Any]
     with STATE.lock:
         STATE.logs.clear()
         STATE.run = RunState(
-            target_id="generated_stack",
+            target_id="generated_stack" if not target_services else ",".join(target_services),
             command=command,
             compose_path=GENERATED_COMPOSE,
             started_at=time.time(),
@@ -1041,14 +1163,18 @@ def start_generated_run(payload: dict[str, Any] | None = None) -> dict[str, Any]
     return result
 
 
-def stop_run() -> dict[str, Any]:
+def stop_run(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    payload = payload or {}
+    target_services = [str(item) for item in list(payload.get("target_services") or [])]
     with STATE.lock:
         run = STATE.run
     if run is None:
         return {"running": False, "message": "No monitor run is active."}
 
+    stop_command = ["docker", "compose", "-f", str(run.compose_path), "stop", *target_services]
+    down_command = ["docker", "compose", "-f", str(run.compose_path), "down"]
     subprocess.run(
-        ["docker", "compose", "-f", str(run.compose_path), "down"],
+        stop_command if target_services else down_command,
         cwd=str(ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -1056,6 +1182,12 @@ def stop_run() -> dict[str, Any]:
         timeout=30,
         check=False,
     )
+    if target_services:
+        result = current_run_payload()
+        result["message"] = f"Stopped {', '.join(target_services)}"
+        EVENTS.publish("run_state", result)
+        return result
+
     if run.process.poll() is None:
         run.process.terminate()
     try:
@@ -1239,32 +1371,40 @@ class Handler(SimpleHTTPRequestHandler):
             EVENTS.unsubscribe(subscriber)
 
     def do_GET(self) -> None:  # noqa: N802
-        parsed = urlparse(self.path)
-        if parsed.path == "/api/health":
-            return self._send_json({"ok": True, "root": str(ROOT)})
-        if parsed.path == "/api/events":
-            return self._send_event_stream()
-        if parsed.path == "/api/robots/current":
-            return self._send_json(current_robot_payload())
-        if parsed.path == "/api/robots/logs":
-            qs = parse_qs(parsed.query)
-            limit = int((qs.get("limit") or ["120"])[0])
-            return self._send_json(robot_logs(limit=limit))
-        if parsed.path == "/api/runs/current":
-            return self._send_json(current_run_payload())
-        if parsed.path == "/api/runs/logs":
-            qs = parse_qs(parsed.query)
-            since = int((qs.get("since") or ["0"])[0])
-            return self._send_json({"logs": STATE.snapshot_logs(since=since)})
-        if parsed.path == "/api/verdicts":
-            qs = parse_qs(parsed.query)
-            limit = int((qs.get("limit") or ["50"])[0])
-            return self._send_json({"verdicts": recent_verdicts(limit=limit)})
-        if parsed.path == "/api/plugins":
-            return self._send_json(plugin_payload())
-        if parsed.path in {"/api/discovery/graph", "/api/discovery/topics"}:
-            return self._send_json(discover_graph())
-        return super().do_GET()
+        try:
+            parsed = urlparse(self.path)
+            if parsed.path == "/api/health":
+                return self._send_json({"ok": True, "root": str(ROOT)})
+            if parsed.path == "/api/events":
+                return self._send_event_stream()
+            if parsed.path == "/api/robots/current":
+                return self._send_json(current_robot_payload())
+            if parsed.path == "/api/robots/logs":
+                qs = parse_qs(parsed.query)
+                limit = int((qs.get("limit") or ["120"])[0])
+                return self._send_json(robot_logs(limit=limit))
+            if parsed.path == "/api/runs/current":
+                return self._send_json(current_run_payload())
+            if parsed.path == "/api/runs/logs":
+                qs = parse_qs(parsed.query)
+                since = int((qs.get("since") or ["0"])[0])
+                return self._send_json({"logs": STATE.snapshot_logs(since=since)})
+            if parsed.path == "/api/verdicts":
+                qs = parse_qs(parsed.query)
+                limit = int((qs.get("limit") or ["50"])[0])
+                return self._send_json({"verdicts": recent_verdicts(limit=limit)})
+            if parsed.path == "/api/plugins":
+                return self._send_json(plugin_payload())
+            if parsed.path == "/api/files":
+                qs = parse_qs(parsed.query)
+                return self._send_json(read_workspace_file((qs.get("path") or [""])[0]))
+            if parsed.path in {"/api/discovery/graph", "/api/discovery/topics"}:
+                return self._send_json(discover_graph())
+            return super().do_GET()
+        except ValueError as ex:
+            return self._send_error_json(ex, status=HTTPStatus.BAD_REQUEST)
+        except RuntimeError as ex:
+            return self._send_error_json(ex, status=HTTPStatus.CONFLICT)
 
     def do_POST(self) -> None:  # noqa: N802
         try:
@@ -1278,9 +1418,11 @@ class Handler(SimpleHTTPRequestHandler):
             if self.path == "/api/runs/start":
                 return self._send_json(start_generated_run(payload))
             if self.path == "/api/runs/stop":
-                return self._send_json(stop_run())
+                return self._send_json(stop_run(payload))
             if self.path == "/api/verdicts/clear":
                 return self._send_json(clear_verdicts())
+            if self.path == "/api/files":
+                return self._send_json(write_workspace_file(payload))
         except ValueError as ex:
             return self._send_error_json(ex, status=HTTPStatus.BAD_REQUEST)
         except RuntimeError as ex:

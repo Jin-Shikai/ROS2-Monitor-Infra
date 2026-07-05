@@ -3,252 +3,83 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ROS2-Monitor-Infra-Dashboard</title>
-    <link rel="stylesheet" href="/styles.css?v=live-verdicts">
+    <title>ROS2 Monitor Workbench</title>
+    <link rel="stylesheet" href="/styles.css?v=topology-workbench-2">
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>ROS2-Monitor-Infra-Dashboard</h1>
-        <p id="health" class="sr-only">Connecting to local control plane...</p>
+      <div class="toolbar" aria-label="Workbench actions">
+        <label class="preset-picker">
+          <span>Topology</span>
+          <select id="template" title="Preset"></select>
+        </label>
+        <button id="addHost" type="button"><span class="cmd-icon">H</span><span>New Host</span></button>
+        <button id="addRobot" type="button"><span class="cmd-icon">+R</span><span>+ Robot</span></button>
+        <button id="addMonitor" type="button"><span class="cmd-icon">+M</span><span>+ Monitor</span></button>
+        <button id="addConverter" type="button"><span class="cmd-icon">+C</span><span>+ Converter</span></button>
+        <button id="addVerdict" type="button"><span class="cmd-icon">+V</span><span>+ Verdict</span></button>
+        <button id="connectSelection" type="button"><span class="cmd-icon">→</span><span>Connect to target</span></button>
+        <button id="disconnectSelection" type="button"><span class="cmd-icon">⊘</span><span>Disconnect</span></button>
+        <button id="clearSelection" type="button"><span class="cmd-icon">□</span><span>Clear selection</span></button>
+        <button id="scanGraph" type="button"><span class="cmd-icon">⌕</span><span>Scan graph</span></button>
+        <button id="startRun" class="primary" type="button"><span class="cmd-icon">▶</span><span>Start</span></button>
+        <button id="stopRun" type="button"><span class="cmd-icon">■</span><span>Stop</span></button>
+        <button id="restartSelected" type="button"><span class="cmd-icon">↻</span><span>Restart</span></button>
       </div>
-      <div class="run-state" id="runState">Idle</div>
     </header>
 
-    <nav class="tabs" aria-label="Showcase steps">
-      <button class="tab active" data-page="robots">0. Start Robots</button>
-      <button class="tab" data-page="discover">1. Discover</button>
-      <button class="tab" data-page="configure">2. Configure</button>
-      <button class="tab" data-page="monitor">3. Monitor</button>
-    </nav>
+    <main class="workbench">
+      <aside class="sidebar" id="configPane">
+        <div class="section-head">
+          <div>
+            <h2>Configuration</h2>
+            <p id="selectionHint">Select a block on the playground.</p>
+          </div>
+        </div>
+        <div id="configForm" class="config-form"></div>
+      </aside>
 
-    <main>
-      <section class="page active" id="page-robots">
-        <div class="split">
-          <section class="panel">
-            <div class="section-head">
-              <div>
-                <h2>Robot Container</h2>
-              </div>
-            </div>
-            <div class="robot-form">
-              <label>
-                Dockerfile
-                <input id="robotDockerfile" value="Dockerfile" spellcheck="false">
-              </label>
-              <label>
-                Start command
-                <textarea id="robotCommand" spellcheck="false">source /opt/ros/kilted/setup.bash && python3 /demo/common/robot_simulator.py cmd-velocity-cycle --ros-args -r __node:=showcase_robot</textarea>
-              </label>
-            </div>
-            <div class="run-controls">
-              <button id="startRobot" class="primary" type="button">Start robot</button>
-              <button id="stopRobot" type="button">Stop robot</button>
-              <button id="refreshRobot" type="button">Refresh</button>
-            </div>
-            <div id="robotStatus" class="status-line">Robot container is stopped.</div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head compact">
-              <h2>Robot Logs</h2>
-              <span id="robotLogStatus"></span>
-            </div>
-            <pre id="robotLogs" class="logs small">Robot logs will appear here.</pre>
-          </section>
+      <section class="playground-shell">
+        <div id="graphSummary" class="notice subtle">No topology yet.</div>
+        <div id="scanStatus" class="notice subtle">Add blocks or scan a running ROS graph.</div>
+        <div id="topologyWarnings" class="notice warnings" style="display: none"></div>
+        <div id="graphResults" class="discovery-drawer"></div>
+        <div class="playground" id="playground">
+          <div class="zoom-controls" aria-label="Zoom controls">
+            <button id="zoomOut" type="button">−</button>
+            <span id="zoomLevel">100%</span>
+            <button id="zoomIn" type="button">+</button>
+          </div>
+          <div id="selectionBox" class="selection-box"></div>
+          <svg id="edgeLayer" aria-hidden="true"></svg>
+          <div id="nodeLayer"></div>
         </div>
       </section>
 
-      <section class="page" id="page-discover">
-        <div class="split">
-          <section class="panel">
-            <div class="section-head">
-              <div>
-                <h2>ROS Graph</h2>
-              </div>
-              <button id="scanGraph" class="primary" type="button">Scan ROS graph</button>
-            </div>
-            <div id="scanStatus" class="notice">No scan yet.</div>
-            <div id="graphResults" class="graph-results"></div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <div>
-                <h2>Monitored Sources</h2>
-              </div>
-            </div>
-            <div class="manual-source">
-              <label>
-                Kind
-                <select id="manualKind">
-                  <option value="topic">topic</option>
-                  <option value="service">service</option>
-                  <option value="action">action</option>
-                </select>
-              </label>
-              <label>
-                Name
-                <input id="manualName" placeholder="/cmd_vel" spellcheck="false">
-              </label>
-              <label>
-                Interface
-                <input id="manualInterface" placeholder="geometry_msgs/msg/Twist" spellcheck="false">
-              </label>
-              <button id="addManualSource" type="button">+ Add source</button>
-            </div>
-            <div id="sourcesList" class="source-list empty">No monitored sources yet.</div>
-          </section>
+      <aside class="editor-pane">
+        <div class="editor-tabs">
+          <button class="editor-tab active" data-editor-tab="code" type="button">Code</button>
+          <button class="editor-tab" data-editor-tab="logs" type="button">Live log</button>
         </div>
-      </section>
-
-      <section class="page" id="page-configure">
-        <div class="split">
-          <section class="panel">
-            <div class="section-head">
-              <div>
-                <h2>Pipeline Graph</h2>
-              </div>
-            </div>
-            <div class="form-grid">
-              <label>
-                Preset
-                <select id="template"></select>
-              </label>
-              <label>
-                Converter
-                <select id="converterSelect"></select>
-              </label>
-              <div class="inline-actions">
-                <button id="addConverter" type="button">+ Converter</button>
-                <button id="removeConverter" type="button">Remove</button>
-              </div>
-              <label>
-                Converter id
-                <input id="converterId" spellcheck="false">
-              </label>
-              <label>
-                Converter class path
-                <input id="converterClass" spellcheck="false">
-              </label>
-              <label>
-                Converter host
-                <select id="converterHost"></select>
-              </label>
-              <label>
-                Verdict service
-                <select id="verdictSelect"></select>
-              </label>
-              <div class="inline-actions">
-                <button id="addVerdict" type="button">+ Verdict</button>
-                <button id="removeVerdict" type="button">Remove</button>
-              </div>
-              <label>
-                Verdict id
-                <input id="verdictId" spellcheck="false">
-              </label>
-              <label>
-                Verdict class path
-                <input id="verdictClass" spellcheck="false">
-              </label>
-              <label>
-                Verdict host
-                <select id="verdictHost"></select>
-              </label>
-            </div>
-            <h3>Hosts</h3>
-            <p class="notice">Every source, converter, and verdict service is placed on a host. Edges that cross hosts become MQTT links over the broker below; same-host edges run in-process.</p>
-            <div id="hostsList" class="source-list empty">No hosts yet.</div>
-            <div class="manual-source">
-              <label>
-                New host id
-                <input id="newHostName" placeholder="verdict_host" spellcheck="false">
-              </label>
-              <button id="addHost" type="button">+ Add host</button>
-              <label>
-                MQTT broker host
-                <input id="brokerHost" value="127.0.0.1" spellcheck="false">
-              </label>
-              <label>
-                Broker port
-                <input id="brokerPort" value="1883" type="number">
-              </label>
-            </div>
-            <h3>Source -> selected converter</h3>
-            <div id="inputSourceList" class="source-list empty">Add sources on the Discover page first.</div>
-            <h3>Selected converter -> verdict services</h3>
-            <div id="converterVerdictLinks" class="source-list empty">Add a verdict service first.</div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head">
-              <div>
-                <h2>Plugin Parameters</h2>
-              </div>
-            </div>
-            <div class="param-head">
-              <h3>Converter kwargs</h3>
-              <button id="addConverterParam" type="button">+ Add</button>
-            </div>
-            <div id="converterParams" class="param-list"></div>
-
-            <div class="param-head">
-              <h3>Verdict kwargs</h3>
-              <button id="addVerdictParam" type="button">+ Add</button>
-            </div>
-            <div id="verdictParams" class="param-list"></div>
-          </section>
+        <div class="editor-panel active" id="editor-code">
+          <div class="file-row">
+            <input id="filePath" placeholder="Select a block with an editable file" spellcheck="false">
+            <button id="loadFile" type="button">Load</button>
+            <button id="saveFile" class="primary" type="button">Save</button>
+          </div>
+          <textarea id="codeEditor" class="code-editor" spellcheck="false"></textarea>
+          <div id="fileStatus" class="status-line">No file loaded.</div>
         </div>
-      </section>
-
-      <section class="page" id="page-monitor">
-        <div class="split">
-          <section class="panel">
-            <div class="section-head">
-              <div>
-                <h2>Monitor Runtime</h2>
-              </div>
-            </div>
-            <div class="run-controls">
-              <button id="startRun" class="primary" type="button">Start monitor</button>
-              <button id="stopRun" type="button">Stop</button>
-              <button id="clearVerdicts" type="button">Clear records</button>
-            </div>
-            <div class="section-head compact">
-              <h2>Verdict Records</h2>
-              <span id="verdictCount"></span>
-            </div>
-            <div id="verdicts" class="verdicts empty">No verdicts loaded.</div>
-          </section>
-
-          <section class="panel">
-            <div class="section-head compact">
-              <h2>Live Logs</h2>
-              <span id="logStatus"></span>
-            </div>
-            <pre id="logs" class="logs">Logs will appear here after the generated monitor starts.</pre>
-          </section>
-        </div>
-
-        <section class="panel generated-panel">
+        <div class="editor-panel" id="editor-logs">
           <div class="section-head compact">
-            <h2>Generated Runtime Files</h2>
-            <span id="generatedMeta">No generated files yet.</span>
+            <h2>Live Output</h2>
+            <span id="logStatus"></span>
           </div>
-          <div class="code-grid">
-            <div>
-              <h3>Deployment JSON</h3>
-              <pre id="requestOut" class="generated-code">Generated request will appear when the monitor starts.</pre>
-            </div>
-            <div>
-              <h3>Runtime YAML</h3>
-              <pre id="yamlOut" class="generated-code">Generated config will appear when the monitor starts.</pre>
-            </div>
-          </div>
-        </section>
-      </section>
+          <pre id="logs" class="logs">Logs will appear after a robot or generated monitor starts.</pre>
+        </div>
+      </aside>
     </main>
 
-    <script src="/app.js?v=live-verdicts"></script>
+    <script src="/app.js?v=topology-workbench-2"></script>
   </body>
 </html>
