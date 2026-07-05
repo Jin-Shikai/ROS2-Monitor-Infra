@@ -344,14 +344,12 @@ function addVerdict(seed = {}) {
   renderAll();
 }
 
-function removeSelected() {
-  if (!selectedNode) return;
-  if (selectedNode.kind === "robot") {
-    const index = sources.findIndex((item) => sourceId(item) === selectedNode.id);
+function deleteNodeKey(key) {
+  if (key.startsWith("source:")) {
+    const index = sources.findIndex((item) => sourceId(item) === key);
     if (index >= 0) {
       const key = sourceKey(sources[index]);
       sources.splice(index, 1);
-      selectedNodeKeys.delete(selectedNode.id);
       monitors.forEach((monitor) => {
         monitor.sourceKeys = monitor.sourceKeys.filter((item) => item !== key);
       });
@@ -360,24 +358,24 @@ function removeSelected() {
       });
     }
   }
-  if (selectedNode.kind === "monitor") {
-    monitors = monitors.filter((item) => item.id !== selectedNode.id);
-    selectedNodeKeys.delete(`monitor:${selectedNode.id}`);
+  if (key.startsWith("monitor:")) {
+    const id = key.replace(/^monitor:/, "");
+    monitors = monitors.filter((item) => item.id !== id);
   }
-  if (selectedNode.kind === "converter") {
-    converters = converters.filter((item) => item.id !== selectedNode.id);
-    selectedNodeKeys.delete(`converter:${selectedNode.id}`);
+  if (key.startsWith("converter:")) {
+    const id = key.replace(/^converter:/, "");
+    converters = converters.filter((item) => item.id !== id);
     pruneConverterChains();
   }
-  if (selectedNode.kind === "verdict") {
-    verdictServices = verdictServices.filter((item) => item.id !== selectedNode.id);
-    selectedNodeKeys.delete(`verdict:${selectedNode.id}`);
+  if (key.startsWith("verdict:")) {
+    const id = key.replace(/^verdict:/, "");
+    verdictServices = verdictServices.filter((item) => item.id !== id);
     converters.forEach((converter) => {
-      converter.verdictServiceIds = converter.verdictServiceIds.filter((id) => id !== selectedNode.id);
+      converter.verdictServiceIds = converter.verdictServiceIds.filter((verdictId) => verdictId !== id);
     });
   }
-  if (selectedNode.kind === "host") {
-    const host = selectedNode.id;
+  if (key.startsWith("host:")) {
+    const host = key.replace(/^host:/, "");
     const sourceKeys = sources.filter((source) => source.host === host).map(sourceKey);
     hosts = hosts.filter((item) => item !== host);
     sources = sources.filter((source) => source.host !== host);
@@ -391,9 +389,20 @@ function removeSelected() {
       converter.inputSourceKeys = converter.inputSourceKeys.filter((key) => !sourceKeys.includes(key));
     });
     pruneConverterChains();
-    selectedNodeKeys.delete(`host:${host}`);
   }
+}
+
+function deleteSelectedResources() {
+  const link = findSelectedLink();
+  if (link) {
+    (link.pairs || [link]).forEach(removeRuntimeLink);
+    selectedLink = null;
+    renderAll();
+    return;
+  }
+  selectedKeys().forEach(deleteNodeKey);
   selectedNode = null;
+  selectedNodeKeys.clear();
   renderAll();
 }
 
@@ -858,22 +867,18 @@ function setZoom(nextZoom) {
   renderTopology();
 }
 
-function clearNodeSelection() {
-  selectedNodeKeys.clear();
-  renderTopology();
-}
-
 function updateToolbarState() {
   const hostSelected = Boolean(selectedHost());
   ["addRobot", "addMonitor", "addConverter", "addVerdict"].forEach((id) => {
     const button = $(id);
     if (button) button.disabled = !hostSelected;
   });
-  const hasSelection = selectedKeys().length > 0;
+  const hasNodeSelection = selectedKeys().length > 0;
   ["connectSelection", "disconnectSelection", "startRun", "stopRun", "restartSelected"].forEach((id) => {
     const button = $(id);
-    if (button) button.disabled = !hasSelection;
+    if (button) button.disabled = !hasNodeSelection;
   });
+  $("clearSelection").disabled = !hasNodeSelection && !selectedLink;
 }
 
 function topologyWarnings() {
@@ -1163,9 +1168,6 @@ function hasMqttTransport() {
 function configOverview() {
   return `
     <p class="notice">Create a host first, then select it to add robot, monitor, converter, or verdict runtimes.</p>
-    <div class="config-actions">
-      <button id="overviewAddHost" type="button">New Host</button>
-    </div>
     <hr>
     <h3>Hosts</h3>
     ${hosts.length ? hosts.map((host) => `<label class="inline-check"><span>${escapeText(host)}</span></label>`).join("") : `<div class="empty">No hosts yet.</div>`}
@@ -1182,11 +1184,6 @@ function robotConfig(source) {
     <h3>Robot container</h3>
     <label>Robot Dockerfile<input id="robotDockerfile" value="${escapeAttr(robotDockerfile)}" spellcheck="false"></label>
     <label>Start command<textarea id="robotCommand" spellcheck="false">${escapeText(robotCommand)}</textarea></label>
-    <div class="config-actions">
-      <button id="startRobot" class="primary" type="button">Start robot</button>
-      <button id="stopRobot" type="button">Stop robot</button>
-      <button id="removeSelected" type="button">Remove</button>
-    </div>
     <details class="advanced">
       <summary>Edit source declaration (offline planning)</summary>
       <p class="notice">Normally the declaration comes from Scan graph. Edit it only when planning a deployment before the robot exists.</p>
@@ -1212,9 +1209,6 @@ function monitorConfig(monitor) {
         <input type="checkbox" data-monitor-source="${escapeAttr(sourceKey(source))}" ${monitor.sourceKeys.includes(sourceKey(source)) ? "checked" : ""}>
         <span>${escapeText(source.name)}</span>
       </label>`).join("") : `<div class="empty">Add robots first.</div>`}
-    <div class="config-actions">
-      <button id="removeSelected" type="button">Remove</button>
-    </div>
   `;
 }
 
@@ -1246,7 +1240,6 @@ function converterConfig(converter) {
     <div class="param-list">${paramRows("converter", converter.params)}</div>
     <div class="config-actions">
       <button id="addConverterParam" type="button">+ Param</button>
-      <button id="removeSelected" type="button">Remove</button>
     </div>
   `;
 }
@@ -1267,7 +1260,6 @@ function verdictConfig(verdict) {
     <div class="param-list">${paramRows("verdict", verdict.params)}</div>
     <div class="config-actions">
       <button id="addVerdictParam" type="button">+ Param</button>
-      <button id="removeSelected" type="button">Remove</button>
     </div>
   `;
 }
@@ -1297,7 +1289,6 @@ function linkConfig(link) {
     ${pairs.map((pair, index) => `
       <div class="link-row">
         <span>${escapeText(describeLinkPair(pair))}</span>
-        <button data-remove-link="${index}" type="button">Remove</button>
       </div>
     `).join("")}
   `;
@@ -1319,13 +1310,6 @@ function hostConfig(host) {
     <p class="notice">A host is the deployment container boundary. Runtime logs and lifecycle are shared by all non-robot runtimes in this host.</p>
     <label>Host id<input id="hostIdConfig" value="${escapeAttr(host)}" spellcheck="false"></label>
     <label>Compose service<input value="${escapeAttr(serviceNameForHost(host))}" readonly></label>
-    <div class="config-actions">
-      <button id="hostAddRobot" type="button">+ Robot</button>
-      <button id="hostAddMonitor" type="button">+ Monitor</button>
-      <button id="hostAddConverter" type="button">+ Converter</button>
-      <button id="hostAddVerdict" type="button">+ Verdict</button>
-      <button id="removeSelected" type="button">Remove host</button>
-    </div>
     <h3>Runtimes</h3>
     ${runtimeRows.length ? runtimeRows.map((node) => `
       <button class="runtime-jump" data-jump-node="${escapeAttr(node.key)}" type="button">
@@ -1379,13 +1363,6 @@ function bindConfigEvents() {
     const el = $(id);
     if (el) el.addEventListener(eventName, fn);
   };
-  bind("overviewAddHost", "click", () => addHost());
-  bind("hostAddRobot", "click", () => addRobot());
-  bind("hostAddMonitor", "click", () => addMonitor());
-  bind("hostAddConverter", "click", () => addConverter());
-  bind("hostAddVerdict", "click", () => addVerdict());
-  bind("removeSelected", "click", removeSelected);
-
   bind("sourceKind", "change", () => {
     const source = selectedSource();
     if (source) {
@@ -1418,8 +1395,6 @@ function bindConfigEvents() {
   });
   bind("robotDockerfile", "input", () => { robotDockerfile = $("robotDockerfile").value; updateEditorTarget(); });
   bind("robotCommand", "input", () => { robotCommand = $("robotCommand").value; });
-  bind("startRobot", "click", startRobot);
-  bind("stopRobot", "click", stopRobot);
 
   bind("monitorId", "change", () => {
     const monitor = selectedMonitor();
@@ -1612,18 +1587,6 @@ function bindConfigEvents() {
       renderAll();
     });
   });
-  document.querySelectorAll("[data-remove-link]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const link = findSelectedLink();
-      if (!link) return;
-      const pairs = link.pairs || [link];
-      const pair = pairs[Number(button.dataset.removeLink)];
-      if (!pair) return;
-      removeRuntimeLink({ from: pair.from, to: pair.to, payload: link.payload });
-      $("scanStatus").textContent = `Removed link ${describeLinkPair(pair)}.`;
-      renderAll();
-    });
-  });
   document.querySelectorAll("[data-jump-node]").forEach((button) => {
     button.addEventListener("click", () => {
       const key = button.dataset.jumpNode;
@@ -1807,12 +1770,13 @@ function applyTemplate(templateId, options = {}) {
   selectedNodeKeys.clear();
   if (templateId === "blank") {
     selectedNode = null;
-    $("scanStatus").textContent = "New topology. Add robots, converters, and verdict services from the toolbar.";
+    $("scanStatus").textContent = "";
     $("graphResults").innerHTML = "";
     renderAll();
     return;
   }
   const placement = plugin.placement || {};
+  if (plugin.robot_command) robotCommand = plugin.robot_command;
   const converterId = plugin.converter_manifest || (templateId === "blank" ? "custom-converter" : templateId);
   const verdictId = plugin.verdict_manifest || (templateId === "blank" ? "custom-verdict" : `${templateId}-verdict`);
   const verdict = {
@@ -2160,7 +2124,7 @@ $("addConverter").addEventListener("click", () => addConverter());
 $("addVerdict").addEventListener("click", () => addVerdict());
 $("connectSelection").addEventListener("click", connectSelectionToTarget);
 $("disconnectSelection").addEventListener("click", disconnectSelectionFromTarget);
-$("clearSelection").addEventListener("click", clearNodeSelection);
+$("clearSelection").addEventListener("click", deleteSelectedResources);
 $("startRun").addEventListener("click", startSelectedComponents);
 $("stopRun").addEventListener("click", stopSelectedComponents);
 $("restartSelected").addEventListener("click", restartSelected);

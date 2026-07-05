@@ -303,6 +303,13 @@ def test_showcase_plugin_payload_expands_manifest_schema():
     assert fleet["placement"] == {"converter": "converter_host", "verdict": "verdict_host"}
     assert fleet["converter"] == "custom.relative_speed:RelativeSpeedConverter"
 
+    reset = next(
+        item for item in payload["plugins"] if item["id"] == "service_effect_consistency"
+    )
+    assert reset["converter"] == "custom.reset_pose_effect:ResetPoseEffectConverter"
+    assert reset["verdict"] == "custom.reset_pose_effect:ResetPoseEffectVerdict"
+    assert {source["source_kind"] for source in reset["sources"]} == {"service", "topic"}
+
 
 def test_showcase_generate_configs_writes_yaml(tmp_path, monkeypatch):
     import webui.server as server

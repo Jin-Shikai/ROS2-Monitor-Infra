@@ -153,6 +153,33 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "id": "service_effect_consistency",
+        "name": "Demo preset: reset service effect",
+        "summary": "A successful /reset_pose response must be followed by /odom returning near the origin.",
+        "converter_manifest": "reset_pose_effect_converter",
+        "verdict_manifest": "reset_pose_effect_verdict",
+        "hosts": ["robot"],
+        "placement": {},
+        "robot_command": (
+            "source /opt/ros/kilted/setup.bash && "
+            "python3 /demo/common/reset_pose_robot.py "
+            "--ros-args -r __node:=reset_pose_robot"
+        ),
+        "sources": [
+            {
+                "name": "/reset_pose",
+                "interface": "std_srvs/srv/Trigger",
+                "source_kind": "service",
+            },
+            {
+                "name": "/odom",
+                "interface": "nav_msgs/msg/Odometry",
+                "source_kind": "topic",
+            },
+        ],
+        "overrides": {"converter": {}, "verdict": {}},
+    },
 ]
 
 
