@@ -95,7 +95,7 @@ def test_resolve_requires_module_path():
 
 def test_resolve_module_path_works():
     cls = resolve_verdict_class(
-        "custom.threshold_verdict:ThresholdVerdict"
+        "custom.threshold:ThresholdVerdict"
     )
     assert issubclass(cls, VerdictService)
 

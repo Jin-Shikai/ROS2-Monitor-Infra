@@ -67,13 +67,13 @@ exporters:
   - type: file
 
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
+  - type: custom.rule_based:RuleBasedConverter
     source_match: "^/cmd_vel$"
     field_map:
       speed: twist.linear.x
     property_id: cmd_vel_speed_limit
     verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
+      type: custom.threshold:ThresholdVerdict
       property_id: cmd_vel_speed_limit
       field: speed
       op: ">"

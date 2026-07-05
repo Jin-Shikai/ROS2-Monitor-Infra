@@ -1,8 +1,8 @@
-"""Tests for custom/threshold_verdict.py (the user-facing demo)."""
+"""Tests for custom/threshold.py (the user-facing demo)."""
 
 import pytest
 
-from custom.threshold_verdict import ThresholdVerdict
+from custom.threshold import ThresholdVerdict
 
 
 def test_fires_violation_on_breach():

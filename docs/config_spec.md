@@ -272,14 +272,14 @@ Example:
 
 ```yaml
 converters:
-  - id: demo1-velocity-converter
-    type: custom.demo1_velocity_converter:Demo1VelocityConverter
+  - id: cmd_vel_speed_converter
+    type: custom.cmd_vel_speed:Demo1VelocityConverter
     params:
       speed_path: linear.x
 
 verdict_services:
-  - id: demo1-speeding-check
-    type: custom.demo1_speeding_check:Demo1SpeedingCheck
+  - id: cmd_vel_speed_verdict
+    type: custom.cmd_vel_speed:Demo1SpeedingCheck
     params:
       check: speed
       op: ">"
@@ -291,9 +291,9 @@ verdict_services:
 
 links:
   - from: source:/cmd_vel
-    to: converter:demo1-velocity-converter
-  - from: converter:demo1-velocity-converter
-    to: verdict:demo1-speeding-check
+    to: converter:cmd_vel_speed_converter
+  - from: converter:cmd_vel_speed_converter
+    to: verdict:cmd_vel_speed_verdict
 ```
 
 ## Transport Endpoints (`inputs` / `outputs`)

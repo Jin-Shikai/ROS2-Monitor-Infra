@@ -2,7 +2,7 @@
   "id": "rule_based_converter",
   "kind": "converter",
   "name": "Rule Based Converter",
-  "class_path": "custom.rule_based_converter:RuleBasedConverter",
+  "class_path": "custom.rule_based:RuleBasedConverter",
   "params": [
     {
       "key": "source_match",

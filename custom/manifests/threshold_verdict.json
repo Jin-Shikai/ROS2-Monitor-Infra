@@ -2,7 +2,7 @@
   "id": "threshold_verdict",
   "kind": "verdict",
   "name": "Threshold Verdict",
-  "class_path": "custom.threshold_verdict:ThresholdVerdict",
+  "class_path": "custom.threshold:ThresholdVerdict",
   "params": [
     {
       "key": "property_id",

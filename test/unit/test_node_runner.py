@@ -48,13 +48,16 @@ def test_full_chain_from_records_input(tmp_path):
         "inputs": [{"id": "replay", "type": "file", "path": str(records)}],
         "converters": [{
             "id": "c1",
-            "type": "custom.speed_aggregate_filter:SpeedAggregateFilter",
-            "params": {"components": ["twist.twist.linear.x"],
-                       "output_field": "speed", "property_id": "p"},
+            "type": "custom.rule_based:RuleBasedConverter",
+            "params": {
+                "source_match": "^/odom$",
+                "field_map": {"speed": "twist.twist.linear.x"},
+                "property_id": "p",
+            },
         }],
         "verdict_services": [{
             "id": "v1",
-            "type": "custom.threshold_verdict:ThresholdVerdict",
+            "type": "custom.threshold:ThresholdVerdict",
             "params": {"property_id": "p", "field": "speed", "op": ">",
                        "threshold": 0.2, "sustain_sec": 0.0},
             "exporters": [{"type": "file", "path": str(verdict_file)}],
@@ -83,7 +86,7 @@ def test_verdict_only_host_from_dsl_input(tmp_path):
         }],
         "verdict_services": [{
             "id": "v1",
-            "type": "custom.threshold_verdict:ThresholdVerdict",
+            "type": "custom.threshold:ThresholdVerdict",
             "params": {"property_id": "p", "field": "speed", "op": ">",
                        "threshold": 0.2, "sustain_sec": 0.0},
             "exporters": [{"type": "file", "path": str(verdict_file)}],
@@ -96,42 +99,12 @@ def test_verdict_only_host_from_dsl_input(tmp_path):
     assert rows[0]["result"] is False
 
 
-def test_filter_relay_host_republishes_records(tmp_path):
-    """A filter-only host: records input -> data_filter -> records output."""
-    records = tmp_path / "records.jsonl"
-    _write_records(records, [0.4])
-    out_dir = tmp_path / "relay"
-
-    cfg = RunnerConfig.from_dict({
-        "monitor": {"output_dir": str(tmp_path)},
-        "inputs": [{"id": "replay", "type": "file", "path": str(records)}],
-        "converters": [{
-            "id": "f1",
-            "type": "custom.odom_speed_filter:OdomSpeedFilter",
-            "params": {"components": ["twist.twist.linear.x"], "output_field": "speed"},
-        }],
-        "outputs": [{
-            "id": "relay_out", "payload": "records", "type": "file",
-            "output_dir": str(out_dir), "session_id": "relay", "filename_suffix": "",
-        }],
-        "links": [
-            {"from": "source:/odom", "to": "converter:f1"},
-            {"from": "converter:f1", "to": "output:relay_out"},
-        ],
-    })
-
-    relay_file = out_dir / "relay.jsonl"
-    _run_until(cfg, lambda: relay_file.exists() and relay_file.read_text().strip())
-    row = json.loads(relay_file.read_text().splitlines()[0])
-    assert row["data"]["speed"] == 0.4
-
-
 def test_runner_without_inputs_exits(tmp_path):
     cfg = RunnerConfig.from_dict({
         "monitor": {"output_dir": str(tmp_path)},
         "verdict_services": [{
             "id": "v1",
-            "type": "custom.threshold_verdict:ThresholdVerdict",
+            "type": "custom.threshold:ThresholdVerdict",
             "params": {"property_id": "p", "field": "speed", "op": ">", "threshold": 0.2},
         }],
         "links": [{"from": "input:missing", "to": "verdict:v1"}],

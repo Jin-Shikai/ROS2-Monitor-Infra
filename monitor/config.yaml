@@ -52,7 +52,7 @@ inputs:
 # links wire sources, converters, verdicts, and transport endpoints together.
 converters:
   - id: odom_speed
-    type: custom.rule_based_converter:RuleBasedConverter
+    type: custom.rule_based:RuleBasedConverter
     params:
       source_match: "^/odom$"
       field_map:
@@ -61,7 +61,7 @@ converters:
 
 verdict_services:
   - id: odom_speed_check
-    type: custom.threshold_verdict:ThresholdVerdict
+    type: custom.threshold:ThresholdVerdict
     params:
       property_id: odom_speed_limit
       field: velocity

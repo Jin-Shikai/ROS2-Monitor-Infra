@@ -1,3 +1,5 @@
+"""Check that a successful `/reset_pose` call is followed by odom near origin."""
+
 from __future__ import annotations
 
 import math
@@ -9,6 +11,13 @@ from converter import DataConverter
 from data_record import DataRecord
 from transformer import _get_path
 from verdict import Verdict, VerdictService
+
+
+def _field(data: dict, path: str, default: float = 0.0):
+    if path in data:
+        return data[path]
+    found, value = _get_path(data, path)
+    return value if found else default
 
 
 class ResetPoseEffectConverter(DataConverter):
@@ -27,11 +36,21 @@ class ResetPoseEffectConverter(DataConverter):
         self.deadline_sec = float(deadline_sec)
         self.tolerance_m = float(tolerance_m)
         self.property_id = property_id
-        self.pending = None
-        self.latest_odom = None
-        self.emit = None
-        self.stop_event = threading.Event()
-        self.thread = None
+        self.pending: dict[str, Any] | None = None
+        self.latest_odom: tuple[str, float, float] | None = None
+        self._emit: Callable[[Any], None] | None = None
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+
+    def start(self, emit: Callable[[Any], None]) -> None:
+        self._emit = emit
+        self._thread = threading.Thread(target=self._watch_deadline, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop.set()
+        if self._thread:
+            self._thread.join(timeout=1.0)
 
     def convert(self, record: DataRecord) -> dict | None:
         if record.source_name == self.service_name and record.phase == "response":
@@ -45,44 +64,38 @@ class ResetPoseEffectConverter(DataConverter):
 
         if record.source_name != self.odom_name:
             return None
-        distance = self._distance(record)
+        distance = self._odom_distance(record)
         self.latest_odom = (record.record_id, record.timestamp, distance)
-        if self.pending and distance <= self.tolerance_m:
-            return self._result(True, record.timestamp, distance)
-        if self.pending and record.timestamp - self.pending["time"] > self.deadline_sec:
-            return self._result(False, record.timestamp, distance)
+        if not self.pending:
+            return None
+        if distance <= self.tolerance_m:
+            return self._finish(True, record.timestamp, distance)
+        if record.timestamp - float(self.pending["time"]) > self.deadline_sec:
+            return self._finish(False, record.timestamp, distance)
         return None
 
-    def start(self, emit: Callable[[Any], None]) -> None:
-        self.emit = emit
-        self.thread = threading.Thread(target=self._watch, daemon=True)
-        self.thread.start()
-
-    def stop(self) -> None:
-        self.stop_event.set()
-        if self.thread:
-            self.thread.join(timeout=1.0)
-
-    def _watch(self) -> None:
-        while not self.stop_event.wait(0.05):
-            if self.pending and time.time() - self.pending["time"] > self.deadline_sec:
+    def _watch_deadline(self) -> None:
+        while not self._stop.wait(0.05):
+            if not self.pending or self._emit is None:
+                continue
+            if time.time() - float(self.pending["time"]) > self.deadline_sec:
                 distance = self.latest_odom[2] if self.latest_odom else None
-                self.emit(self._result(False, time.time(), distance))
+                self._emit(self._finish(False, time.time(), distance))
 
-    def _distance(self, record: DataRecord) -> float:
-        x = _field(record.data, "pose.pose.position.x")
-        y = _field(record.data, "pose.pose.position.y")
-        return math.hypot(float(x), float(y))
+    def _odom_distance(self, record: DataRecord) -> float:
+        x = float(_field(record.data, "pose.pose.position.x"))
+        y = float(_field(record.data, "pose.pose.position.y"))
+        return math.hypot(x, y)
 
-    def _result(self, ok: bool, ts: float, distance: float | None) -> dict:
-        pending = self.pending
+    def _finish(self, ok: bool, ts: float, distance: float | None) -> dict:
+        pending = self.pending or {"time": ts, "record_id": "", "sequence_number": None}
         self.pending = None
-        ids = [pending["record_id"]]
+        input_ids = [pending["record_id"]]
         if self.latest_odom:
-            ids.append(self.latest_odom[0])
+            input_ids.append(self.latest_odom[0])
         return {
             "reset_effect_ok": ok,
-            "elapsed_sec": ts - pending["time"],
+            "elapsed_sec": ts - float(pending["time"]),
             "distance_to_origin": distance,
             "deadline_sec": self.deadline_sec,
             "tolerance_m": self.tolerance_m,
@@ -90,7 +103,7 @@ class ResetPoseEffectConverter(DataConverter):
             "_property_id": self.property_id,
             "_timestamp": ts,
             "_source_name": "reset_pose_effect",
-            "_input_record_ids": ids,
+            "_input_record_ids": input_ids,
         }
 
 
@@ -100,25 +113,18 @@ class ResetPoseEffectVerdict(VerdictService):
     def __init__(self, property_id: str = "reset_pose_effect"):
         self.property_id = property_id
 
-    def evaluate(self, record: Any) -> Verdict | None:
-        if not isinstance(record, dict):
+    def evaluate(self, dsl_record: Any) -> Verdict | None:
+        if not isinstance(dsl_record, dict) or "reset_effect_ok" not in dsl_record:
             return None
         return Verdict(
-            timestamp=float(record["_timestamp"]),
+            timestamp=float(dsl_record.get("_timestamp", time.time())),
             property_id=self.property_id,
-            result=bool(record["reset_effect_ok"]),
+            result=bool(dsl_record["reset_effect_ok"]),
             details={
-                "elapsed_sec": record["elapsed_sec"],
-                "distance_to_origin": record["distance_to_origin"],
-                "deadline_sec": record["deadline_sec"],
-                "tolerance_m": record["tolerance_m"],
-                "sequence_number": record["sequence_number"],
+                "elapsed_sec": dsl_record.get("elapsed_sec"),
+                "distance_to_origin": dsl_record.get("distance_to_origin"),
+                "deadline_sec": dsl_record.get("deadline_sec"),
+                "tolerance_m": dsl_record.get("tolerance_m"),
+                "sequence_number": dsl_record.get("sequence_number"),
             },
         )
-
-
-def _field(data: dict, path: str):
-    if path in data:
-        return data[path]
-    found, value = _get_path(data, path)
-    return value if found else 0.0

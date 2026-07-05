@@ -39,7 +39,7 @@ docker run --rm -it --network host --ipc=host \
   -e ROS_DOMAIN_ID=0 \
   -v "$PWD/demo/common:/demo/common:ro" \
   ros2-monitor-infra \
-  /bin/bash -lc "source /opt/ros/kilted/setup.bash && python3 /demo/common/robot_simulator.py cmd-velocity-cycle --ros-args -r __node:=showcase_robot"
+  /bin/bash -lc "source /opt/ros/kilted/setup.bash && python3 /demo/common/topic_robot.py cmd-velocity-cycle --ros-args -r __node:=showcase_robot"
 ```
 
 To inspect different ROS resource kinds, replace the dashboard **Start command**

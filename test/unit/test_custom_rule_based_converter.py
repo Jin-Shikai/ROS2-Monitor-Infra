@@ -1,9 +1,9 @@
-"""Tests for custom/rule_based_converter.py (the user-facing demo)."""
+"""Tests for custom/rule_based.py (the user-facing demo)."""
 
 import pytest
 
 from data_record import DataRecord
-from custom.rule_based_converter import RuleBasedConverter
+from custom.rule_based import RuleBasedConverter
 
 
 def _data_record(source_name="/odom", data=None):

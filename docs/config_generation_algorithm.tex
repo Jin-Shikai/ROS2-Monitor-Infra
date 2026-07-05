@@ -459,15 +459,15 @@ JSON request:
   ],
   "monitors": [
     {"id": "r1_local", "converter": {"type":
-     "custom.rule_based_converter:RuleBasedConverter", "params": {
+     "custom.rule_based:RuleBasedConverter", "params": {
      "source_match": "^/robot1/odom$", "field_map": {"speed": "twist.twist.linear.x"}}},
-     "verdict": {"type": "custom.threshold_verdict:ThresholdVerdict",
+     "verdict": {"type": "custom.threshold:ThresholdVerdict",
      "params": {"property_id": "robot1_speed", "field": "speed",
      "op": ">", "threshold": 0.3}}, "consumes": ["r1_odom"]},
     {"id": "r2_local", "converter": {"type":
-     "custom.rule_based_converter:RuleBasedConverter", "params": {
+     "custom.rule_based:RuleBasedConverter", "params": {
      "source_match": "^/robot2/odom$", "field_map": {"speed": "twist.twist.linear.x"}}},
-     "verdict": {"type": "custom.threshold_verdict:ThresholdVerdict",
+     "verdict": {"type": "custom.threshold:ThresholdVerdict",
      "params": {"property_id": "robot2_speed", "field": "speed",
      "op": ">", "threshold": 0.3}}, "consumes": ["r2_odom"]},
     {"id": "aggregate", "converter": {"type":
@@ -507,12 +507,12 @@ topics:
   - name: /robot1/odom
     type: nav_msgs/msg/Odometry
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
+  - type: custom.rule_based:RuleBasedConverter
     inputs: [/robot1/odom]
     source_match: "^/robot1/odom$"
     field_map: {speed: twist.twist.linear.x}
     verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
+      type: custom.threshold:ThresholdVerdict
       property_id: robot1_speed
       field: speed
       op: ">"
@@ -530,12 +530,12 @@ topics:
   - name: /robot2/odom
     type: nav_msgs/msg/Odometry
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
+  - type: custom.rule_based:RuleBasedConverter
     inputs: [/robot2/odom]
     source_match: "^/robot2/odom$"
     field_map: {speed: twist.twist.linear.x}
     verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
+      type: custom.threshold:ThresholdVerdict
       property_id: robot2_speed
       field: speed
       op: ">"

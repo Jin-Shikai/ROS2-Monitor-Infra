@@ -128,7 +128,7 @@ named for what the verdict service reads. The verdict service's configured
 
 | Converter | Domain keys produced |
 |---|---|
-| `custom.rule_based_converter:RuleBasedConverter` | one key per `field_map` entry (e.g. `velocity`, `position_x`) |
+| `custom.rule_based:RuleBasedConverter` | one key per `field_map` entry (e.g. `velocity`, `position_x`) |
 | `custom.odom_speed_converter:OdomSpeedConverter` | `speed` |
 | `custom.nav2_case1...:CmdVelSpeedConverter` | `speed` |
 | `custom.fleet_distance:FleetDistanceConverter` | `distance` |
@@ -231,5 +231,5 @@ For example 1, a violation verdict carries the propagated correlation:
 3. In `evaluate()`, guard with `isinstance(dsl_record, dict)` and read your
    domain keys; use `_timestamp` for any time logic.
 
-See `custom/rule_based_converter.py` + `custom/threshold_verdict.py` for the
+See `custom/rule_based.py` + `custom/threshold.py` for the
 reference pair, and `docs/dsl_adaptation_guide.md` for the full procedure.

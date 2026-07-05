@@ -6,7 +6,7 @@ Demonstrates the minimal contract:
     (e.g. breach onset, breach cleared) so a sustained violation produces
     one Verdict, not one per incoming record.
 
-Wire-up: see custom/rule_based_converter.py for the full config example.
+Wire-up: see custom/rule_based.py for the full config example.
 """
 
 from __future__ import annotations

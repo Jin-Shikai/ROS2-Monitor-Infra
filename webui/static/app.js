@@ -17,7 +17,7 @@ let eventSource = null;
 let robotRunning = false;
 let runActive = false;
 let robotDockerfile = "Dockerfile";
-let robotCommand = "source /opt/ros/kilted/setup.bash && python3 /demo/common/robot_simulator.py cmd-velocity-cycle --ros-args -r __node:=showcase_robot";
+let robotCommand = "source /opt/ros/kilted/setup.bash && python3 /demo/common/topic_robot.py cmd-velocity-cycle --ros-args -r __node:=showcase_robot";
 let editorTargetPath = "";
 let brokerHost = "127.0.0.1";
 let brokerPort = 1883;
@@ -312,7 +312,7 @@ function addConverter(seed = {}) {
   const index = converters.length + 1;
   const converter = {
     id: uniqueRuntimeId(seed.id || `converter_${index}`, converters.map((item) => item.id)),
-    class_path: seed.class_path || "custom.rule_based_converter:RuleBasedConverter",
+    class_path: seed.class_path || "custom.rule_based:RuleBasedConverter",
     params: structuredClone(seed.params || []),
     host: ensureHost(targetHost),
     inputSourceKeys: seed.inputSourceKeys ? seed.inputSourceKeys.slice() : [],
@@ -334,7 +334,7 @@ function addVerdict(seed = {}) {
   const index = verdictServices.length + 1;
   const verdict = {
     id: uniqueRuntimeId(seed.id || `verdict_${index}`, verdictServices.map((item) => item.id)),
-    class_path: seed.class_path || "custom.threshold_verdict:ThresholdVerdict",
+    class_path: seed.class_path || "custom.threshold:ThresholdVerdict",
     params: structuredClone(seed.params || []),
     host: ensureHost(targetHost),
   };
@@ -1781,14 +1781,14 @@ function applyTemplate(templateId, options = {}) {
   const verdictId = plugin.verdict_manifest || (templateId === "blank" ? "custom-verdict" : `${templateId}-verdict`);
   const verdict = {
     id: slug(verdictId, "verdict_1"),
-    class_path: plugin.verdict || "custom.threshold_verdict:ThresholdVerdict",
+    class_path: plugin.verdict || "custom.threshold:ThresholdVerdict",
     params: structuredClone(plugin.verdict_params || []),
     host: ensureHost(placement.verdict || hosts[0]),
   };
   verdictServices.push(verdict);
   const converter = {
     id: slug(converterId, "converter_1"),
-    class_path: plugin.converter || "custom.rule_based_converter:RuleBasedConverter",
+    class_path: plugin.converter || "custom.rule_based:RuleBasedConverter",
     params: structuredClone(plugin.converter_params || []),
     host: ensureHost(placement.converter || hosts[0]),
     inputSourceKeys: [],

@@ -8,14 +8,14 @@ Demonstrates the minimal contract:
 Wire-up in monitor/config.yaml::
 
     converters:
-      - type: custom.rule_based_converter:RuleBasedConverter
+      - type: custom.rule_based:RuleBasedConverter
         source_match: "^/odom$"
         field_map:
           velocity: twist.twist.linear.x
           position_x: pose.pose.position.x
         property_id: odom_speed
         verdict:
-          type: custom.threshold_verdict:ThresholdVerdict
+          type: custom.threshold:ThresholdVerdict
           property_id: odom_speed
           field: velocity
           op: ">"

@@ -110,11 +110,11 @@ def _attach_correlation(verdict: Verdict, record: Any) -> None:
 def resolve_verdict_class(spec: str) -> type[VerdictService]:
     """Resolve a VerdictService class from a 'module.path:ClassName' import string.
 
-    Example: 'custom.threshold_verdict:ThresholdVerdict'
+    Example: 'custom.threshold:ThresholdVerdict'
     """
     if ":" not in spec:
         raise ValueError(
             f"Bad verdict spec '{spec}'. Expected 'module.path:ClassName' "
-            f"(e.g. 'custom.threshold_verdict:ThresholdVerdict')."
+            f"(e.g. 'custom.threshold:ThresholdVerdict')."
         )
     return resolve_plugin_class(spec, {}, VerdictService, "verdict service")

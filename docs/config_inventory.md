@@ -87,7 +87,7 @@ them. A constructor error causes that chain to be skipped.
 
 | `type` | Field | Type / allowed values | Required | Default | Meaning |
 |---|---|---|---:|---|---|
-| `custom.rule_based_converter:RuleBasedConverter` | `source_match` | valid Python regular-expression string | yes | none | Search pattern applied to `DataRecord.source_name`. |
+| `custom.rule_based:RuleBasedConverter` | `source_match` | valid Python regular-expression string | yes | none | Search pattern applied to `DataRecord.source_name`. |
 | same | `field_map` | mapping: output-name string to input dot-path string | yes | none | Projects input fields into the DSL record. |
 | same | `property_id` | string or null | no | null | Adds `_property_id` to produced DSL records. |
 | same | `require_all` | bool | no | `false` | If true, drop a record when any mapped field is missing; otherwise drop only when none are found. |
@@ -103,14 +103,14 @@ them. A constructor error causes that chain to be skipped.
 | `custom.verdict_aggregation:LocalViolationCountConverter` | none | - | - | - | Counts currently violating local-verdict sources. |
 | `custom.odom_speed_converter:OdomSpeedConverter` | none | - | - | - | Fixed demo converter for `/odom` and `twist.twist.linear.x`. |
 | `custom.nav2_case1.cmd_vel_speed_converter:CmdVelSpeedConverter` | none | - | - | - | Extracts `twist.linear.x`; normally paired with `inputs: ["/cmd_vel"]`. |
-| `custom.demo1_velocity_converter:Demo1VelocityConverter` | `speed_path` | dot-path string | no | `linear.x` | Demo dashboard converter field to read. |
+| `custom.cmd_vel_speed:Demo1VelocityConverter` | `speed_path` | dot-path string | no | `linear.x` | Demo dashboard converter field to read. |
 | same | `output_field` | string | no | `speed` | DSL record key to write. |
 
 ### Verdict Services
 
 | `type` | Field | Type / allowed values | Required | Default | Meaning |
 |---|---|---|---:|---|---|
-| `custom.threshold_verdict:ThresholdVerdict` | `property_id` | non-empty string recommended | yes | none | Identifier written into every emitted verdict. |
+| `custom.threshold:ThresholdVerdict` | `property_id` | non-empty string recommended | yes | none | Identifier written into every emitted verdict. |
 | same | `field` | string key present in the DSL record | yes | none | Value to compare. |
 | same | `op` | one of `>`, `>=`, `<`, `<=`, `==`, `!=` | yes | none | Comparison operator; a true comparison means violation. |
 | same | `threshold` | number convertible to float | yes | none | Right-hand comparison value. |
@@ -119,7 +119,7 @@ them. A constructor error causes that chain to be skipped.
 | `custom.verdict_aggregation:SimultaneousLocalViolationsVerdict` | `minimum_count` | integer; `>= 1` recommended | no | `2` | Violation occurs when at least this many local sources violate. |
 | `custom.odom_speed_verdict:OdomSpeedVerdict` | none | - | - | - | Fixed demo limit: `/odom` speed greater than `0.30 m/s`. |
 | `custom.nav2_case1.cmd_vel_speed_verdict:CmdVelSpeedVerdict` | none | - | - | - | Fixed demo limit: command speed greater than `0.30 m/s`. |
-| `custom.demo1_speeding_check:Demo1SpeedingCheck` | `check` | string key present in the DSL record | no | `speed` | DSL field this demo verdict reads. |
+| `custom.cmd_vel_speed:Demo1SpeedingCheck` | `check` | string key present in the DSL record | no | `speed` | DSL field this demo verdict reads. |
 | same | `op` | one of `>`, `>=`, `<`, `<=`, `==`, `!=` | no | `>` | Comparison operator. |
 | same | `value` | number convertible to float | no | `0.5` | Right-hand comparison value. |
 | same | `property_id` | string | no | `demo1_speeding` | Identifier written into emitted verdicts. |

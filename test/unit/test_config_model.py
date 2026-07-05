@@ -17,12 +17,12 @@ def test_monitor_config_parses_typed_specs():
         "exporters": [{"type": "mqtt", "broker": "localhost"}],
         "converters": [{
             "id": "c1",
-            "type": "custom.rule_based_converter:RuleBasedConverter",
+            "type": "custom.rule_based:RuleBasedConverter",
             "params": {"source_match": "^/odom$", "field_map": {"v": "x"}},
         }],
         "verdict_services": [{
             "id": "v1",
-            "type": "custom.threshold_verdict:ThresholdVerdict",
+            "type": "custom.threshold:ThresholdVerdict",
             "params": {"property_id": "p", "field": "v", "op": ">", "threshold": 1},
             "exporters": [{"type": "stdout"}],
         }],

@@ -58,8 +58,8 @@ def test_showcase_builds_single_host_generation_request():
             "monitors": [
                 {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel", "topic:/odom"]}
             ],
-            "converter_class": "custom.rule_based_converter:RuleBasedConverter",
-            "verdict_class": "custom.threshold_verdict:ThresholdVerdict",
+            "converter_class": "custom.rule_based:RuleBasedConverter",
+            "verdict_class": "custom.threshold:ThresholdVerdict",
             "converter_params": [
                 {"key": "source_match", "value": "^/cmd_vel$", "type": "string"},
                 {"key": "field_map", "value": '{"speed": "linear.x"}', "type": "json"},
@@ -84,7 +84,7 @@ def test_showcase_builds_single_host_generation_request():
     ]
     assert len(runtimes[0]["sources"]) == 2
     assert runtimes[1]["subscribe"] == ["cmd_vel", "odom"]
-    assert runtimes[2]["class_path"] == "custom.rule_based_converter:RuleBasedConverter"
+    assert runtimes[2]["class_path"] == "custom.rule_based:RuleBasedConverter"
     assert runtimes[2]["input_from"] == ["cmd_vel", "odom"]
     assert runtimes[2]["field_map"] == {"speed": "linear.x"}
     assert runtimes[3]["property_id"] == "cmd_vel_limit"
@@ -115,7 +115,7 @@ def test_showcase_builds_service_and_action_sources():
             "converters": [
                 {
                     "id": "action_converter",
-                    "class_path": "custom.rule_based_converter:RuleBasedConverter",
+                    "class_path": "custom.rule_based:RuleBasedConverter",
                     "input_source_keys": ["action:/navigate_to_pose"],
                 }
             ],
@@ -139,73 +139,6 @@ def test_showcase_builds_service_and_action_sources():
     ]
     assert runtimes[1]["subscribe"] == ["service__reset", "action__navigate_to_pose"]
     assert runtimes[2]["input_from"] == ["action__navigate_to_pose"]
-
-
-def test_showcase_builds_graph_payload_with_shared_verdict_service():
-    request = build_generation_request(
-        {
-            "sources": [
-                {
-                    "name": "/cmd_vel",
-                    "interface": "geometry_msgs/msg/Twist",
-                    "source_kind": "topic",
-                },
-                {
-                    "name": "/odom",
-                    "interface": "nav_msgs/msg/Odometry",
-                    "source_kind": "topic",
-                },
-            ],
-            "monitors": [
-                {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel", "topic:/odom"]}
-            ],
-            "converters": [
-                {
-                    "id": "cmd-velocity-converter",
-                    "class_path": "custom.demo1_velocity_converter:Demo1VelocityConverter",
-                    "input_source_keys": ["topic:/cmd_vel"],
-                    "verdict_service_ids": ["shared-speeding-check"],
-                    "params": [
-                        {"key": "speed_path", "value": "linear.x", "type": "string"}
-                    ],
-                },
-                {
-                    "id": "odom-velocity-converter",
-                    "class_path": "custom.speed_aggregate_filter:SpeedAggregateFilter",
-                    "input_source_keys": ["topic:/odom"],
-                    "verdict_service_ids": ["shared-speeding-check"],
-                    "params": [
-                        {
-                            "key": "components",
-                            "value": '["twist.twist.linear.x"]',
-                            "type": "json",
-                        }
-                    ],
-                },
-            ],
-            "verdict_services": [
-                {
-                    "id": "shared-speeding-check",
-                    "class_path": "custom.demo1_speeding_check:Demo1SpeedingCheck",
-                    "params": [
-                        {"key": "check", "value": "speed", "type": "string"},
-                        {"key": "op", "value": ">", "type": "string"},
-                        {"key": "value", "value": "0.5", "type": "number"},
-                    ],
-                }
-            ],
-        }
-    )
-
-    runtimes = request["hosts"][0]["runtimes"]
-    converters = [runtime for runtime in runtimes if runtime["kind"] == "converter"]
-    verdicts = [runtime for runtime in runtimes if runtime["kind"] == "verdict_service"]
-    assert [converter["input_from"] for converter in converters] == [["cmd_vel"], ["odom"]]
-    assert verdicts[0]["input_from"] == [
-        "cmd-velocity-converter_dsl_record",
-        "odom-velocity-converter_dsl_record",
-    ]
-    assert verdicts[0]["value"] == 0.5
 
 
 def test_showcase_placement_derives_cross_host_links():
@@ -250,7 +183,7 @@ def test_showcase_placement_derives_cross_host_links():
             "verdict_services": [
                 {
                     "id": "relative_speed_check",
-                    "class_path": "custom.threshold_verdict:ThresholdVerdict",
+                    "class_path": "custom.threshold:ThresholdVerdict",
                     "host": "verdict_host",
                 }
             ],
@@ -287,14 +220,17 @@ def test_showcase_rejects_unknown_source_kind():
 
 def test_showcase_plugin_payload_expands_manifest_schema():
     payload = plugin_payload()
-    cmd_vel = next(item for item in payload["plugins"] if item["id"] == "cmd_vel_threshold")
+    assert [item["id"] for item in payload["plugins"]] == [
+        "blank",
+        "speed_check",
+        "two_robot_relative_speed",
+        "service_effect_consistency",
+    ]
 
-    assert cmd_vel["converter"] == "custom.demo1_velocity_converter:Demo1VelocityConverter"
-    assert cmd_vel["verdict"] == "custom.demo1_speeding_check:Demo1SpeedingCheck"
-    assert cmd_vel["converter_schema"]["id"] == "demo1-velocity-converter"
-    assert cmd_vel["verdict_schema"]["id"] == "demo1-speeding-check"
-    assert any(row["key"] == "speed_path" for row in cmd_vel["converter_params"])
-    assert any(row["key"] == "check" for row in cmd_vel["verdict_params"])
+    speed = next(item for item in payload["plugins"] if item["id"] == "speed_check")
+    assert speed["converter"] == "custom.rule_based:RuleBasedConverter"
+    assert speed["verdict"] == "custom.threshold:ThresholdVerdict"
+    assert any(row["key"] == "field_map" for row in speed["converter_params"])
 
     fleet = next(
         item for item in payload["plugins"] if item["id"] == "two_robot_relative_speed"
@@ -311,6 +247,45 @@ def test_showcase_plugin_payload_expands_manifest_schema():
     assert {source["source_kind"] for source in reset["sources"]} == {"service", "topic"}
 
 
+def test_showcase_generation_uses_manifest_defaults_for_empty_preset_params():
+    request = build_generation_request(
+        {
+            "sources": [
+                {"name": "/robot1/odom", "interface": "nav_msgs/msg/Odometry", "host": "robot1"},
+                {"name": "/robot2/odom", "interface": "nav_msgs/msg/Odometry", "host": "robot2"},
+            ],
+            "monitors": [
+                {"id": "m1", "host": "robot1", "source_keys": ["topic:/robot1/odom"]},
+                {"id": "m2", "host": "robot2", "source_keys": ["topic:/robot2/odom"]},
+            ],
+            "converters": [
+                {
+                    "id": "relative_speed",
+                    "host": "converter_host",
+                    "class_path": "custom.relative_speed:RelativeSpeedConverter",
+                    "input_source_keys": ["topic:/robot1/odom", "topic:/robot2/odom"],
+                    "verdict_service_ids": ["relative_speed_check"],
+                }
+            ],
+            "verdict_services": [
+                {
+                    "id": "relative_speed_check",
+                    "host": "verdict_host",
+                    "class_path": "custom.threshold:ThresholdVerdict",
+                }
+            ],
+        }
+    )
+
+    runtimes = [rt for host in request["hosts"] for rt in host["runtimes"]]
+    converter = next(rt for rt in runtimes if rt["id"] == "relative_speed")
+    verdict = next(rt for rt in runtimes if rt["id"] == "relative_speed_check")
+    assert converter["robot_a"] == "/robot1"
+    assert converter["robot_b"] == "/robot2"
+    assert verdict["field"] == "speed"
+    assert verdict["threshold"] == 0.3
+
+
 def test_showcase_generate_configs_writes_yaml(tmp_path, monkeypatch):
     import webui.server as server
 
@@ -322,8 +297,8 @@ def test_showcase_generate_configs_writes_yaml(tmp_path, monkeypatch):
             "monitors": [
                 {"id": "monitor_robot", "source_keys": ["topic:/cmd_vel"]}
             ],
-            "converter_class": "custom.rule_based_converter:RuleBasedConverter",
-            "verdict_class": "custom.threshold_verdict:ThresholdVerdict",
+            "converter_class": "custom.rule_based:RuleBasedConverter",
+            "verdict_class": "custom.threshold:ThresholdVerdict",
             "converter_params": [
                 {"key": "source_match", "value": "^/cmd_vel$", "type": "string"},
                 {"key": "field_map", "value": '{"speed": "linear.x"}', "type": "json"},
@@ -345,14 +320,14 @@ def test_showcase_generate_configs_writes_yaml(tmp_path, monkeypatch):
     assert parsed["topics"][0]["name"] == "/cmd_vel"
     assert parsed["monitor"]["output_dir"] == "/output/showcase/robot"
     assert parsed["converters"][0]["id"] == "showcase_converter"
-    assert parsed["verdict_services"][0]["type"] == "custom.threshold_verdict:ThresholdVerdict"
+    assert parsed["verdict_services"][0]["type"] == "custom.threshold:ThresholdVerdict"
     assert parsed["links"][-1]["to"] == "verdict:showcase_verdict"
     compose = yaml.safe_load(Path(result["compose_path"]).read_text())
     service = compose["services"]["generated_robot"]
     assert service["network_mode"] == "host"
     assert service["ipc"] == "host"
     assert "../../demo/common:/demo/common:ro" not in service["volumes"]
-    assert "robot_simulator.py" not in service["command"][-1]
+    assert "topic_robot.py" not in service["command"][-1]
     assert "monitor_node.py --config /generated/robot.yaml" in service["command"][-1]
 
 
@@ -384,7 +359,7 @@ def test_showcase_generate_configs_writes_service_action_sections(tmp_path, monk
             "converters": [
                 {
                     "id": "showcase_converter",
-                    "class_path": "custom.rule_based_converter:RuleBasedConverter",
+                    "class_path": "custom.rule_based:RuleBasedConverter",
                     "input_source_keys": ["service:/reset"],
                     "params": [
                         {"key": "source_match", "value": "^/reset$", "type": "string"},
@@ -431,7 +406,7 @@ def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeyp
             "converters": [
                 {
                     "id": "showcase_converter",
-                    "class_path": "custom.rule_based_converter:RuleBasedConverter",
+                    "class_path": "custom.rule_based:RuleBasedConverter",
                     "host": "verifier",
                     "verdict_service_ids": ["showcase_verdict"],
                     "params": [
@@ -443,7 +418,7 @@ def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeyp
             "verdict_services": [
                 {
                     "id": "showcase_verdict",
-                    "class_path": "custom.threshold_verdict:ThresholdVerdict",
+                    "class_path": "custom.threshold:ThresholdVerdict",
                     "host": "verifier",
                     "params": [
                         {"key": "property_id", "value": "cmd_vel_limit", "type": "string"},
@@ -471,67 +446,6 @@ def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeyp
     )
     assert verifier["inputs"][0]["type"] == "mqtt"
     assert verifier["inputs"][0]["payload"] == "records"
-
-
-def _chain_payload(**converter_overrides):
-    converters = [
-        {
-            "id": "stage_filter",
-            "class_path": "custom.odom_speed_filter:OdomSpeedFilter",
-            "input_source_keys": ["topic:/odom"],
-            "verdict_service_ids": [],
-        },
-        {
-            "id": "stage_aggregate",
-            "class_path": "custom.speed_aggregate_filter:SpeedAggregateFilter",
-            "input_source_keys": [],
-            "input_converter_ids": ["stage_filter"],
-            "verdict_service_ids": ["speed_check"],
-        },
-    ]
-    for key, value in converter_overrides.items():
-        index, field = key
-        converters[index][field] = value
-    return {
-        "sources": [{"name": "/odom", "interface": "nav_msgs/msg/Odometry"}],
-        "monitors": [{"id": "monitor_robot", "source_keys": ["topic:/odom"]}],
-        "converters": converters,
-        "verdict_services": [
-            {
-                "id": "speed_check",
-                "class_path": "custom.threshold_verdict:ThresholdVerdict",
-            }
-        ],
-    }
-
-
-def test_showcase_builds_converter_chain_on_shared_host():
-    request = build_generation_request(_chain_payload())
-
-    runtimes = {
-        runtime["id"]: runtime
-        for host in request["hosts"]
-        for runtime in host["runtimes"]
-    }
-    assert runtimes["stage_filter"]["input_from"] == ["odom"]
-    assert runtimes["stage_aggregate"]["input_from"] == ["stage_filter_dsl_record"]
-    assert runtimes["speed_check"]["input_from"] == ["stage_aggregate_dsl_record"]
-    assert request["links"] == []
-
-
-def test_showcase_rejects_cross_host_converter_chain():
-    payload = _chain_payload()
-    payload["hosts"] = ["robot", "other"]
-    payload["converters"][1]["host"] = "other"
-    with pytest.raises(ValueError, match="must share a host"):
-        build_generation_request(payload)
-
-
-def test_showcase_rejects_converter_chain_cycle():
-    payload = _chain_payload()
-    payload["converters"][0]["input_converter_ids"] = ["stage_aggregate"]
-    with pytest.raises(ValueError, match="cycle"):
-        build_generation_request(payload)
 
 
 def test_showcase_honours_explicit_empty_pipeline_lists():
@@ -565,7 +479,7 @@ def test_showcase_rejects_verdict_service_without_feeding_converter():
                 "verdict_services": [
                     {
                         "id": "orphan_verdict",
-                        "class_path": "custom.threshold_verdict:ThresholdVerdict",
+                        "class_path": "custom.threshold:ThresholdVerdict",
                     }
                 ],
             }
@@ -583,7 +497,7 @@ def test_showcase_rejects_converter_input_without_monitor():
                 "converters": [
                     {
                         "id": "showcase_converter",
-                        "class_path": "custom.rule_based_converter:RuleBasedConverter",
+                        "class_path": "custom.rule_based:RuleBasedConverter",
                         "input_source_keys": ["topic:/cmd_vel"],
                         "verdict_service_ids": [],
                     }

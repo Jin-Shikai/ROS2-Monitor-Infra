@@ -161,7 +161,7 @@ def test_resolve_requires_module_path():
 
 def test_resolve_module_path_works():
     cls = resolve_converter_class(
-        "custom.rule_based_converter:RuleBasedConverter"
+        "custom.rule_based:RuleBasedConverter"
     )
     assert issubclass(cls, DataConverter)
 

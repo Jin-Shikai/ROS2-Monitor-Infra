@@ -1,9 +1,0 @@
-monitor: {session_id_prefix: global_robot1}
-topics:
-  - name: /robot1/odom
-    type: nav_msgs/msg/Odometry
-    transformers:
-      - type: FieldExtractor
-        fields: [pose.pose.position.x, pose.pose.position.y]
-    exporters:
-      - {type: mqtt, broker: mosquitto, topic_prefix: global/robot1/}

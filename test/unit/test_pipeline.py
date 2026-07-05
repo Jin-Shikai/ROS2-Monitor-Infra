@@ -41,14 +41,17 @@ def _odom_record(value: float, seq: int = 1, topic: str = "/odom") -> DataRecord
 
 SPEED_CONVERTER = {
     "id": "c1",
-    "type": "custom.speed_aggregate_filter:SpeedAggregateFilter",
-    "params": {"components": ["twist.twist.linear.x"], "output_field": "speed",
-               "property_id": "p"},
+    "type": "custom.rule_based:RuleBasedConverter",
+    "params": {
+        "source_match": "^/odom$",
+        "field_map": {"speed": "twist.twist.linear.x"},
+        "property_id": "p",
+    },
 }
 
 THRESHOLD_VERDICT = {
     "id": "v1",
-    "type": "custom.threshold_verdict:ThresholdVerdict",
+    "type": "custom.threshold:ThresholdVerdict",
     "params": {"property_id": "p", "field": "speed", "op": ">", "threshold": 0.2,
                "sustain_sec": 0.0},
     "exporters": [{"type": "file", "path": "v_{session_id}.jsonl"}],
@@ -161,53 +164,6 @@ def test_converter_output_endpoint_archives_dsl(logger, tmp_path):
 
     rows = [json.loads(l) for l in (tmp_path / "arch_S.jsonl").read_text().splitlines()]
     assert rows[0]["speed"] == 0.4
-
-
-def test_converter_chaining_in_process(logger, tmp_path):
-    """data_filter -> dsl_converter -> verdict, all in one process."""
-    filter_spec = _converter({
-        "id": "f1",
-        "type": "custom.odom_speed_filter:OdomSpeedFilter",
-        "params": {"components": ["twist.twist.linear.x"], "output_field": "speed"},
-    })
-    dsl_spec = _converter({
-        "id": "c1",
-        "type": "custom.rule_based_converter:RuleBasedConverter",
-        "params": {"source_match": "^/odom$", "field_map": {"speed": "speed"},
-                   "property_id": "p"},
-    })
-    rt = build_graph(
-        [filter_spec, dsl_spec],
-        [_verdict(THRESHOLD_VERDICT)],
-        _links(
-            ("source:/odom", "converter:f1"),
-            ("converter:f1", "converter:c1"),
-            ("converter:c1", "verdict:v1"),
-        ),
-        [],
-        str(tmp_path), "S", logger,
-    )
-    assert rt is not None
-    # c1 is chained-only: it must not double-consume the raw stream.
-    rt.record_entry.export(_odom_record(0.4))
-    rt.close()
-
-    out = (tmp_path / "v_S.jsonl").read_text().strip().splitlines()
-    assert len(out) == 1
-    assert '"result": false' in out[0]
-
-
-def test_converter_cycle_fails_graph(logger, tmp_path):
-    a = _converter({"id": "a", "type": "custom.odom_speed_filter:OdomSpeedFilter"})
-    b = _converter({"id": "b", "type": "custom.odom_speed_filter:OdomSpeedFilter"})
-    rt = build_graph(
-        [a, b],
-        [],
-        _links(("converter:a", "converter:b"), ("converter:b", "converter:a")),
-        [],
-        str(tmp_path), "S", logger,
-    )
-    assert rt is None
 
 
 def test_verdict_shared_by_two_converters_instantiated_once(logger, tmp_path):

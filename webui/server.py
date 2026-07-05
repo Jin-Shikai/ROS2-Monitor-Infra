@@ -86,13 +86,18 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
         "overrides": {"converter": {}, "verdict": {}},
     },
     {
-        "id": "cmd_vel_threshold",
-        "name": "Demo preset: /cmd_vel speeding check",
-        "summary": "Business-named converter and verdict service for geometry_msgs/Twist linear.x.",
-        "converter_manifest": "demo1-velocity-converter",
-        "verdict_manifest": "demo1-speeding-check",
+        "id": "speed_check",
+        "name": "Demo preset: speed check",
+        "summary": "Checks /cmd_vel.linear.x against a speed threshold.",
+        "converter_manifest": "rule_based_converter",
+        "verdict_manifest": "threshold_verdict",
         "hosts": ["robot"],
         "placement": {},
+        "robot_command": (
+            "source /opt/ros/kilted/setup.bash && "
+            "python3 /demo/common/topic_robot.py cmd-velocity-cycle "
+            "--ros-args -r __node:=speed_check_robot"
+        ),
         "sources": [
             {
                 "name": "/cmd_vel",
@@ -100,36 +105,35 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
                 "source_kind": "topic",
             }
         ],
-        "overrides": {"converter": {}, "verdict": {}},
-    },
-    {
-        "id": "odom_speed",
-        "name": "Demo preset: /odom speed threshold",
-        "summary": "SpeedAggregateFilter + ThresholdVerdict for nav_msgs/Odometry velocity.",
-        "converter_manifest": "speed_aggregate_filter",
-        "verdict_manifest": "threshold_verdict",
-        "hosts": ["robot"],
-        "placement": {},
-        "sources": [
-            {
-                "name": "/odom",
-                "interface": "nav_msgs/msg/Odometry",
-                "source_kind": "topic",
-            }
-        ],
         "overrides": {
-            "converter": {},
-            "verdict": {"property_id": "linear_speed"},
+            "converter": {
+                "source_match": "^/cmd_vel$",
+                "field_map": {"speed": "linear.x"},
+                "property_id": "speed_check",
+            },
+            "verdict": {
+                "property_id": "speed_check",
+                "field": "speed",
+                "op": ">",
+                "threshold": 0.3,
+            },
         },
     },
     {
         "id": "two_robot_relative_speed",
         "name": "Demo preset: two-robot relative speed",
         "summary": "Two monitored robots; converter and verdict on their own hosts; checks relative speed against 0.5 m/s.",
-        "converter_manifest": "relative_speed",
+        "converter_manifest": "relative_speed_converter",
         "verdict_manifest": "threshold_verdict",
         "hosts": ["robot1", "robot2", "converter_host", "verdict_host"],
         "placement": {"converter": "converter_host", "verdict": "verdict_host"},
+        "robot_command": (
+            "source /opt/ros/kilted/setup.bash && "
+            "python3 /demo/common/topic_robot.py speed-limit-cycle "
+            "--ros-args -r __node:=robot1 -r __ns:=/robot1 & "
+            "python3 /demo/common/topic_robot.py speed-limit-cycle "
+            "--ros-args -r __node:=robot2 -r __ns:=/robot2"
+        ),
         "sources": [
             {
                 "name": "/robot1/odom",
@@ -163,7 +167,7 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
         "placement": {},
         "robot_command": (
             "source /opt/ros/kilted/setup.bash && "
-            "python3 /demo/common/reset_pose_robot.py "
+            "python3 /demo/common/reset_robot.py "
             "--ros-args -r __node:=reset_pose_robot"
         ),
         "sources": [
@@ -253,7 +257,7 @@ ROBOT_CONTAINER_NAME = "ros2_monitor_ipc_robot"
 ROBOT_IMAGE_TAG = "ros2-monitor-infra-dashboard-robot"
 DEFAULT_ROBOT_COMMAND = (
     "source /opt/ros/kilted/setup.bash && "
-    "python3 /demo/common/robot_simulator.py cmd-velocity-cycle "
+    "python3 /demo/common/topic_robot.py cmd-velocity-cycle "
     "--ros-args -r __node:=showcase_robot"
 )
 
@@ -608,8 +612,19 @@ def _coerce_param(value: Any, type_name: str | None = None) -> Any:
     return value
 
 
-def _params_to_kwargs(rows: list[dict[str, Any]] | None) -> dict[str, Any]:
-    kwargs: dict[str, Any] = {}
+def _manifest_defaults_for_class(class_path: Any) -> dict[str, Any]:
+    for manifest in load_plugin_manifests().values():
+        if manifest.get("class_path") == class_path:
+            return {
+                str(p["key"]): _coerce_param(p.get("default"), p.get("type"))
+                for p in list(manifest.get("params") or [])
+                if p.get("key") and "default" in p
+            }
+    return {}
+
+
+def _params_to_kwargs(rows: list[dict[str, Any]] | None, class_path: Any = None) -> dict[str, Any]:
+    kwargs = _manifest_defaults_for_class(class_path)
     for row in rows or []:
         key = str(row.get("key") or "").strip()
         if not key:
@@ -804,11 +819,15 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
             "converter": raw_converter.get("converter") or "dsl_converter",
             "class_path": str(
                 raw_converter.get("class_path")
-                or "custom.rule_based_converter:RuleBasedConverter"
+                or "custom.rule_based:RuleBasedConverter"
             ),
             "input_from": converter_inputs,
             "output_to": converter_output[converter_id],
-            **_params_to_kwargs(raw_converter.get("params")),
+            **_params_to_kwargs(
+                raw_converter.get("params"),
+                raw_converter.get("class_path")
+                or "custom.rule_based:RuleBasedConverter",
+            ),
         }
     _reject_chain_cycles(chain_inputs)
 
@@ -849,14 +868,18 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
             "kind": "verdict_service",
             "class_path": str(
                 raw_verdict.get("class_path")
-                or "custom.threshold_verdict:ThresholdVerdict"
+                or "custom.threshold:ThresholdVerdict"
             ),
             "input_from": inputs,
             "output_to": raw_verdict.get("output_to") or [
                 {"kind": "stdout"},
                 {"kind": "file", "path": "verdicts_{session_id}.jsonl"},
             ],
-            **_params_to_kwargs(raw_verdict.get("params")),
+            **_params_to_kwargs(
+                raw_verdict.get("params"),
+                raw_verdict.get("class_path")
+                or "custom.threshold:ThresholdVerdict",
+            ),
         }
 
     runtimes_by_host: dict[str, list[dict[str, Any]]] = {h: [] for h in host_ids}

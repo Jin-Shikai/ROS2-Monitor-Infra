@@ -14,7 +14,7 @@ class RelativeSpeedConverter(DataConverter):
     """Join `<robot>/odom` velocity streams of two robots and emit their
     relative speed `|v_a - v_b|` as a DSL record.
 
-    Pair with e.g. `custom.threshold_verdict:ThresholdVerdict`
+    Pair with e.g. `custom.threshold:ThresholdVerdict`
     (`field: relative_speed, op: ">", threshold: 0.5`).
     """
 

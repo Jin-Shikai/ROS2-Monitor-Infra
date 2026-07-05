@@ -5,7 +5,7 @@ Each named scenario has fixed, visible input values and changes phase every
 three seconds. ROS names and namespaces are set with normal ROS remapping
 arguments, for example:
 
-    python3 robot_simulator.py speed-limit-cycle \
+    python3 topic_robot.py speed-limit-cycle \
       --ros-args -r __node:=robot1 -r __ns:=/robot1
 """
 
