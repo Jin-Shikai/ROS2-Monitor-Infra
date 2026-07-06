@@ -25,6 +25,7 @@ let runLogRows = [];
 let robotLogRows = [];
 let runningNodeKeys = new Set();
 let lastGraphData = null;
+let graphSearchQuery = "";
 
 const NODE_WIDTH = 210;
 const NODE_HEIGHT = 72;
@@ -67,6 +68,18 @@ function escapeText(value) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function searchCompact(value) {
+  return String(value ?? "").toLowerCase().replace(/[\s/_:.-]+/g, "");
+}
+
+function fuzzyMatch(text, query) {
+  const terms = String(query ?? "").toLowerCase().trim().split(/\s+/).filter(Boolean);
+  if (!terms.length) return true;
+  const haystack = String(text ?? "").toLowerCase();
+  const compactHaystack = searchCompact(haystack);
+  return terms.every((term) => haystack.includes(term) || compactHaystack.includes(searchCompact(term)));
 }
 
 function slug(value, fallback) {
@@ -1824,6 +1837,33 @@ function renderDiscoveryGroup(title, rows, kind) {
   `;
 }
 
+function graphResourceCount(data) {
+  return ["topics", "services", "actions"].reduce((count, key) => count + (data[key] || []).length, 0);
+}
+
+function filterDiscoveryRows(rows, kind, query) {
+  return rows.filter((row) => fuzzyMatch(`${kind} ${row.name || ""} ${row.interface || ""}`, query));
+}
+
+function updateGraphSearch(data, matchCount) {
+  const searchRow = $("graphSearchRow");
+  const searchInput = $("graphSearch");
+  const searchMeta = $("graphSearchMeta");
+  if (!searchRow || !searchInput || !searchMeta) return;
+  const total = graphResourceCount(data);
+  searchRow.style.display = total ? "" : "none";
+  if (!total) {
+    graphSearchQuery = "";
+    searchInput.value = "";
+    searchMeta.textContent = "";
+    return;
+  }
+  if (searchInput.value !== graphSearchQuery) searchInput.value = graphSearchQuery;
+  searchMeta.textContent = graphSearchQuery.trim()
+    ? `${matchCount}/${total} match(es)`
+    : `${total} resource(s)`;
+}
+
 function discoveryAttemptText(data) {
   return [...(data.warnings || []), ...(data.attempts || [])]
     .map((attempt) => {
@@ -1837,13 +1877,21 @@ function discoveryAttemptText(data) {
 
 function renderGraph(data, preserveLast = false) {
   if (!preserveLast) lastGraphData = data;
+  const query = graphSearchQuery.trim();
+  const topics = filterDiscoveryRows(data.topics || [], "topic", query);
+  const services = filterDiscoveryRows(data.services || [], "service", query);
+  const actions = filterDiscoveryRows(data.actions || [], "action", query);
+  const matchCount = topics.length + services.length + actions.length;
+  updateGraphSearch(data, matchCount);
   const groups = [
-    renderDiscoveryGroup("Topics", data.topics || [], "topic"),
-    renderDiscoveryGroup("Services", data.services || [], "service"),
-    renderDiscoveryGroup("Actions", data.actions || [], "action"),
+    renderDiscoveryGroup("Topics", topics, "topic"),
+    renderDiscoveryGroup("Services", services, "service"),
+    renderDiscoveryGroup("Actions", actions, "action"),
   ].join("");
   const attempts = discoveryAttemptText(data);
-  $("graphResults").innerHTML = groups || `<div class="notice">No graph resources found${attempts ? ` (${escapeText(attempts)})` : ""}.</div>`;
+  $("graphResults").innerHTML = groups || (query
+    ? `<div class="notice">No resources match "${escapeText(query)}".</div>`
+    : `<div class="notice">No graph resources found${attempts ? ` (${escapeText(attempts)})` : ""}.</div>`);
   document.querySelectorAll("[data-add-discovered]").forEach((button) => {
     button.addEventListener("click", () => addDiscoveredSource(JSON.parse(button.dataset.addDiscovered)));
   });
@@ -1877,6 +1925,10 @@ function applyTemplate(templateId, options = {}) {
     selectedNode = null;
     $("scanStatus").textContent = "";
     $("graphResults").innerHTML = "";
+    $("graphSearchRow").style.display = "none";
+    $("graphSearch").value = "";
+    $("graphSearchMeta").textContent = "";
+    graphSearchQuery = "";
     lastGraphData = null;
     renderAll();
     return;
@@ -2235,6 +2287,10 @@ $("loadFile").addEventListener("click", loadFile);
 $("saveFile").addEventListener("click", saveFile);
 $("zoomIn").addEventListener("click", () => setZoom(zoom + 0.1));
 $("zoomOut").addEventListener("click", () => setZoom(zoom - 0.1));
+$("graphSearch").addEventListener("input", () => {
+  graphSearchQuery = $("graphSearch").value;
+  if (lastGraphData) renderGraph(lastGraphData, true);
+});
 
 document.querySelectorAll(".editor-tab").forEach((tab) => {
   tab.addEventListener("click", () => switchEditorTab(tab.dataset.editorTab));
@@ -2243,12 +2299,17 @@ document.querySelectorAll(".editor-tab").forEach((tab) => {
 $("scanGraph").addEventListener("click", async () => {
   $("scanStatus").textContent = "Scanning ROS graph...";
   $("graphResults").innerHTML = "";
+  $("graphSearchRow").style.display = "none";
+  $("graphSearch").value = "";
+  $("graphSearchMeta").textContent = "";
+  graphSearchQuery = "";
   lastGraphData = null;
   try {
     const data = await api("/api/discovery/graph");
     if (!data.available) {
       $("scanStatus").textContent = data.error || "Discovery failed.";
       $("graphResults").innerHTML = `<div class="notice">Discovery failed. Check the ROS application and scan again.</div>`;
+      $("graphSearchRow").style.display = "none";
       lastGraphData = null;
       return;
     }

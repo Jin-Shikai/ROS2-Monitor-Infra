@@ -319,7 +319,7 @@ textarea {
 
 .playground-shell {
   display: grid;
-  grid-template-rows: auto auto auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto auto minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -358,8 +358,30 @@ textarea {
   padding: 1px 0;
 }
 
-.discovery-drawer {
+.discovery-search {
   grid-row: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  background: #ffffff;
+}
+
+.discovery-search input {
+  width: 100%;
+  min-width: 0;
+}
+
+.discovery-search span {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.discovery-drawer {
+  grid-row: 5;
   max-height: 120px;
   overflow: auto;
   border-bottom: 1px solid var(--line);
@@ -396,7 +418,7 @@ textarea {
 
 .playground {
   position: relative;
-  grid-row: 5;
+  grid-row: 6;
   min-height: 0;
   overflow: auto;
   background:
