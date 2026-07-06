@@ -114,7 +114,7 @@ textarea {
 
 .toolbar {
   display: grid;
-  grid-template-columns: 230px repeat(11, minmax(68px, 1fr));
+  grid-template-columns: 230px repeat(12, minmax(68px, 1fr));
   align-items: center;
   gap: 0;
   min-width: 900px;
@@ -829,6 +829,36 @@ pre {
 .status-line {
   min-height: 28px;
   padding-top: 8px;
+}
+
+.toolbar button.lan-active {
+  border-color: var(--good);
+  color: var(--good);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(17, 24, 39, 0.45);
+}
+
+.modal {
+  display: grid;
+  gap: 12px;
+  width: min(420px, calc(100vw - 40px));
+  padding: 18px;
+  border: 1px solid var(--line-strong);
+  background: var(--panel);
+}
+
+.modal .config-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 @media (max-width: 1180px) {

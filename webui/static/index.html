@@ -13,6 +13,7 @@
           <span>Topology</span>
           <select id="template" title="Preset"></select>
         </label>
+        <button id="modeToggle" type="button" title="Switch between Local Mode (all containers on this machine) and LAN Mode (SSH hosts)"><span class="cmd-icon">◈</span><span>Local Mode</span></button>
         <button id="addHost" type="button"><span class="cmd-icon">H</span><span>New Host</span></button>
         <button id="addMonitor" type="button"><span class="cmd-icon">+M</span><span>+ Monitor</span></button>
         <button id="addConverter" type="button"><span class="cmd-icon">+C</span><span>+ Converter</span></button>
@@ -82,6 +83,20 @@
         </div>
       </aside>
     </main>
+
+    <div id="lanHostModal" class="modal-backdrop" style="display: none">
+      <div class="modal">
+        <h3>Add SSH Host</h3>
+        <p class="notice subtle">The machine must be reachable on the local network and have Docker installed. The project is copied to <code>~/ROS2-Monitor-Infra</code> on it.</p>
+        <label>SSH address<input id="lanHostAddress" placeholder="user@hostname.local" spellcheck="false" autocomplete="off"></label>
+        <label id="lanPasswordRow" style="display: none">Password<input id="lanHostPassword" type="password" autocomplete="off"></label>
+        <div id="lanHostStatus" class="notice subtle"></div>
+        <div class="config-actions">
+          <button id="lanHostCancel" type="button">Cancel</button>
+          <button id="lanHostConnect" class="primary" type="button">Connect</button>
+        </div>
+      </div>
+    </div>
 
     <script src="/app.js?v=topology-workbench-3"></script>
   </body>

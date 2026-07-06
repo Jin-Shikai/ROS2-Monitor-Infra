@@ -26,6 +26,9 @@ let robotLogRows = [];
 let runningNodeKeys = new Set();
 let lastGraphData = null;
 let graphSearchQuery = "";
+let uiMode = "local";
+let lanHosts = [];
+let lanIp = "";
 
 const NODE_WIDTH = 210;
 const NODE_HEIGHT = 72;
@@ -101,7 +104,30 @@ function monitorKey(monitor) {
   return `monitor:${monitor.id}`;
 }
 
+function lanHostIds() {
+  return ["local", ...lanHosts.map((host) => host.id)];
+}
+
+function lanHostEntry(id) {
+  return lanHosts.find((host) => host.id === id) || null;
+}
+
+function hostAllowsRos(host) {
+  if (uiMode !== "lan") return true;
+  const entry = lanHostEntry(host);
+  return !entry || entry.os !== "darwin";
+}
+
 function ensureHost(value, fallback = "robot") {
+  if (uiMode === "lan") {
+    const id = String(value || "").trim();
+    if (lanHostIds().includes(id)) {
+      if (!hosts.includes(id)) hosts.push(id);
+      return id;
+    }
+    if (!hosts.includes("local")) hosts.push("local");
+    return hosts[0] || "local";
+  }
   const host = slug(value, fallback);
   if (!hosts.includes(host)) hosts.push(host);
   return host;
@@ -111,6 +137,18 @@ function hostOptions(selected) {
   return hosts
     .map((host) => `<option value="${escapeAttr(host)}" ${host === selected ? "selected" : ""}>${escapeAttr(host)}</option>`)
     .join("");
+}
+
+function hostField(id, value, rosCapable = false) {
+  if (uiMode !== "lan") {
+    return `<input id="${id}" value="${escapeAttr(value)}" spellcheck="false">`;
+  }
+  const eligible = lanHostIds().filter((host) => !rosCapable || hostAllowsRos(host));
+  if (!eligible.includes(value)) eligible.unshift(value);
+  const options = eligible
+    .map((host) => `<option value="${escapeAttr(host)}" ${host === value ? "selected" : ""}>${escapeText(host)}</option>`)
+    .join("");
+  return `<select id="${id}">${options}</select>`;
 }
 
 function setStatus(text, running = false) {
@@ -126,6 +164,15 @@ function classPathToFile(classPath) {
 
 function serviceNameForHost(host) {
   return `generated_${slug(host, "host")}`;
+}
+
+function hostBoxSubtitle(host) {
+  if (uiMode !== "lan") return "";
+  if (host === "local") return "this machine";
+  const entry = lanHostEntry(host);
+  if (!entry) return "not registered";
+  if (entry.status !== "ready") return "ssh ✓ · docker ✗";
+  return "ssh ✓ docker ✓";
 }
 
 function selectedKeys() {
@@ -273,6 +320,10 @@ function uniqueRuntimeId(base, existingIds) {
 }
 
 function addHost(seed = {}) {
+  if (uiMode === "lan") {
+    openLanHostModal();
+    return;
+  }
   const base = seed.id || `host${hosts.length + 1}`;
   const host = uniqueRuntimeId(base, hosts);
   hosts.push(host);
@@ -289,6 +340,10 @@ function declareSource(seed = {}, preferredHost = "") {
   }
   if (!seed.name) {
     $("scanStatus").textContent = "Use Scan graph to choose a real ROS source.";
+    return null;
+  }
+  if (!hostAllowsRos(targetHost)) {
+    $("scanStatus").textContent = `Host ${targetHost} runs Docker Desktop on macOS and cannot join the ROS graph. Place ROS sources on a Linux host.`;
     return null;
   }
   const host = ensureHost(targetHost);
@@ -312,6 +367,10 @@ function addMonitor(seed = {}) {
   const targetHost = seed.host || selectedHost();
   if (!targetHost) {
     $("scanStatus").textContent = "Select a host before adding a monitor.";
+    return;
+  }
+  if (!hostAllowsRos(targetHost)) {
+    $("scanStatus").textContent = `Host ${targetHost} runs Docker Desktop on macOS and cannot join the ROS graph. Place monitors on a Linux host.`;
     return;
   }
   const host = ensureHost(targetHost);
@@ -967,9 +1026,15 @@ function updateToolbarState() {
     if (button) button.disabled = !hostSelected;
   });
   const hasNodeSelection = selectedKeys().length > 0;
-  ["connectSelection", "disconnectSelection", "startRun", "stopRun", "restartSelected"].forEach((id) => {
+  ["connectSelection", "disconnectSelection"].forEach((id) => {
     const button = $(id);
     if (button) button.disabled = !hasNodeSelection;
+  });
+  // Start/Stop/Restart with no selection act on the whole generated stack.
+  const hasStack = monitors.length || converters.length || verdictServices.length;
+  ["startRun", "stopRun", "restartSelected"].forEach((id) => {
+    const button = $(id);
+    if (button) button.disabled = !hasNodeSelection && !hasStack;
   });
   $("clearSelection").disabled = !hasNodeSelection && !selectedLink;
 }
@@ -1012,6 +1077,15 @@ function topologyWarnings() {
   verdictServices.forEach((verdict) => {
     if (!fedVerdicts.has(verdict.id)) warnings.push(`Verdict service ${verdict.id} is not fed by any converter.`);
   });
+  if (uiMode === "lan") {
+    hosts.filter((host) => !hostAllowsRos(host)).forEach((host) => {
+      const misplaced = sources.some((source) => source.host === host) || monitors.some((monitor) => monitor.host === host);
+      if (misplaced) warnings.push(`Host ${host} is a macOS Docker Desktop host: ROS sources and monitors cannot run there (generation will fail).`);
+    });
+    if (sources.some((source) => source.host !== "local")) {
+      warnings.push("Robot demo containers always start on this machine. A ROS source placed on a remote Linux host expects the ROS application to already run on that machine.");
+    }
+  }
   return warnings;
 }
 
@@ -1077,7 +1151,7 @@ function renderTopology() {
         data-node-key="${escapeAttr(hostBox.key)}">
         <div class="host-title">
           <strong>${escapeText(hostBox.host)}</strong>
-          <span>${escapeText(serviceNameForHost(hostBox.host))}</span>
+          <span>${escapeText(hostBoxSubtitle(hostBox.host))}</span>
         </div>
       </div>
     `;
@@ -1293,8 +1367,15 @@ function servicesWithImplicitBroker(services) {
 }
 
 function configOverview() {
+  const lanSummary = uiMode !== "lan" ? "" : `
+    <h3>SSH hosts</h3>
+    ${lanHosts.length ? lanHosts.map((host) => `
+      <label class="inline-check"><span>${escapeText(host.id)} — ${escapeText(host.status === "ready" ? "ssh ✓ docker ✓" : "ssh ✓ docker ✗")}</span></label>
+    `).join("") : `<div class="empty">No SSH hosts yet. Use “Add SSH Host”.</div>`}
+  `;
   return `
     <p class="notice">Create a host for the ROS application, start it, scan the graph, then declare the sources you want to monitor.</p>
+    ${lanSummary}
     <hr>
     <h3>Hosts</h3>
     ${hosts.length ? hosts.map((host) => `<label class="inline-check"><span>${escapeText(host)}</span></label>`).join("") : `<div class="empty">No hosts yet.</div>`}
@@ -1306,11 +1387,13 @@ function robotConfig(source) {
   return `
     <p class="notice">This is one ROS source from the selected robot/application. A robot can publish or offer many sources.</p>
     <label>Source<input value="${escapeAttr(`${source.name} (${source.source_kind}, ${source.interface})`)}" readonly></label>
-    <label>Robot host<input id="sourceHost" value="${escapeAttr(source.host)}" spellcheck="false"></label>
+    <label>Robot host${hostField("sourceHost", source.host, true)}</label>
     <label>Observed by<input value="${escapeAttr(subscribers.length ? subscribers.map((monitor) => monitor.id).join(", ") : "no monitor yet")}" readonly></label>
+    ${uiMode === "lan" && source.host !== "local" ? `
+    <p class="notice">The ROS application is expected to already run on ${escapeText(source.host)}.</p>` : `
     <h3>ROS application</h3>
     <label>Robot Dockerfile<input id="robotDockerfile" value="${escapeAttr(robotDockerfile)}" spellcheck="false"></label>
-    <label>Start command<textarea id="robotCommand" spellcheck="false">${escapeText(robotCommand)}</textarea></label>
+    <label>Start command<textarea id="robotCommand" spellcheck="false">${escapeText(robotCommand)}</textarea></label>`}
     <details class="advanced">
       <summary>Edit source declaration (offline planning)</summary>
       <p class="notice">Normally the declaration comes from Scan graph. Edit it only when planning a deployment before the robot exists.</p>
@@ -1330,7 +1413,7 @@ function monitorConfig(monitor) {
   return `
     <p class="notice">A monitor runtime subscribes to selected ROS sources and emits records.</p>
     <label>Monitor id<input id="monitorId" value="${escapeAttr(monitor.id)}" spellcheck="false"></label>
-    <label>Host<input id="monitorHost" value="${escapeAttr(monitor.host)}" spellcheck="false"></label>
+    <label>Host${hostField("monitorHost", monitor.host, true)}</label>
     <h3>Subscribed sources</h3>
     ${subscribed.length ? subscribed.map((source) => `
       <button class="runtime-jump" data-jump-node="${escapeAttr(sourceId(source))}" type="button">
@@ -1348,7 +1431,7 @@ function converterConfig(converter) {
     <label>Converter id<input id="converterId" value="${escapeAttr(converter.id)}" spellcheck="false"></label>
     ${manifestPicker("converterManifest", "converter", converter.class_path)}
     <label>Class path<input id="converterClass" value="${escapeAttr(converter.class_path)}" spellcheck="false"></label>
-    <label>Host<input id="converterHost" value="${escapeAttr(converter.host)}" spellcheck="false"></label>
+    <label>Host${hostField("converterHost", converter.host)}</label>
     <h3>Input monitors</h3>
     ${inputMonitors.length ? inputMonitors.map((monitor) => `
       <button class="runtime-jump" data-jump-node="${escapeAttr(monitorKey(monitor))}" type="button">
@@ -1376,7 +1459,7 @@ function verdictConfig(verdict) {
     <label>Verdict id<input id="verdictId" value="${escapeAttr(verdict.id)}" spellcheck="false"></label>
     ${manifestPicker("verdictManifest", "verdict", verdict.class_path)}
     <label>Class path<input id="verdictClass" value="${escapeAttr(verdict.class_path)}" spellcheck="false"></label>
-    <label>Host<input id="verdictHost" value="${escapeAttr(verdict.host)}" spellcheck="false"></label>
+    <label>Host${hostField("verdictHost", verdict.host)}</label>
     <h3>Fed by converters</h3>
     ${converters.length ? converters.map((converter) => `
       <label class="inline-check">
@@ -1418,8 +1501,12 @@ function linkConfig(link) {
 }
 
 function brokerConfig() {
+  const lanNote = uiMode === "lan"
+    ? `<p class="notice">LAN mode: the broker runs on this machine with a published port so other hosts can reach it at ${escapeText(`${brokerHost}:${brokerPort}`)}. Keep the host set to this machine's LAN IP and make sure the port is allowed through the firewall. Port 1884 is the default to avoid clashing with a system mosquitto on 1883.</p>`
+    : "";
   return `
     <p class="notice">This broker is used when monitor, converter, or verdict links cross host boundaries.</p>
+    ${lanNote}
     <label>Broker host<input id="brokerHostConfig" value="${escapeAttr(brokerHost)}" spellcheck="false"></label>
     <label>Port<input id="brokerPortConfig" value="${escapeAttr(brokerPort)}" type="number"></label>
   `;
@@ -1432,19 +1519,40 @@ function hostConfig(host) {
     .filter((node) => node.kind !== "robot")
     .sort((a, b) => a.stage - b.stage || a.title.localeCompare(b.title));
   const sourceRows = sources.filter((source) => source.host === host);
-  return `
-    <p class="notice">A host is the container boundary. It can represent a robot/application host with many ROS sources, or a monitor/converter/verdict runtime host.</p>
-    <label>Host id<input id="hostIdConfig" value="${escapeAttr(host)}" spellcheck="false"></label>
-    <label>Compose service<input value="${escapeAttr(serviceNameForHost(host))}" readonly></label>
+  const lanEntry = lanHostEntry(host);
+  const isRemote = uiMode === "lan" && Boolean(lanEntry);
+  const isDarwin = isRemote && lanEntry.os === "darwin";
+
+  const intro = uiMode === "lan" ? "" : `<p class="notice">A host is the container boundary. It can represent a robot/application host with many ROS sources, or a monitor/converter/verdict runtime host.</p>`;
+  const lanDetails = !isRemote ? "" : `
+    <label>SSH address<input value="${escapeAttr(lanEntry.address)}" readonly></label>
+    ${isDarwin ? `<p class="notice">macOS Docker Desktop: converter and verdict runtimes only.</p>` : ""}
+    <div class="config-actions"><button id="forgetLanHost" type="button">Forget SSH host</button></div>
+  `;
+
+  const sourceList = sourceRows.length ? sourceRows.map((source) => `
+    <button class="runtime-jump" data-jump-node="${escapeAttr(sourceId(source))}" type="button">
+      ${escapeText(source.name)} (${escapeText(source.source_kind)})
+    </button>
+  `).join("") : "";
+  // Remote hosts never get the robot demo section: the ROS application is
+  // expected to already run there. macOS hosts cannot host ROS sources at all.
+  const rosSection = isRemote ? (isDarwin ? "" : `
+    <h3>ROS sources</h3>
+    ${sourceList || `<div class="empty">The ROS application should already run on this machine. Scan graph and declare its sources here.</div>`}
+  `) : `
     <h3>ROS application</h3>
     <label>Robot Dockerfile<input id="robotDockerfile" value="${escapeAttr(robotDockerfile)}" spellcheck="false"></label>
     <label>Start command<textarea id="robotCommand" spellcheck="false">${escapeText(robotCommand)}</textarea></label>
     <h3>ROS sources</h3>
-    ${sourceRows.length ? sourceRows.map((source) => `
-      <button class="runtime-jump" data-jump-node="${escapeAttr(sourceId(source))}" type="button">
-        ${escapeText(source.name)} (${escapeText(source.source_kind)})
-      </button>
-    `).join("") : `<div class="empty">Start the ROS application, then Scan graph and declare sources here.</div>`}
+    ${sourceList || `<div class="empty">Start the ROS application, then Scan graph and declare sources here.</div>`}
+  `;
+
+  return `
+    ${intro}
+    <label>Host id<input id="hostIdConfig" value="${escapeAttr(host)}" ${uiMode === "lan" ? "readonly" : ""} spellcheck="false"></label>
+    ${lanDetails}
+    ${rosSection}
     <h3>Runtimes</h3>
     ${runtimeRows.length ? runtimeRows.map((node) => `
       <button class="runtime-jump" data-jump-node="${escapeAttr(node.key)}" type="button">
@@ -1531,6 +1639,20 @@ function bindConfigEvents() {
     const source = selectedSource();
     if (source) source.host = ensureHost($("sourceHost").value, source.host);
     renderAll();
+  });
+  bind("forgetLanHost", "click", async () => {
+    const host = selectedNode?.kind === "host" ? selectedNode.id : "";
+    if (!host) return;
+    try {
+      await api("/api/lan/hosts/delete", { method: "POST", body: JSON.stringify({ id: host }) });
+      lanHosts = lanHosts.filter((item) => item.id !== host);
+      deleteNodeKey(`host:${host}`);
+      selectedNode = null;
+      selectedNodeKeys.clear();
+      renderAll();
+    } catch (error) {
+      $("scanStatus").textContent = error.message;
+    }
   });
   bind("robotDockerfile", "input", () => { robotDockerfile = $("robotDockerfile").value; updateEditorTarget(); });
   bind("robotCommand", "input", () => { robotCommand = $("robotCommand").value; });
@@ -1915,7 +2037,9 @@ function addDiscoveredSource(seed) {
 function applyTemplate(templateId, options = {}) {
   const plugin = plugins.find((item) => item.id === templateId);
   if (!plugin) return;
-  hosts = (plugin.hosts || []).slice();
+  // LAN mode has no free-form hosts: presets land on "local" and the user
+  // re-places runtimes onto registered SSH hosts afterwards.
+  hosts = uiMode === "lan" ? ["local"] : (plugin.hosts || []).slice();
   sources = [];
   monitors = [];
   converters = [];
@@ -2067,6 +2191,15 @@ function connectEventStream() {
   eventSource.addEventListener("open", () => { $("logStatus").textContent = "connected"; });
   eventSource.addEventListener("error", () => { $("logStatus").textContent = "SSE reconnecting"; });
   eventSource.addEventListener("run_state", () => renderTopology());
+  eventSource.addEventListener("mode", (event) => {
+    const data = parseEventData(event);
+    if (!data || data.mode === uiMode) return;
+    uiMode = data.mode;
+    lanIp = data.lan_ip || lanIp;
+    const finish = () => { updateModeUi(); renderAll(); };
+    if (uiMode === "lan") refreshLanHosts().then(finish).catch(finish);
+    else finish();
+  });
   eventSource.addEventListener("robot_state", (event) => {
     const data = parseEventData(event);
     if (data) applyRobotState(data);
@@ -2133,11 +2266,46 @@ function partitionSelection() {
   };
 }
 
+function markGeneratedStackRunning(running) {
+  const stackKeys = [
+    ...monitors.map(monitorKey),
+    ...converters.map((converter) => `converter:${converter.id}`),
+    ...verdictServices.map((verdict) => `verdict:${verdict.id}`),
+  ];
+  stackKeys.forEach((key) => {
+    if (running) runningNodeKeys.add(key);
+    else runningNodeKeys.delete(key);
+    const host = hostForNodeKey(key);
+    if (!host) return;
+    if (running) runningNodeKeys.add(`host:${host}`);
+    else runningNodeKeys.delete(`host:${host}`);
+  });
+  if (hasMqttTransport()) {
+    if (running) runningNodeKeys.add("broker:mqtt");
+    else runningNodeKeys.delete("broker:mqtt");
+  }
+}
+
+async function startWholeStack() {
+  $("logs").textContent = "Starting the whole generated stack (robot containers are started from their source/host blocks)...";
+  try {
+    await api("/api/runs/start", {
+      method: "POST",
+      body: JSON.stringify({ ...currentPayload(), target_services: [] }),
+    });
+    markGeneratedStackRunning(true);
+    renderTopology();
+    renderFocusedLogs();
+  } catch (error) {
+    $("logs").textContent = error.message;
+  }
+}
+
 async function startSelectedComponents() {
   switchEditorTab("logs");
   const { keys, wantsRobot, runtimeKeys } = partitionSelection();
   if (!keys.length) {
-    $("logs").textContent = "Select one or more blocks before starting.";
+    await startWholeStack();
     return;
   }
   if (wantsRobot) {
@@ -2167,7 +2335,14 @@ async function startSelectedComponents() {
 async function stopSelectedComponents() {
   const { keys, wantsRobot, runtimeKeys } = partitionSelection();
   if (!keys.length) {
-    $("logs").textContent = "Select one or more blocks before stopping.";
+    try {
+      await api("/api/runs/stop", { method: "POST", body: JSON.stringify({}) });
+      markGeneratedStackRunning(false);
+      renderTopology();
+      renderFocusedLogs();
+    } catch (error) {
+      $("logs").textContent += `\n${error.message}`;
+    }
     return;
   }
   if (wantsRobot) {
@@ -2257,8 +2432,109 @@ function renderAll() {
   refreshGraphActions();
 }
 
+function updateModeUi() {
+  const modeButton = $("modeToggle");
+  if (modeButton) {
+    modeButton.querySelector("span:last-child").textContent = uiMode === "lan" ? "LAN Mode" : "Local Mode";
+    modeButton.classList.toggle("lan-active", uiMode === "lan");
+  }
+  const addHostButton = $("addHost");
+  if (addHostButton) {
+    addHostButton.querySelector("span:last-child").textContent = uiMode === "lan" ? "Add SSH Host" : "New Host";
+  }
+}
+
+async function refreshLanHosts() {
+  const data = await api("/api/lan/hosts");
+  lanHosts = data.hosts || [];
+  lanIp = data.lan_ip || lanIp;
+}
+
+async function setUiMode(mode) {
+  const data = await api("/api/mode", { method: "POST", body: JSON.stringify({ mode }) });
+  const previousMode = uiMode;
+  uiMode = data.mode;
+  if (uiMode === "lan") {
+    lanIp = data.lan_ip || "";
+    await refreshLanHosts();
+    if (!hosts.includes("local")) hosts.unshift("local");
+    lanHosts.forEach((host) => {
+      if (!hosts.includes(host.id)) hosts.push(host.id);
+    });
+    const valid = new Set(lanHostIds());
+    hosts = hosts.filter((host) => valid.has(host));
+    [sources, monitors, converters, verdictServices].forEach((rows) => rows.forEach((row) => {
+      if (!valid.has(row.host)) row.host = "local";
+    }));
+    if (brokerHost === "127.0.0.1" && lanIp) brokerHost = lanIp;
+    if (Number(brokerPort) === 1883) brokerPort = 1884;
+    $("scanStatus").textContent = "LAN mode: hosts are this machine or validated SSH machines; remote runtimes deploy into ~/ROS2-Monitor-Infra over SSH.";
+  } else if (previousMode === "lan") {
+    if (lanIp && brokerHost === lanIp) brokerHost = "127.0.0.1";
+    if (Number(brokerPort) === 1884) brokerPort = 1883;
+    $("scanStatus").textContent = "Local mode: all containers run on this machine.";
+  }
+  updateModeUi();
+  renderAll();
+}
+
+function openLanHostModal() {
+  $("lanHostModal").style.display = "flex";
+  $("lanHostPassword").value = "";
+  $("lanPasswordRow").style.display = "none";
+  $("lanHostStatus").textContent = "Key-based SSH is tried first; a password is only needed once to install your public key.";
+  $("lanHostAddress").focus();
+}
+
+function closeLanHostModal() {
+  $("lanHostModal").style.display = "none";
+}
+
+async function submitLanHost() {
+  const address = $("lanHostAddress").value.trim();
+  const password = $("lanHostPassword").value;
+  if (!address) {
+    $("lanHostStatus").textContent = "Enter an SSH address such as user@hostname.local.";
+    return;
+  }
+  $("lanHostStatus").textContent = `Connecting to ${address} over SSH...`;
+  $("lanHostConnect").disabled = true;
+  try {
+    const data = await api("/api/lan/hosts", { method: "POST", body: JSON.stringify({ address, password }) });
+    if (data.needs_password) {
+      $("lanPasswordRow").style.display = "";
+      $("lanHostStatus").textContent = "Key authentication failed. Enter the SSH password once; the dashboard installs your public key so later operations are passwordless.";
+      $("lanHostPassword").focus();
+      return;
+    }
+    const host = data.host;
+    lanHosts = [...lanHosts.filter((item) => item.id !== host.id), host];
+    if (!hosts.includes(host.id)) hosts.push(host.id);
+    closeLanHostModal();
+    selectedNode = { kind: "host", id: host.id };
+    selectedNodeKeys = new Set([`host:${host.id}`]);
+    $("scanStatus").textContent = host.status === "ready"
+      ? `Host ${host.id} (${host.address}) is ready: ${host.os}, docker ${host.docker_version}.`
+      : `Host ${host.id} created, but Docker is not usable there (${host.status}).`;
+    renderAll();
+  } catch (error) {
+    $("lanHostStatus").textContent = error.message;
+  } finally {
+    $("lanHostConnect").disabled = false;
+  }
+}
+
 async function init() {
   await api("/api/health");
+  try {
+    const modeData = await api("/api/mode");
+    uiMode = modeData.mode || "local";
+    lanIp = modeData.lan_ip || "";
+    if (uiMode === "lan") await refreshLanHosts();
+  } catch (error) {
+    uiMode = "local";
+  }
+  updateModeUi();
   const pluginPayload = await api("/api/plugins");
   plugins = pluginPayload.plugins || [];
   manifests = pluginPayload.manifests || [];
@@ -2273,7 +2549,22 @@ async function init() {
 }
 
 $("template").addEventListener("change", () => applyTemplate($("template").value));
+$("modeToggle").addEventListener("click", () => {
+  setUiMode(uiMode === "lan" ? "local" : "lan").catch((error) => {
+    $("scanStatus").textContent = error.message;
+  });
+});
 $("addHost").addEventListener("click", () => addHost());
+$("lanHostConnect").addEventListener("click", submitLanHost);
+$("lanHostCancel").addEventListener("click", closeLanHostModal);
+$("lanHostModal").addEventListener("mousedown", (event) => {
+  if (event.target === $("lanHostModal")) closeLanHostModal();
+});
+["lanHostAddress", "lanHostPassword"].forEach((id) => {
+  $(id).addEventListener("keydown", (event) => {
+    if (event.key === "Enter") submitLanHost();
+  });
+});
 $("addMonitor").addEventListener("click", () => addMonitor());
 $("addConverter").addEventListener("click", () => addConverter());
 $("addVerdict").addEventListener("click", () => addVerdict());

@@ -97,6 +97,52 @@ Chapter 4's monitoring organisations map onto these placements; decentralised
 and choreographed organisations additionally need coordination semantics that
 the Dashboard does not model yet.
 
+## Local Mode and LAN Mode
+
+The dashboard has two modes, switched with the **Local Mode / LAN Mode**
+toggle in the toolbar (server state, `GET/POST /api/mode`). Local Mode is the
+original behaviour: every placement host becomes a service in one generated
+Docker Compose file on this machine.
+
+In LAN Mode a host is either `local` (the machine running the dashboard) or a
+machine validated over SSH. Free-form host creation is disabled; the **Add SSH
+Host** dialog asks for an address such as `user@hostname.local`:
+
+1. Key-based SSH is attempted first (`BatchMode`). If it fails, the dialog
+   asks for the password once and the server installs the local public key
+   into the host's `authorized_keys` through an `SSH_ASKPASS` helper (no
+   sshpass/paramiko dependency). All later operations are passwordless.
+2. The host is probed for OS, home directory, and a working Docker daemon,
+   then persisted in `generated/lan_hosts.json`.
+
+Deployment per SSH host:
+
+- The project is copied to `~/ROS2-Monitor-Infra` on the host with
+  `rsync -az --delete` (excluding `.git`, `.venv`, `output/`, etc.).
+- Each SSH host gets its own `generated/showcase/docker-compose.<host>.yml`
+  with only that host's runtime; it is started remotely with
+  `docker compose up --build -d` inside the host's project copy. The first
+  start builds the image there and can take several minutes.
+- Services placed on `local` (plus the mosquitto broker whenever a cross-host
+  link exists) stay in `generated/showcase/docker-compose.yml` and run here.
+- A loopback broker address is automatically replaced with this machine's LAN
+  IP so remote runtimes can reach it. In LAN mode the mosquitto broker uses a
+  published port instead of host networking, because with Docker Desktop host
+  networking stays inside its VM (loopback forwarding only) while published
+  ports are exposed on the real host interface. The UI defaults the LAN
+  broker port to 1884 to avoid clashing with a system mosquitto on 1883; the
+  port must be allowed through the local firewall.
+- Remote compose logs stream over SSH into the Live log pane, and
+  `output/showcase/` is rsync-pulled back every two seconds so remote verdicts
+  appear in the dashboard.
+
+macOS constraint: Docker Desktop runs containers inside a VM, so
+`network_mode: host`/`ipc: host` cannot join the LAN ROS graph. macOS hosts
+are therefore limited to converter and verdict runtimes (MQTT only, bridge
+networking); ROS sources and monitor runtimes must stay on Linux hosts. The
+UI blocks such placements and generation rejects them. Robot demo containers
+always start on the local machine.
+
 ## Current Guardrails
 
 - The robot start command is executed inside the configured Docker container.
