@@ -1,17 +1,17 @@
 \chapter{Design}\label{chapter:design}
 
-This chapter explains how I designed the monitoring infrastructure. The design
-starts from the feature model that I developed during the pre-phase. I used the
-model as a map of the design space rather than as an implementation checklist:
-it made clear which parts of ROS~2 monitoring could reasonably fit into one
-thesis prototype and which parts should remain outside the scope.
+This chapter explains how we designed the monitoring infrastructure. The
+design starts from the feature model that we developed to answer RQ2. We used
+the model as a map of the design space rather than as an implementation
+checklist: it made clear which parts of ROS~2 monitoring could reasonably fit
+into one thesis prototype and which parts should remain outside the scope.
 
 \section{Feature Model as Design Input}
 
-Figure~\ref{fig:feature-model} shows the feature model from the pre-phase. It
+Figure~\ref{fig:feature-model} shows the feature model. It
 organizes ROS~2 monitoring along several dimensions: observable elements,
 monitoring architecture, monitoring mode, system configuration, and
-implementation paradigm. When I built this model, the main lesson was that
+implementation paradigm. When we built this model, the main lesson was that
 ``monitoring ROS~2'' is too broad to be treated as one feature. A monitor may
 observe topics, services, actions, parameters, node states, or middleware
 events. It may run centrally or in several places. It may be passive or active.
@@ -21,8 +21,8 @@ as a network tap, or through lower-level middleware and tracing tools.
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\textwidth]{diagrams/FeatureModel.jpg}
-    \caption{Feature model used during the pre-phase to explore the ROS~2
-    monitoring infrastructure domain.}
+    \caption{Feature model of the ROS~2 monitoring infrastructure domain,
+    using the notation introduced in Section~\ref{sec:feature-models}.}
     \label{fig:feature-model}
 \end{figure}
 
@@ -100,7 +100,7 @@ with three unrelated data shapes. The record therefore has to carry not only
 the payload, but also the source, timestamp, session, and identity information
 needed to connect observations with later verdicts.
 
-I also wanted processing to happen early in the pipeline. Raw ROS~2 messages
+We also wanted processing to happen early in the pipeline. Raw ROS~2 messages
 can be large or frequent, and in many cases the checker only needs a few fields
 or only needs records when values change. This pushed field extraction,
 throttling, and filtering into the infrastructure before storage or transport.
