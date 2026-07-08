@@ -21,15 +21,16 @@ feedback and status, and converts these different observations into a common
 data format. Each data record includes the observed data and useful context,
 such as its source, time, session, and identifier.
 
-Users describe the monitoring setup in YAML configuration files. They can
+Users describe the monitoring setup in YAML files. They can
 select data sources, reduce or filter data, choose outputs, and connect
 property-specific checking components. New data converters, verdict services,
 input sources, and output exporters can also be added as separately developed
-components without changing the monitoring core.
+components without changing the monitoring core. The deployment configuration are 
+generated automatically from the user's selections.
 
 The infrastructure runs in two ways. In the integrated setup, data collection
 and checking run together. In the split setup, data is collected near the robot
-and sent to a separate verifier. The concrete prototype supports file and MQTT
+and sent to a separate verifier runs on a different machine. The concrete prototype supports file and MQTT
 transport and provides processing steps such as field selection, rate limiting,
 and change filtering.
 

@@ -12,10 +12,9 @@ deployment and transport choices.
 \subsection{Nodes and the ROS Graph}
 
 ROS~2 is a middleware and software platform for building robotic applications.
-Despite its name, it is not an operating system such as Linux. It runs on top
-of a conventional operating system (usually Ubuntu) and provides communication, discovery,
-build tools, and many reusable packages that help software components work
-together~\cite{macenski2022ros2}.
+It provides communication and discovery approaches among components of a robotic system, 
+and many reusable packages that help components work
+together to build different applications~\cite{macenski2022ros2}.
 
 A ROS~2 application is usually divided into \emph{nodes}. Each node has a
 focused task. For example, one node may publish camera data, another node may
@@ -41,21 +40,7 @@ every subscriber of that topic receives them.
 
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[
-    node distance=0.5cm and 1.8cm,
-    ros/.style={draw, rounded corners, minimum width=2.6cm,
-        minimum height=1.0cm, align=center},
-    chan/.style={draw, minimum width=2.8cm, minimum height=1.0cm,
-        align=center, fill=black!8},
-    msg/.style={-{Stealth[length=2.5mm]}, thick}]
-  \node[chan] (topic) {Topic\\\texttt{/odom}};
-  \node[ros, left=of topic] (pub) {Publisher\\node};
-  \node[ros, above right=of topic] (sub1) {Subscriber\\node A};
-  \node[ros, below right=of topic] (sub2) {Subscriber\\node B};
-  \draw[msg] (pub) -- node[above] {\small publish} (topic);
-  \draw[msg] (topic.east) -- node[above, sloped] {\small message} (sub1.west);
-  \draw[msg] (topic.east) -- node[below, sloped] {\small message} (sub2.west);
-\end{tikzpicture}
+\includegraphics[width=0.82\textwidth]{diagrams/Topics.png}
 \caption{Topic communication. A publisher sends typed messages to a named
 topic, and all subscribers of that topic receive the messages.}
 \label{fig:topic-comm}
@@ -76,17 +61,7 @@ off~\cite{ros2interfaces}. Figure~\ref{fig:service-comm} shows the pattern.
 
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[
-    ros/.style={draw, rounded corners, minimum width=3.0cm,
-        minimum height=1.4cm, align=center},
-    msg/.style={-{Stealth[length=2.5mm]}, thick}]
-  \node[ros] (client) {Service client\\node};
-  \node[ros, right=5.2cm of client] (server) {Service server\\node};
-  \draw[msg] ([yshift=3.5mm]client.east) --
-      node[above] {\small request} ([yshift=3.5mm]server.west);
-  \draw[msg] ([yshift=-3.5mm]server.west) --
-      node[below] {\small response} ([yshift=-3.5mm]client.east);
-\end{tikzpicture}
+\includegraphics[width=0.78\textwidth]{diagrams/Services.png}
 \caption{Service communication. A client sends a request to a named service,
 and the server returns a response to that client.}
 \label{fig:service-comm}
@@ -108,23 +83,7 @@ the pattern.
 
 \begin{figure}[htbp]
 \centering
-\begin{tikzpicture}[
-    ros/.style={draw, rounded corners, minimum width=3.2cm,
-        minimum height=2.9cm, align=center},
-    msg/.style={-{Stealth[length=2.5mm]}, thick},
-    stream/.style={-{Stealth[length=2.5mm]}, thick, dashed}]
-  \node[ros] (client) {Action client\\node};
-  \node[ros, right=6.2cm of client] (server) {Action server\\node};
-  \draw[msg] ([yshift=10.5mm]client.east) --
-      node[above] {\small goal request, cancel (services)}
-      ([yshift=10.5mm]server.west);
-  \draw[stream] ([yshift=3.5mm]server.west) --
-      node[above] {\small feedback (topic)} ([yshift=3.5mm]client.east);
-  \draw[stream] ([yshift=-3.5mm]server.west) --
-      node[above] {\small status (topic)} ([yshift=-3.5mm]client.east);
-  \draw[msg] ([yshift=-10.5mm]server.west) --
-      node[below] {\small result (service)} ([yshift=-10.5mm]client.east);
-\end{tikzpicture}
+\includegraphics[width=0.92\textwidth]{diagrams/Actions.png}
 \caption{Action communication. Goal, cancellation, and result exchanges use
 services, while feedback and status updates use topics (dashed arrows).}
 \label{fig:action-comm}
@@ -329,11 +288,6 @@ can subscribe to them directly. The goal, result, and cancellation exchanges
 are services, so observing them requires service introspection on the action
 server or client.
 
-Action observation adds one practical concern: the hidden topic and service
-names are internal ROS~2 details. A monitor should present the captured events
-under the logical action name, such as \texttt{/navigate\_to\_pose}, instead
-of forcing later components to understand all hidden names.
-
 \subsection{Types and Discovery for Monitors}
 
 Type information is important for every observation mechanism above. A monitor
@@ -358,16 +312,26 @@ infrastructure easier to configure and extend.
 \subsection{Collecting Data}
 
 The first task is to obtain data from the running system. In ROS~2, this can
-mean subscribing to topics, reading service events, observing action feedback,
-using lower-level tracing tools, or even instrumenting the application code
+mean subscribing to topics~\cite{ferrando2020rosmonitoring,saadat2024rosmonitoring2},
+reading service events~\cite{saadat2024rosmonitoring2}, observing action
+feedback~\cite{macenski2022ros2}, sniffing network
+traffic~\cite{rivera2020rosfm}, using lower-level tracing
+tools~\cite{bedard2022ros2tracing}, or even instrumenting the application
+code~\cite{perez2022monitoringros2,caldas2024runtime}
 (Section~\ref{sec:observing-ros2}).
 
 Each method has different limits. Normal subscriptions are easy to add, but
 they only show what the monitor receives. Service introspection needs support
-from the client or server. Lower-level tracing can show detailed execution
-information but may not include the application meaning of a message.
-Instrumenting the code gives the most direct access, but it changes the
-application itself.
+from the client or server. Network sniffing observes packets or middleware
+traffic outside the application process, so it can see communication without
+adding a ROS~2 subscription or modifying the nodes. However, the captured
+traffic often has to be decoded and mapped back to ROS~2 names, types, and
+application meaning. Lower-level tracing observes execution
+events inside the ROS~2 or operating-system stack, such as callbacks,
+scheduling, or middleware tracepoints. This can show detailed timing and
+causal information, but it may still not include the application meaning of a
+message. Instrumenting the code gives the most direct access, but it changes
+the application itself.
 
 \subsection{Processing Data}
 
@@ -377,9 +341,10 @@ to reduce the amount of data.
 
 \subsection{Routing and Storage}
 
-After processing, data must be sent to the correct destination. One
-observation may be written to a file, sent over a network, and passed to a
-checking component at the same time. Adding or changing such destinations
+After processing, raw data is wrapped as event trace, and 
+needs to be sent to the correct destination. For example, one
+event trace may be written to a file, sent over a network, and passed to a
+checking component. Adding or changing such destinations
 should not require changes to the components that collect the data.
 
 Storage also supports later analysis. A stable data format makes it easier to
@@ -417,28 +382,29 @@ be extended with cross-tree constraints between features in different
 branches~\cite{benavides2010automated}.
 
 Figure~\ref{fig:feature-model-example} shows a small example feature model of
-a mobile phone product line, a common illustration in the
-literature~\cite{benavides2010automated}. The notation is read as follows:
+a computer product line. The notation is read as follows:
 
 \begin{itemize}
     \item A \textbf{mandatory} feature (filled circle) is part of every
-    product in which its parent appears. Every phone supports calls and has a
-    screen.
+    product in which its parent appears. Every computer has a processor and
+    memory, as well as some storage and ports.
 
     \item An \textbf{optional} feature (empty circle) may be included or left
-    out. A phone may or may not have GPS or media functions.
+    out. A computer may or may not include a dedicated graphics card or a more
+    powerful power supply.
 
     \item An \textbf{alternative} group (empty arc) allows exactly one child
-    to be chosen. A screen is basic, colour, or high resolution, but only one
-    of these.
+    to be chosen. The processor is from Intel or AMD, but only one processor
+    family is selected for a particular model.
 
     \item An \textbf{or} group (filled arc) allows one or more children to be
-    chosen. A phone with media functions has a camera, an MP3 player, or both.
+    chosen. A computer can include SSD storage, hard disk storage, or both.
 
     \item A \textbf{cross-tree constraint} (dashed arrow) restricts
-    combinations across branches. A camera requires a high-resolution screen.
-    Constraints can also exclude combinations, for example when two features
-    cannot be used together.
+    combinations across branches. A dedicated graphics card requires stronger
+    power supply.
+    Constraints can also exclude combinations, for example when two
+    features cannot be used together.
 \end{itemize}
 
 \begin{figure}[htbp]
@@ -448,45 +414,51 @@ literature~\cite{benavides2010automated}. The notation is read as follows:
         inner xsep=6pt, align=center, font=\small},
     fedge/.style={thick},
     cross/.style={dashed, -{Stealth[length=2.2mm]}}]
-  \node[feat] (phone)  at (0,0)        {Mobile phone};
-  \node[feat] (calls)  at (-5.2,-1.9)  {Calls};
-  \node[feat] (gps)    at (-3.4,-1.9)  {GPS};
-  \node[feat] (screen) at (-0.9,-1.9)  {Screen};
-  \node[feat] (media)  at (3.8,-1.9)   {Media};
-  \node[feat] (basic)  at (-3.0,-3.8)  {Basic};
-  \node[feat] (colour) at (-1.1,-3.8)  {Colour};
-  \node[feat] (high)   at (1.1,-3.8)   {High res.};
-  \node[feat] (camera) at (3.0,-3.8)   {Camera};
-  \node[feat] (mp3)    at (4.9,-3.8)   {MP3};
-  \draw[fedge] (phone.south) -- (calls.north);
-  \draw[fedge] (phone.south) -- (gps.north);
-  \draw[fedge] (phone.south) -- (screen.north);
-  \draw[fedge] (phone.south) -- (media.north);
-  \draw[fedge] (screen.south) -- (basic.north);
-  \draw[fedge] (screen.south) -- (colour.north);
-  \draw[fedge] (screen.south) -- (high.north);
-  \draw[fedge] (media.south) -- (camera.north);
-  \draw[fedge] (media.south) -- (mp3.north);
+  \node[feat] (computer) at (0,0)        {Computer};
+  \node[feat] (cpu)      at (-5.6,-1.8)  {Processor};
+  \node[feat] (memory)   at (-3.4,-1.8)  {Memory};
+  \node[feat] (storage)  at (-1.1,-1.8)  {Storage};
+  \node[feat] (ports)    at (1.1,-1.8)   {Ports};
+  \node[feat] (gpu)      at (3.2,-1.8)   {Dedicated\\GPU};
+%   \node[feat] (touch)    at (5.3,-1.8)   {Touchscreen};
+  \node[feat] (supply)  at (7.4,-1.8)   {More powerful\\supply};
+  \node[feat] (intel)    at (-6.4,-3.7)  {Intel};
+  \node[feat] (amd)      at (-4.8,-3.7)  {AMD};
+  \node[feat] (ssd)      at (-1.9,-3.7)  {SSD};
+  \node[feat] (hdd)      at (-0.3,-3.7)  {Hard disk};
+  \draw[fedge] (computer.south) -- (cpu.north);
+  \draw[fedge] (computer.south) -- (memory.north);
+  \draw[fedge] (computer.south) -- (storage.north);
+  \draw[fedge] (computer.south) -- (ports.north);
+  \draw[fedge] (computer.south) -- (gpu.north);
+%   \draw[fedge] (computer.south) -- (touch.north);
+  \draw[fedge] (computer.south) -- (supply.north);
+  \draw[fedge] (cpu.south) -- (intel.north);
+  \draw[fedge] (cpu.south) -- (amd.north);
+  \draw[fedge] (storage.south) -- (ssd.north);
+  \draw[fedge] (storage.south) -- (hdd.north);
   % mandatory / optional markers
-  \fill (calls.north) circle (2.2pt);
-  \fill (screen.north) circle (2.2pt);
-  \draw[fill=white] (gps.north) circle (2.2pt);
-  \draw[fill=white] (media.north) circle (2.2pt);
+  \fill (cpu.north) circle (2.2pt);
+  \fill (memory.north) circle (2.2pt);
+  \fill (storage.north) circle (2.2pt);
+  \fill (ports.north) circle (2.2pt);
+  \draw[fill=white] (gpu.north) circle (2.2pt);
+%   \draw[fill=white] (touch.north) circle (2.2pt);
+  \draw[fill=white] (supply.north) circle (2.2pt);
   % alternative (xor) group: empty arc
-  \draw ($(screen.south)!7mm!(basic.north)$) to[bend right=32]
-        ($(screen.south)!7mm!(high.north)$);
+  \draw ($(cpu.south)!7mm!(intel.north)$) to[bend right=35]
+        ($(cpu.south)!7mm!(amd.north)$);
   % or group: filled arc
-  \fill ($(media.south)!6.5mm!(camera.north)$) -- (media.south) --
-        ($(media.south)!6.5mm!(mp3.north)$) to[bend right=40] cycle;
+  \fill ($(storage.south)!6.5mm!(ssd.north)$) -- (storage.south) --
+        ($(storage.south)!6.5mm!(hdd.north)$) to[bend right=40] cycle;
   % cross-tree constraint
-  \draw[cross] (camera.south) .. controls +(0,-0.9) and +(0,-0.9) ..
-      node[below, font=\small\itshape] {requires} (high.south);
+  \draw[cross] (gpu.south east) .. controls +(1.0,-1.7) and +(-1.0,-1.7) ..
+      node[below, font=\small\itshape] {requires} (supply.south west);
 \end{tikzpicture}
-\caption{Example feature model of a mobile phone product line (adapted
-from~\cite{benavides2010automated}). Filled circles mark mandatory features,
-empty circles mark optional features, an empty arc marks an alternative
-(exactly one) group, a filled arc marks an or (one or more) group, and the
-dashed arrow is a cross-tree constraint.}
+\caption{Example feature model of a computer product line. Filled circles
+mark mandatory features, empty circles mark optional features, an empty arc
+marks an alternative (exactly one) group, a filled arc marks an or (one or
+more) group, and the dashed arrow is a cross-tree constraint.}
 \label{fig:feature-model-example}
 \end{figure}
 

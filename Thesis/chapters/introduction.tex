@@ -8,10 +8,14 @@ events can only be seen while the robot is running. For this reason, testing a
 robot before deployment is important, but it is not always enough. Developers
 also need to observe the robot during operation.
 
-Many modern robots are built with the Robot Operating System~2 (ROS~2). It is a middleware 
-and software platform that runs on top of a conventional operating system (usually Ubuntu) and
-provides communication, discovery, build tools, and reusable packages for
-robotic software~\cite{macenski2022ros2}. A ROS~2 application is composed of
+Many modern robots are built with the Robot Operating System~2 (ROS~2). Despite its name, 
+it is not an operating system in the traditional sense, 
+but run on top of a general-purpose operating system such as Linux.
+It provides a set of software libraries and tools for assembling and building functional components of a robotic system, 
+and built-in packages for components working
+together to create different robot applications~\cite{macenski2022ros2}. 
+
+A ROS~2 application is composed of
 \emph{nodes}: programs with a focused task, such as reading a sensor or
 planning a route. Nodes communicate through typed interfaces. \emph{Topics}
 are mainly used for continuous data streams, \emph{services} for
@@ -70,7 +74,7 @@ They have to decide how much data to keep: complete messages support offline
 replay, while a few fields from a high-rate stream may be all that a check
 needs. They have to decide how the properties of interest are specified and
 checked: as simple thresholds, state machines, temporal-logic formulas, or
-project-specific checking services. Finally, they have to decide how the
+project-specific checking services. Finally, they have to decide \emph{where} the
 monitor is deployed: together with the application, close to the robot, or on
 a separate machine that receives the observations over a network.
 
@@ -176,9 +180,9 @@ The contributions of this thesis are:
     \item A feature model that captures the commonalities and variabilities of
     ROS~2 monitoring solutions (RQ2).
 
-    \item A reference architecture for ROS~2 monitoring, organized as a
-    pipeline that separates data collection, processing, transport, checking,
-    and output, together with a prototype that implements it (RQ3).
+    \item A reference architecture for ROS~2 monitoring based on the Pipes and Filters 
+    design pattern, organized as a pipeline that separates data collection, processing, 
+    transport, checking, and output, together with a prototype that implements it (RQ3).
 
     \item A common data format for representing observations of topics,
     services, and actions. Each observation is stored as a record that
