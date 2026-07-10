@@ -1,1 +1,301 @@
 \chapter{Evaluation}\label{chapter:evaluation}
+
+This chapter evaluates the monitoring infrastructure through a series of five
+experiments of increasing complexity, from a single-host correctness baseline
+to a distributed deployment on three physical machines. The experiments are
+designed around six research questions:
+
+\begin{itemize}
+  \item \textbf{RQ1} Does the monitor detect property violations correctly,
+        and with what intrinsic latency and resource overhead?
+  \item \textbf{RQ2} Does distributing evaluation over MQTT preserve verdict
+        correctness, and what does the transport hop cost?
+  \item \textbf{RQ3} Can the framework observe all three ROS~2 interaction
+        primitives (topics, services, and actions)?
+  \item \textbf{RQ4} Can an unmodified, production-grade navigation stack
+        (Nav2) be supervised, and at what overhead?
+  \item \textbf{RQ5} Can properties spanning multiple robot traces be
+        evaluated as global predicates?
+  \item \textbf{RQ6} Does the complete pipeline sustain distributed operation
+        across heterogeneous physical machines?
+\end{itemize}
+
+Table~\ref{tab:eval-overview} maps the experiments to these questions. Each
+experiment reuses the artifacts of the previous one, so the added complexity
+is isolated and measurable.
+
+\begin{table}[htb]
+  \centering
+  \caption{Evaluation experiments and the research questions they address.}
+  \label{tab:eval-overview}
+  \begin{tabular}{llll}
+    \toprule
+    \# & Experiment & Complexity added & RQs \\
+    \midrule
+    E1 & Local correctness baseline & --- (reference point) & RQ1 \\
+    E2 & Distributed evaluation over MQTT & transport split; services, actions & RQ2, RQ3 \\
+    E3 & Supervising Nav2 & real navigation stack, dynamic obstacles & RQ3, RQ4 \\
+    E4 & Fleet-level verification & multiple robots, global predicate & RQ4, RQ5 \\
+    E5 & Distributed heterogeneous deployment & three physical machines, LAN & RQ2, RQ6 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{Experimental Setup and Metrics}\label{sec:eval-setup}
+
+All experiments are executed without the graphical dashboard described in
+Chapter~\ref{chapter:implementation}. Every run is driven by command-line
+commands and predefined YAML configuration files: the collection tier is
+started as \texttt{python3 monitor/monitor\_node.py -c <yaml>}, the
+evaluation tier as \texttt{python3 monitor/node\_runner.py -c <yaml>}, and
+distributed experiments use a plain Mosquitto broker started from a checked-in
+configuration file. Simulation front-ends (Gazebo, RViz) are used for
+illustration only and are never part of the experiment control flow. The
+experiment definitions, launcher scripts, and analysis tooling are stored in
+the repository under \texttt{eval/}, one directory per experiment; each run
+writes its resolved configuration, raw record and verdict streams, resource
+samples, and computed metrics into a timestamped results directory, so every
+reported number is reproducible from the archived artifacts.
+
+\paragraph{Metrics.} Four metric groups recur throughout the chapter.
+
+\begin{description}
+  \item[Detection latency.] Wall-clock time from the collector receiving the
+    triggering message (the \texttt{timestamp} field of the data record) to
+    the verdict reaching its exporter. The built-in verdict exporters stamp
+    verdicts with the timestamp of the triggering \emph{input} record, so an
+    evaluation-owned exporter plugin
+    (\texttt{TimestampedVerdictFileExporter}) additionally records the
+    emission wall-clock time per verdict line. Verdicts are joined to their
+    triggering records through the \texttt{input\_record\_ids} field. On a
+    single host both timestamps come from the same clock; for distributed
+    runs the residual clock offset after NTP synchronization is reported
+    alongside.
+  \item[Throughput and loss.] Records per second sustained per source, and
+    message loss measured as gaps in the per-source record sequence numbers
+    embedded in record identifiers.
+  \item[Verdict correctness.] The online verdict stream is compared one-to-one
+    against an offline oracle: the recorded input stream is re-evaluated
+    against the same property definition, yielding the expected sequence of
+    state transitions. Matched, missed, and spurious verdicts give precision
+    and recall. Because verdicts carry their triggering record identifiers,
+    a match requires not only the correct verdict polarity but also the
+    correct triggering record.
+  \item[Resource overhead.] CPU utilization and resident set size of the
+    monitoring processes, sampled from \texttt{/proc} at 1\,Hz. For the Nav2
+    experiments the overhead on the system under test is additionally
+    measured by A/B comparison with the monitor disabled.
+\end{description}
+
+\section{E1: Correctness and Intrinsic Overhead Baseline}
+\label{sec:eval-e1}
+
+The first experiment establishes that the monitor detects property violations
+correctly in the simplest possible setting and measures the intrinsic cost of
+the pipeline itself, free of any transport: it is the reference point that
+the distributed experiments are compared against.
+
+\paragraph{Setup.} A single Ubuntu machine (Ubuntu 24.04, 16 cores, Python
+3.12, ROS~2 Kilted) runs two processes: a deterministic stimulus node and one
+monitor process. The stimulus publishes \texttt{/cmd\_vel}
+(\texttt{geometry\_msgs/msg/Twist}) at 5\,Hz, alternating
+\texttt{linear.x} between $1.85$\,m/s and $0.2$\,m/s every three seconds ---
+a square wave of known violation and recovery phases. The monitored property
+is a commanded speed limit, $\texttt{linear.x} \le 0.5$\,m/s, evaluated
+in-process inside the monitor node by a converter--verdict chain
+(\texttt{CmdVelSpeedConverter} followed by an edge-triggered
+\texttt{ThresholdVerdict}): a verdict is emitted only when the property
+changes state, negative on the first violating record and positive on the
+first recovering record. All data records and verdicts are written to JSONL
+files for the offline oracle.
+
+\paragraph{Results.} Table~\ref{tab:eval-e1} summarizes the reference run of
+120\,s; a shorter smoke run produced consistent values. The stimulus produced
+40 property state transitions; the monitor emitted exactly 40 verdicts, each
+attributable to the first record crossing the threshold, giving precision and
+recall of $1.0$. No record sequence gaps occurred. Detection latency from
+collector receipt to verdict emission was $0.36$\,ms on average
+($p_{95} = 0.46$\,ms, maximum $0.63$\,ms). Steady-state CPU load of the
+monitor process was around $1.2$\,\% of one core with a resident set below
+74\,MB; only the first sampling interval, covering interpreter start-up and
+DDS discovery, exceeded 5\,\%.
+
+\begin{table}[htb]
+  \centering
+  \caption{E1 reference run (120\,s, single host, no transport).}
+  \label{tab:eval-e1}
+  \begin{tabular}{lr}
+    \toprule
+    Metric & Value \\
+    \midrule
+    Records collected (\texttt{/cmd\_vel}) & 593 (5.01\,Hz sustained) \\
+    Record sequence gaps & 0 \\
+    Oracle transitions / online verdicts & 40 / 40 \\
+    Precision / recall & 1.0 / 1.0 \\
+    Detection latency, mean / median & 0.36\,ms / 0.36\,ms \\
+    Detection latency, $p_{95}$ / max & 0.46\,ms / 0.63\,ms \\
+    Monitor CPU, steady-state mean & 1.2\,\% \\
+    Monitor RSS, maximum & 73.5\,MB \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Conclusion.} With respect to RQ1, the monitor is exact at these
+rates on a single host: no messages were lost and the verdict stream matched
+the oracle without missed or spurious verdicts. The intrinsic pipeline cost
+--- sub-millisecond detection latency and a small constant footprint ---
+is negligible compared to the network transports introduced in the following
+experiments, so latency differences observed there can be attributed to the
+transport and deployment structure rather than to the pipeline itself.
+
+% ---------------------------------------------------------------------------
+% The following sections are completed incrementally as experiments E2-E5
+% are executed; see eval/PLAN.md for the full experiment designs.
+% ---------------------------------------------------------------------------
+
+\section{E2: Distributed Evaluation over MQTT}
+\label{sec:eval-e2}
+
+The second experiment splits collection and evaluation into separate
+processes connected only through an MQTT broker, and widens the observation
+scope to all three ROS~2 interaction primitives. Its central claim is
+\emph{distribution transparency}: relocating the evaluation stage behind a
+message transport must not change the verdicts.
+
+\paragraph{Setup.} On the same machine as E1, the monitor node observes two
+topics (\texttt{/cmd\_vel}, \texttt{/odom}), one service
+(\texttt{/reset\_pose}, collected through service introspection events), and
+one action (\texttt{/fibonacci}, feedback and status phases). All data
+records are exported both to a local file and over MQTT to a dedicated
+Mosquitto broker, from which an \texttt{rclpy}-free \texttt{node\_runner}
+process consumes them. Three deterministic stimulus nodes drive the system:
+the E1 speed square wave, a reset-pose robot whose odd service calls
+actually reset the odometry while even calls do not, and a Fibonacci action
+fixture that sends a goal of order~6 every five seconds.
+
+Correctness is established by three independent checks. First, the speed
+property from E1 is evaluated \emph{twice} from the same collected records
+--- in-process inside the monitor node and remotely in the runner behind the
+MQTT hop --- and the two verdict streams are compared field-by-field on
+property identifier, verdict polarity, and triggering-record identifiers.
+Second, the remote verdict stream is verified against the offline oracle as
+in E1. Third, the service and action observables are checked against their
+constructed ground truth: reset-effect verdicts must alternate between
+satisfied (odd calls) and violated (even calls), each attributed to one
+service-response record and one odometry record, and every action goal must
+yield exactly five feedback records and one \textsc{succeeded} status entry.
+
+\paragraph{Results.} In the 120\,s reference run the monitor collected 1454
+records across the four sources without sequence gaps. The local and remote
+verdict streams for the speed property were identical: 40 verdicts each,
+agreeing on property, polarity, and triggering record for every entry. The
+remote stream also matched the offline oracle exactly (precision and recall
+$1.0$). The reset-effect property produced 39 verdicts alternating between
+satisfied and violated, starting with the effective first call, each
+correctly attributed to its service-response and odometry records --- a
+property that spans two different interaction primitives. The action fixture
+sent 23 goals; the monitor recorded $23 \times 5$ feedback records and 23
+\textsc{succeeded} status entries, exactly matching the ground truth.
+As a secondary observation, detection latency across the localhost MQTT hop
+was $2.4$\,ms on average ($p_{95} = 3.1$\,ms), compared to $0.36$\,ms
+in-process in E1.
+
+During bring-up, the correctness harness itself exposed a fixture defect:
+the speed stimulus also published an odometry stream fixed at the origin,
+which made ineffective resets appear effective. The alternation check failed
+immediately and the verdict details (\texttt{distance\_to\_origin} $= 0$ on
+even calls) identified the cause; after remapping the extra stream away, all
+checks passed. This incident illustrates the practical value of
+record-attributed verdicts for diagnosing a monitored system.
+
+\paragraph{Conclusion.} With respect to RQ2, distributing evaluation over
+MQTT preserved the verdict stream bit-for-bit under the compared fields; the
+transport contributes milliseconds of latency but no semantic change. With
+respect to RQ3, topics, services, and actions were monitored concurrently in
+one session, and service records participated in a cross-primitive property
+correlating service responses with subsequent odometry. This local
+transparency result is the invariant that the distributed experiment E5
+re-tests across physical machines.
+
+\section{E3: Case Study --- Supervising Nav2}
+\label{sec:eval-e3}
+
+The third experiment replaces the synthetic stimuli with a production-grade
+navigation stack: an unmodified Nav2 system driving a TurtleBot3 through a
+custom corridor world in Gazebo while obstacles are spawned into its path at
+runtime. The experiment tests whether the monitoring infrastructure can
+supervise a realistic robot software stack without any application
+modification, and whether its verdicts remain correct when the monitored
+behavior is no longer scripted.
+
+\paragraph{Setup.} Gazebo simulates the corridor world; Nav2 (ROS~2 Kilted,
+stock \texttt{nav2\_bringup} launch with only the AMCL initial pose preset
+in the parameter file) navigates. The monitor observes \texttt{/cmd\_vel}
+(\texttt{TwistStamped}), \texttt{/odom} (rate-throttled to 5\,Hz with field
+extraction), and the \texttt{/navigate\_to\_pose} action (feedback and
+status), exporting over MQTT to the evaluation runner as in E2. A
+deterministic mission script drives three goals through the corridor and
+logs every event with wall-clock timestamps: goal~A with a clear corridor;
+goal~B in the opposite direction while three boxes are spawned into the
+robot's path mid-drive; and goal~C after a wall of boxes has blocked the
+direct route. Two properties are evaluated: P1, a commanded speed bound
+(threshold below cruise speed, so ordinary driving produces
+violation/recovery cycles that exercise the oracle); and P2, a per-goal
+deadline of 45\,s on the navigation action, evaluated by a new case-study
+converter that raises a violation \emph{in flight} on the first action
+record past the deadline, or at terminal status otherwise.
+
+Correctness is again established against ground truth that does not depend
+on how the robot happens to move: P1 verdicts are checked against the
+offline oracle over the recorded records, and P2 verdicts against the
+mission log's independently measured goal durations and outcomes.
+
+\paragraph{Results.} In the reference run the monitor collected 14\,409
+records (2\,145 velocity commands at 17.8\,Hz, 11\,606 action records at
+94.6\,Hz, and throttled odometry) with zero sequence gaps on the unthrottled
+sources. The speed property produced ten verdicts, all matching the offline
+oracle (precision and recall $1.0$). The goal-deadline property matched the
+mission log for all three goals: goal~A (39.7\,s) satisfied; goal~B, slowed
+by the spawned obstacles to 62.0\,s, was flagged as a violation exactly at
+the 45\,s deadline --- \emph{16.9 seconds before Nav2 itself reported the
+goal finished} --- and goal~C satisfied, because Nav2 simply planned around
+the blocking wall and reached the goal in 14.4\,s. The odometry stream shows
+3\,274 dropped sequence numbers, which here measure the configured
+\texttt{RateThrottler} reduction (about 30\,Hz to 5\,Hz) rather than
+transport loss --- the monitor-side transformers reduced the exported
+odometry volume by roughly a factor of six.
+
+Two observations are worth recording. First, goal~C illustrates why the
+correctness methodology deliberately avoids assuming the robot's behavior:
+the blocked corridor was expected to cause a failure, but Nav2 found a
+detour, and the ground-truth check accepts either outcome as long as the
+verdict agrees with what actually happened. Second, the action feedback
+stream dominates record volume (Nav2 publishes NavigateToPose feedback at
+its controller rate), which motivates throttling it in the multi-robot
+experiments.
+
+\paragraph{Conclusion.} With respect to RQ4, an unmodified Nav2 stack was
+supervised end-to-end by configuration alone --- two topics and one action
+named in YAML, with the same converter/verdict machinery as the synthetic
+experiments. With respect to RQ3, the action observable carried a real
+safety property rather than mere record collection, and the in-flight
+deadline violation demonstrates the practical value of runtime verification
+over post-hoc analysis: the verdict was available 17 seconds before the
+navigation stack itself reported the outcome.
+
+\section{E4: Fleet-Level Runtime Verification}
+\label{sec:eval-e4}
+
+\todo{E4 pending}
+This experiment evaluates per-robot properties and a fleet-level minimum
+separation predicate across two Nav2-driven robots on crossing routes.
+Results will be added when the experiment has been executed.
+
+\section{E5: Distributed Deployment on Heterogeneous Hardware}
+\label{sec:eval-e5}
+
+\todo{E5 pending}
+The final experiment runs the E4 scenario with the robots, the monitor tier,
+and the verdict tier on three physical machines (an Ubuntu workstation, a
+Raspberry Pi, and a macOS laptop) communicating over the local network via
+MQTT. Results will be added when the experiment has been executed.
