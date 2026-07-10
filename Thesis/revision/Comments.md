@@ -92,3 +92,9 @@ Use "event trace" instead of record, event trace was explained.
 (Now in Section 2.5)
 
 <img src="C:\Users\Probe\AppData\Roaming\Typora\typora-user-images\image-20260709010230455.png" alt="image-20260709010230455" style="zoom:67%;" />
+
+#### (2.6 Deployment and Transport) I expect somewhere to see different diagrams with the configuration. You can put them later in the chapter about deployment.
+
+![image-20260709095424917](C:\Users\Probe\AppData\Roaming\Typora\typora-user-images\image-20260709095424917.png)
+
+![image-20260709095433297](C:\Users\Probe\AppData\Roaming\Typora\typora-user-images\image-20260709095433297.png)

@@ -92,6 +92,7 @@ components, while keeping the parts that usually change between applications
 configurable.
 
 \section{Design Requirements}
+\label{sec:design-requirements}
 
 The selected feature coverage led to a few design requirements that shaped the
 prototype. The most important one is the common record format. Topics, service
@@ -260,11 +261,19 @@ therefore identify observations regardless of whether they originated from a
 topic, service, or action.
 
 \section{Deployment Topologies}
+\label{sec:deployment-topologies}
 
-The same pipeline can run in two main deployment forms. In the integrated
-deployment, collection, processing, checking, and output run in one
-ROS~2-facing process. This form is useful for local development and for
-properties that can be checked close to the observed application.
+The same pipeline can run in two main deployment forms. They are the concrete
+instances, in this infrastructure, of the general monitoring organisations
+introduced in Section~\ref{sec:monitoring-organisations}.
+
+In the integrated deployment, collection, processing, checking, and output run
+in one ROS~2-facing process. This form is useful for local development and for
+properties that can be checked close to the observed application. It
+corresponds to the traditional organisation in
+Figure~\ref{fig:org-traditional}: the application and the complete monitoring
+pipeline share one location and one clock, so the records form a totally
+ordered trace that a single monitor process analyses.
 
 \begin{figure}[htbp]
     \centering
@@ -281,6 +290,17 @@ converter, verdict service, and verdict exporter chain that is used in the
 integrated deployment. The prototype implements file replay and MQTT for these
 flows, but transport remains an exporter/source choice rather than part of the
 checking logic.
+
+The split deployment is closest to the orchestrated organisation in
+Figure~\ref{fig:org-orchestrated}: the trace is produced at the observed
+location, while the analysis runs on a remote verifier, so the orchestration
+trade-offs from Section~\ref{sec:monitoring-organisations}, communication
+overhead and data exposure on the network, apply to it. Because the robot-side
+transformer pipeline can already filter and reduce the records before they are
+transmitted, the split deployment also borrows the main advantage of the
+choreographed organisation: part of the monitoring work stays at the location
+where the trace is produced, which lowers the amount of data that crosses the
+network.
 
 \begin{figure}[htbp]
     \centering

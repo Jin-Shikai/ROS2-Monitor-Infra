@@ -180,23 +180,21 @@ The contributions of this thesis are:
     \item A feature model that captures the commonalities and variabilities of
     ROS~2 monitoring solutions (RQ2).
 
-    \item A reference architecture for ROS~2 monitoring based on the Pipes and Filters 
-    design pattern, organized as a pipeline that separates data collection, processing, 
-    transport, checking, and output, together with a prototype that implements it (RQ3).
+    \item A reference architecture for ROS~2 monitoring that separates
+    observation, processing, transport, checking, feedback, and evidence
+    handling. The architecture maps the general monitoring tasks identified in
+    the software-monitoring literature~\cite{rabiser2019domain} to ROS~2
+    systems and makes the placement of monitoring functions explicit (RQ3).
 
-    \item A common data format for representing observations of topics,
-    services, and actions. Each observation is stored as a record that
-    combines the observed payload with its source, timestamps, and session
-    identity, so that later processing and checking steps can treat the three
-    kinds of observations in the same way (RQ3).
-
-    \item A configuration mechanism with extension points. Users select data
-    sources, processing steps, checks, outputs, and the deployment form in
-    YAML configuration files. The deployment form can be integrated, where
-    collection and checking run in one process, or split, where a robot-side
-    collector sends records to a remote verifier. Project-specific converters,
-    checkers, and exporters can be added as separately developed components
-    without changing the infrastructure code (RQ3).
+    \item A monitoring model that can express several
+    patterns found in existing work: ROS-facing collection with an external
+    oracle as in ROSMonitoring~\cite{ferrando2020rosmonitoring}, configurable
+    monitoring services as in ROMoSu~\cite{stadler2023romosu}, and remote
+    verification loops such as digital-twin runtime
+    verification~\cite{betzer2024digitaltwinrv}. The same architecture also
+    supports combinations that are not covered by these systems alone,
+    such as passive ROS~2 topic, service, and action observation feeding either
+    local or remote checking components (RQ3).
 
     \item An evaluation of the infrastructure through three case studies
     (RQ4). A speed-limit case study demonstrates topic monitoring: velocity
@@ -210,9 +208,12 @@ The contributions of this thesis are:
     Nav2 uses during navigation.
 \end{enumerate}
 
-The main contribution is the reusable monitoring infrastructure. It is not a
-new checking algorithm. Different checking tools can be connected to the
-infrastructure through its extension interfaces.
+The main contribution is the reusable monitoring architecture and the
+infrastructure that realizes it. The thesis provides the architectural layer between ROS~2
+communication and property-specific checking. This layer can host deployment
+styles used in existing monitoring frameworks and extend them with uniform
+ROS~2 observations, split robot/verifier deployment, replay, and evidence
+handling.
 
 \section{Thesis Outline}
 

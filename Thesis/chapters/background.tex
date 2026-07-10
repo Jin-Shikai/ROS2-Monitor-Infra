@@ -114,17 +114,24 @@ settings are compatible.
 
 \subsection{Main Terms}
 
-Runtime monitoring means observing a system while it runs. It can be used for
-many purposes, including operational diagnosis, error detection, security, and
-requirements checking~\cite{rabiser2019domain}.
+Runtime monitoring refers to observing a system while it is running. It can
+support several purposes, including operational diagnosis, error detection,
+security monitoring, and requirements checking~\cite{rabiser2019domain}.
 
-Runtime verification is a related technique. It compares an observed execution
-with a specification~\cite{leucker2009brief}. It can show whether the observed
-behaviour follows or breaks a property; it does not normally prove that every
-possible future execution will be correct. In the literature, the two terms
-are very often used as synonyms. In this thesis, runtime monitoring is the
-broader activity of observing and processing runtime data, and property
-checking is one of the tasks it can support.
+Runtime verification is a closely related technique in which an observed
+execution is checked against a specification~\cite{leucker2009brief}. It can
+report whether the observed behaviour satisfies or violates a property, but it
+does not establish correctness for all possible executions. In this
+thesis, runtime monitoring is used as the broader term for observing and
+processing runtime data, while runtime verification denotes the property-checking
+task that such monitoring can support.
+
+The same basic roles appear in model-driven runtime-verification approaches
+such as ComMA, where interface and component models are used to generate
+monitors that consume execution traces and report violations of the specified
+model~\cite{kurtev2022comma}. The thesis uses these roles in a broader
+monitoring infrastructure rather than in a model-generation workflow.
+
 
 This thesis uses the following terms:
 
@@ -195,9 +202,10 @@ central component can become a bottleneck or a single point of failure.
 In a distributed setup, observation or checking work runs in several places.
 This can place monitoring logic closer to the data source or closer to a
 verifier, but it introduces questions about message ordering, clocks, network
-boundaries, and failures~\cite{francalanza2018distributed}. Concrete
-deployment diagrams for the setups used in this thesis are shown in
-Chapter~\ref{chapter:design}.
+boundaries, and failures~\cite{francalanza2018distributed}.
+Section~\ref{sec:monitoring-organisations} describes the main ways in which
+such monitors can be organised, and concrete deployment diagrams for the
+setups used in this thesis are shown in Chapter~\ref{chapter:design}.
 
 \section{Observing ROS 2 Applications}
 \label{sec:observing-ros2}
@@ -469,34 +477,115 @@ of ROS~2 monitoring solutions.
 
 \section{Deployment and Transport}
 
-\subsection{Integrated Monitoring}
+The monitoring tasks described earlier in this chapter do not have to run in
+one place. Observation, checking, and reporting can be placed at the same
+location or spread over several machines. Francalanza et al.\ compare the main
+ways in which monitors for decentralised and distributed systems can be
+organised~\cite{francalanza2018distributed}. This section summarizes these
+monitoring organisations and then discusses the transport mechanisms that can
+connect monitoring components at different locations.
 
-In the integrated setup, collection, processing, checking, and output run
-together. This setup is simple and does not need a network connection between
-the monitor and verifier. It is useful for local development and smaller
-systems.
+\subsection{Monitoring Organisations}
+\label{sec:monitoring-organisations}
 
-The price of this simplicity is tighter coupling: collection and checking share
-the same runtime context, so checker-specific failures or incompatible
-extension behaviour can affect the full monitoring process.
+Figures~\ref{fig:org-traditional} to~\ref{fig:org-choreographed} show the four
+monitoring organisations described by Francalanza et
+al.~\cite{francalanza2018distributed}. The figures use their notation: circles
+are system processes ($P_i$), hexagons are traces ($T_i$), squares are
+monitors ($M_i$), and each surrounding rectangle is a location ($l$, $k$, $g$,
+$h$), such as a machine or a robot. Dotted arrows show processes contributing
+events to a trace, dash-dotted arrows show monitors reading a trace, and solid
+arrows show interaction between components.
 
-\subsection{Split Monitoring}
+In a \emph{traditional} (centralised) monitoring setup
+(Figure~\ref{fig:org-traditional}), all processes run at a single location.
+They produce one local trace, and a single monitor at the same location
+analyses it. Because everything runs under one clock, the trace is a total
+order of the events that actually happened. This is the simplest organisation,
+but the whole monitoring task rests on one monolithic monitor at one
+location~\cite{francalanza2018distributed}.
 
-In the split setup, a robot-side process collects and processes observations.
-A separate verifier receives the observations and performs checking. This
-keeps ROS~2-specific collection close to the robot while placing
-checker-specific logic in a separate process.
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.62\textwidth]{diagrams/Deployment_Traditional.png}
+\caption{Traditional (centralised) monitoring: the processes at one location
+produce a single trace that one monitor analyses (adapted
+from~\cite{francalanza2018distributed}).}
+\label{fig:org-traditional}
+\end{figure}
 
-This setup introduces a network boundary. Data may be delayed, lost, or
-received in a different order. The verifier also needs enough information in
-each observation to understand its source and session. Deployment diagrams
-for both setups are shown in Chapter~\ref{chapter:design}.
+In a \emph{decentralised} monitoring setup
+(Figure~\ref{fig:org-decentralised}), the events are still governed by a
+single global clock and form one synchronised, totally ordered trace, but the
+monitoring work is decomposed into several monitors. The monitors can interact
+to combine their partial results, and processes and monitors may be placed at
+different locations that share the global clock. This decomposition reflects
+that a global property can often be split into smaller properties that
+cooperating monitors check
+independently~\cite{francalanza2018distributed}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.68\textwidth]{diagrams/Deployment_Centralised.png}
+\caption{Decentralised monitoring: several monitors, possibly at different
+locations that share a global clock, process a synchronised trace and can
+interact with each other (adapted from~\cite{francalanza2018distributed}).}
+\label{fig:org-decentralised}
+\end{figure}
+
+The remaining two organisations target truly distributed settings, where
+processes run at several locations without a global clock. Each location then
+produces its own local trace, and the events of different traces can only be
+partially ordered. In an \emph{orchestrated} monitoring setup
+(Figure~\ref{fig:org-orchestrated}), the analysis is still performed centrally:
+the monitors run at a remote location and access the trace events produced at
+the other locations. Centralising the analysis keeps the monitor logic simple,
+but the trace data has to be transmitted remotely. This increases the
+communication overhead as the system grows, and it can expose private trace
+data on the network and make the central monitor a single point of
+attack~\cite{francalanza2018distributed}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.72\textwidth]{diagrams/Deployment_Orchestrated.png}
+\caption{Orchestrated monitoring: traces are produced locally at the observed
+locations, while remote monitors at a central location perform the analysis
+(adapted from~\cite{francalanza2018distributed}).}
+\label{fig:org-orchestrated}
+\end{figure}
+
+In a \emph{choreographed} monitoring setup
+(Figure~\ref{fig:org-choreographed}), the verification work is instead pushed
+to the locations where the traces are produced. Local monitors analyse local
+traces and, when they contribute to the same global property, coordinate with
+each other. This reduces data exposure and communication overhead, but it is
+more complex to set up: the properties have to be decomposed into coordinated
+local monitors, and the monitored locations must allow the extra local
+computation~\cite{francalanza2018distributed}.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.72\textwidth]{diagrams/Deployment_Choreographed.png}
+\caption{Choreographed monitoring: monitors run at the locations where the
+traces are produced and coordinate with each other when needed (adapted
+from~\cite{francalanza2018distributed}).}
+\label{fig:org-choreographed}
+\end{figure}
+
+These organisations frame the deployment choices for a ROS~2 monitoring
+infrastructure. A single robot with an on-board monitor is a traditional
+setup. As soon as observations are checked on another machine, or several
+robots are observed together, the infrastructure moves towards an orchestrated
+or choreographed organisation, and the partial ordering, communication, and
+data exposure trade-offs above apply.
+Section~\ref{sec:deployment-topologies} relates the deployment forms
+supported by this thesis to these organisations.
 
 \subsection{Transport Protocols}
 
 When monitoring components run in different processes or on different
-machines, as in the split setup, they need a transport mechanism to exchange
-data. Many protocols can fill this role. The components could communicate
+machines, as in the orchestrated and choreographed organisations above, they
+need a transport mechanism to exchange data. Many protocols can fill this role. The components could communicate
 through the DDS middleware that ROS~2 itself uses, through plain TCP or UDP
 sockets, through web protocols such as HTTP or WebSocket, or through message
 brokers based on protocols such as AMQP, Kafka, or MQTT. These options differ
@@ -513,8 +602,8 @@ This thesis uses MQTT as the transport in the implementation of the case
 studies; the transport itself remains a configurable choice in the
 infrastructure.
 
-In the split monitoring deployment, the robot-side monitor publishes
-serialized observations to a configured MQTT topic or topic prefix. The
+In a monitoring setup that uses MQTT, a robot-side monitor publishes
+serialized observations to a configured MQTT topic or topic prefix. A remote
 verifier subscribes to that topic filter and receives the data without needing
 a ROS~2 dependency or a direct connection to the robot process. Verdicts can
 also be published to a separate MQTT topic, which keeps runtime data and
