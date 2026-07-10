@@ -13,8 +13,8 @@ explain why a callback was slow, while a runtime-verification tool may report
 that a safety rule was broken. Both tools observe the running system, but their
 goals are different.
 
-The comparison follows the questions that kept recurring during the
-pre-phase: which part of the system is observed, which ROS interfaces are
+The comparison follows the questions that kept recurring during the domain
+analysis: which part of the system is observed, which ROS interfaces are
 covered, how properties are checked, what can be configured or extended, where
 collection and checking run, and what the approach is mainly trying to achieve.
 
@@ -90,7 +90,7 @@ properties~\cite{yamaguchi2024rtamt}. It supports online and offline checking
 and can work with ROS~2. RTAMT can return a robustness value, which shows how
 strongly a signal satisfies or violates a property.
 
-RTAMT helped clarify the role of converters in my design. STL monitoring needs
+RTAMT helped clarify the role of converters in our design. STL monitoring needs
 timestamped signals, while another checker may want a different record shape.
 For that reason, the prototype keeps conversion separate from the verdict
 service. The thesis demonstrates that boundary with threshold-style and custom
@@ -197,7 +197,7 @@ approaches.
 \textbf{Approach} &
 \textbf{Main focus} &
 \textbf{Checking and deployment} &
-\textbf{What I take from it} \\
+\textbf{What we take from it} \\
 \midrule
 \endfirsthead
 
@@ -206,7 +206,7 @@ approaches.
 \textbf{Approach} &
 \textbf{Main focus} &
 \textbf{Checking and deployment} &
-\textbf{What I take from it} \\
+\textbf{What we take from it} \\
 \midrule
 \endhead
 

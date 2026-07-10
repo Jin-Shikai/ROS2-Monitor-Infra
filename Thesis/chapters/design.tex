@@ -1,17 +1,17 @@
 \chapter{Design}\label{chapter:design}
 
-This chapter explains how I designed the monitoring infrastructure. The design
-starts from the feature model that I developed during the pre-phase. I used the
-model as a map of the design space rather than as an implementation checklist:
-it made clear which parts of ROS~2 monitoring could reasonably fit into one
-thesis prototype and which parts should remain outside the scope.
+This chapter explains how we designed the monitoring infrastructure. The
+design starts from the feature model that we developed to answer RQ2. We used
+the model as a map of the design space rather than as an implementation
+checklist: it made clear which parts of ROS~2 monitoring could reasonably fit
+into one thesis prototype and which parts should remain outside the scope.
 
 \section{Feature Model as Design Input}
 
-Figure~\ref{fig:feature-model} shows the feature model from the pre-phase. It
+Figure~\ref{fig:feature-model} shows the feature model. It
 organizes ROS~2 monitoring along several dimensions: observable elements,
 monitoring architecture, monitoring mode, system configuration, and
-implementation paradigm. When I built this model, the main lesson was that
+implementation paradigm. When we built this model, the main lesson was that
 ``monitoring ROS~2'' is too broad to be treated as one feature. A monitor may
 observe topics, services, actions, parameters, node states, or middleware
 events. It may run centrally or in several places. It may be passive or active.
@@ -21,8 +21,8 @@ as a network tap, or through lower-level middleware and tracing tools.
 \begin{figure}[htbp]
     \centering
     \includegraphics[width=\textwidth]{diagrams/FeatureModel.jpg}
-    \caption{Feature model used during the pre-phase to explore the ROS~2
-    monitoring infrastructure domain.}
+    \caption{Feature model of the ROS~2 monitoring infrastructure domain,
+    using the notation introduced in Section~\ref{sec:feature-models}.}
     \label{fig:feature-model}
 \end{figure}
 
@@ -92,6 +92,7 @@ components, while keeping the parts that usually change between applications
 configurable.
 
 \section{Design Requirements}
+\label{sec:design-requirements}
 
 The selected feature coverage led to a few design requirements that shaped the
 prototype. The most important one is the common record format. Topics, service
@@ -100,7 +101,7 @@ with three unrelated data shapes. The record therefore has to carry not only
 the payload, but also the source, timestamp, session, and identity information
 needed to connect observations with later verdicts.
 
-I also wanted processing to happen early in the pipeline. Raw ROS~2 messages
+We also wanted processing to happen early in the pipeline. Raw ROS~2 messages
 can be large or frequent, and in many cases the checker only needs a few fields
 or only needs records when values change. This pushed field extraction,
 throttling, and filtering into the infrastructure before storage or transport.
@@ -260,11 +261,19 @@ therefore identify observations regardless of whether they originated from a
 topic, service, or action.
 
 \section{Deployment Topologies}
+\label{sec:deployment-topologies}
 
-The same pipeline can run in two main deployment forms. In the integrated
-deployment, collection, processing, checking, and output run in one
-ROS~2-facing process. This form is useful for local development and for
-properties that can be checked close to the observed application.
+The same pipeline can run in two main deployment forms. They are the concrete
+instances, in this infrastructure, of the general monitoring organisations
+introduced in Section~\ref{sec:monitoring-organisations}.
+
+In the integrated deployment, collection, processing, checking, and output run
+in one ROS~2-facing process. This form is useful for local development and for
+properties that can be checked close to the observed application. It
+corresponds to the traditional organisation in
+Figure~\ref{fig:org-traditional}: the application and the complete monitoring
+pipeline share one location and one clock, so the records form a totally
+ordered trace that a single monitor process analyses.
 
 \begin{figure}[htbp]
     \centering
@@ -281,6 +290,17 @@ converter, verdict service, and verdict exporter chain that is used in the
 integrated deployment. The prototype implements file replay and MQTT for these
 flows, but transport remains an exporter/source choice rather than part of the
 checking logic.
+
+The split deployment is closest to the orchestrated organisation in
+Figure~\ref{fig:org-orchestrated}: the trace is produced at the observed
+location, while the analysis runs on a remote verifier, so the orchestration
+trade-offs from Section~\ref{sec:monitoring-organisations}, communication
+overhead and data exposure on the network, apply to it. Because the robot-side
+transformer pipeline can already filter and reduce the records before they are
+transmitted, the split deployment also borrows the main advantage of the
+choreographed organisation: part of the monitoring work stays at the location
+where the trace is produced, which lowers the amount of data that crosses the
+network.
 
 \begin{figure}[htbp]
     \centering
