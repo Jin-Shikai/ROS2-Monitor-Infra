@@ -1,0 +1,51 @@
+\begin{tikzpicture}[
+    font=\scriptsize,
+    flow/.style={-{Latex[length=2.0mm]},thick},
+    control/.style={-{Latex[length=1.8mm]},thick,dashed},
+    process/.style={draw,fill=gray!10,align=center,inner sep=4pt}
+]
+\draw[thick] (-7.15,-3.35) rectangle (-2.65,3.35);
+\node[font=\normalsize\bfseries] at (-4.90,2.98) {Ubuntu workstation};
+\node[font=\scriptsize] at (-4.90,2.66) {$\ll$device$\gg$};
+\node[process,minimum width=3.45cm] (gazebo) at (-4.90,1.82)
+    {Gazebo: two TurtleBot3 models};
+\node[process,minimum width=3.45cm] (nav2) at (-4.90,0.74)
+    {Nav2 \texttt{/robot1}\\Nav2 \texttt{/robot2}};
+\node[process,minimum width=3.45cm] (mission) at (-4.90,-0.42)
+    {two-leg mission};
+\node[process,minimum width=3.45cm] (probe) at (-4.90,-1.50)
+    {DDS timing probe};
+\node[align=center] at (-4.90,-2.65)
+    {ROS~2 Kilted\\Gazebo and RViz};
+
+\draw[thick] (-2.15,-3.35) rectangle (2.15,3.35);
+\node[font=\normalsize\bfseries] at (0,2.98) {Raspberry Pi};
+\node[font=\scriptsize] at (0,2.66) {$\ll$device$\gg$ Ubuntu};
+\node[process,minimum width=3.20cm] (monitor) at (0,1.42)
+    {\texttt{monitor\_node}\\six topic collectors + probe};
+\node[process,minimum width=3.20cm] (broker) at (0,-0.02)
+    {Mosquitto broker\\port 1884};
+\node[process,minimum width=3.20cm] (reference) at (0,-1.62)
+    {reference \texttt{node\_runner}\\same three checks};
+\node[align=center] at (0,-2.65)
+    {ROS~2 Kilted\\wired Ethernet};
+
+\draw[thick] (2.65,-3.35) rectangle (7.15,3.35);
+\node[font=\normalsize\bfseries] at (4.90,2.98) {MacBook};
+\node[font=\scriptsize] at (4.90,2.66) {$\ll$device$\gg$ macOS};
+\node[process,minimum width=3.45cm] (runner) at (4.90,1.42)
+    {\texttt{node\_runner}\\MQTT input};
+\node[process,minimum width=3.45cm] (checks) at (4.90,-0.02)
+    {robot 1 speed\\robot 2 speed\\fleet separation};
+\node[process,minimum width=3.45cm] (verdicts) at (4.90,-1.62)
+    {verdict files};
+\node[align=center] at (4.90,-2.65)
+    {Homebrew Python\\no ROS~2 installation};
+
+\draw[flow] (nav2.east) -- node[above,font=\scriptsize] {DDS} (monitor.west);
+\draw[flow] (monitor.south) -- (broker.north);
+\draw[flow] (broker.east) -- node[above,font=\scriptsize] {MQTT} (runner.west);
+\draw[flow] (runner.south) -- (checks.north);
+\draw[flow] (checks.south) -- (verdicts.north);
+\draw[control] (broker.south) -- (reference.north);
+\end{tikzpicture}

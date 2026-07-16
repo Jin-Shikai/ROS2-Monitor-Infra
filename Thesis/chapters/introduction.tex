@@ -167,7 +167,8 @@ three ROS~2 communication mechanisms and both deployment forms, including a
 Navigation~2 (Nav2) case study; Nav2 is chosen because it combines topics,
 services, and actions in a realistic robotic application. The case studies are
 complemented by unit tests, Docker Compose deployment examples, offline
-replay, and a multi-robot scenario (Chapter~\ref{chapter:evaluation}).
+replay, a multi-robot scenario, and a three-machine LAN deployment across
+Ubuntu, Raspberry Pi, and macOS (Chapter~\ref{chapter:evaluation}).
 
 \section{Contributions}
 
@@ -196,16 +197,17 @@ The contributions of this thesis are:
     such as passive ROS~2 topic, service, and action observation feeding either
     local or remote checking components (RQ3).
 
-    \item An evaluation of the infrastructure through three case studies
-    (RQ4). A speed-limit case study demonstrates topic monitoring: velocity
+    \item An evaluation of the infrastructure through five experiments
+    (RQ4). A speed-limit experiment demonstrates topic monitoring: velocity
     messages are collected, reduced to the relevant fields, and checked
     against a threshold in both the integrated and the split deployment. A
-    service reset case study demonstrates service monitoring: reset requests
+    service-reset experiment demonstrates service monitoring: reset requests
     and responses are captured through service introspection and checked for
-    their effect on the robot state. A Navigation~2 case study demonstrates
+    their effect on the robot state. Navigation~2 experiments demonstrate
     action monitoring in a realistic application: navigation goals are
     followed through action feedback and status, together with the topics that
-    Nav2 uses during navigation.
+    Nav2 uses during navigation. They then extend this setup to two robots, a
+    property over both robot traces, and a physical three-machine deployment.
 \end{enumerate}
 
 The main contribution is the reusable monitoring architecture and the

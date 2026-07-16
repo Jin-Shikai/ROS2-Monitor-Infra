@@ -1,301 +1,840 @@
 \chapter{Evaluation}\label{chapter:evaluation}
 
-This chapter evaluates the monitoring infrastructure through a series of five
-experiments of increasing complexity, from a single-host correctness baseline
-to a distributed deployment on three physical machines. The experiments are
-designed around six research questions:
+This chapter evaluates the implemented infrastructure and answers RQ4:
 
-\begin{itemize}
-  \item \textbf{RQ1} Does the monitor detect property violations correctly,
-        and with what intrinsic latency and resource overhead?
-  \item \textbf{RQ2} Does distributing evaluation over MQTT preserve verdict
-        correctness, and what does the transport hop cost?
-  \item \textbf{RQ3} Can the framework observe all three ROS~2 interaction
-        primitives (topics, services, and actions)?
-  \item \textbf{RQ4} Can an unmodified, production-grade navigation stack
-        (Nav2) be supervised, and at what overhead?
-  \item \textbf{RQ5} Can properties spanning multiple robot traces be
-        evaluated as global predicates?
-  \item \textbf{RQ6} Does the complete pipeline sustain distributed operation
-        across heterogeneous physical machines?
-\end{itemize}
+\begin{quote}
+\textbf{RQ4:} To what extent does the implemented infrastructure support the
+monitoring needs of realistic ROS~2 applications?
+\end{quote}
 
-Table~\ref{tab:eval-overview} maps the experiments to these questions. Each
-experiment reuses the artifacts of the previous one, so the added complexity
-is isolated and measurable.
+The evaluation uses five experiments. E1 starts with one topic and an
+integrated monitor. E2 adds services, actions, and a split deployment over
+MQTT. E3 applies the infrastructure to an unmodified Nav2 application. E4
+extends the same setup to two robots and a property that uses observations
+from both robots. E5 places the robots, monitor, and verifier on three
+different physical machines. Together, the experiments cover the main
+capabilities introduced in Chapters~\ref{chapter:design}
+and~\ref{chapter:implementation} and provide complementary evidence for RQ4.
 
-\begin{table}[htb]
-  \centering
-  \caption{Evaluation experiments and the research questions they address.}
-  \label{tab:eval-overview}
-  \begin{tabular}{llll}
-    \toprule
-    \# & Experiment & Complexity added & RQs \\
-    \midrule
-    E1 & Local correctness baseline & --- (reference point) & RQ1 \\
-    E2 & Distributed evaluation over MQTT & transport split; services, actions & RQ2, RQ3 \\
-    E3 & Supervising Nav2 & real navigation stack, dynamic obstacles & RQ3, RQ4 \\
-    E4 & Fleet-level verification & multiple robots, global predicate & RQ4, RQ5 \\
-    E5 & Distributed heterogeneous deployment & three physical machines, LAN & RQ2, RQ6 \\
-    \bottomrule
-  \end{tabular}
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.08\textwidth}
+    >{\raggedright\arraybackslash}p{0.27\textwidth}
+    >{\raggedright\arraybackslash}p{0.25\textwidth}
+    >{\raggedright\arraybackslash}p{0.29\textwidth}
+}
+\toprule
+\textbf{ID} & \textbf{Application} & \textbf{Deployment} &
+\textbf{Main purpose} \\
+\midrule
+E1 & Commanded-speed stimulus & Integrated & Check topic collection and local
+verdict generation. \\
+E2 & Speed, reset service, and Fibonacci action stimuli & Split over MQTT &
+Check topics, services, and actions, and compare local and remote verdicts. \\
+E3 & One TurtleBot3 using Nav2 in Gazebo & Split over MQTT & Check a realistic
+navigation application with changing routes and action outcomes. \\
+E4 & Two TurtleBot3 robots using Nav2 & Split over MQTT & Check namespaced
+robot data and a minimum-separation property using both robots. \\
+E5 & The E4 application on three computers & Split over DDS and MQTT on a LAN
+& Check physical distribution across Ubuntu, Raspberry Pi, and macOS. \\
+\bottomrule
+\end{tabular}
+\caption{Overview of the five evaluation experiments.}
+\label{tab:eval-overview}
 \end{table}
 
-\section{Experimental Setup and Metrics}\label{sec:eval-setup}
+\section{Evaluation Method}
+\label{sec:eval-method}
 
-All experiments are executed without the graphical dashboard described in
-Chapter~\ref{chapter:implementation}. Every run is driven by command-line
-commands and predefined YAML configuration files: the collection tier is
-started as \texttt{python3 monitor/monitor\_node.py -c <yaml>}, the
-evaluation tier as \texttt{python3 monitor/node\_runner.py -c <yaml>}, and
-distributed experiments use a plain Mosquitto broker started from a checked-in
-configuration file. Simulation front-ends (Gazebo, RViz) are used for
-illustration only and are never part of the experiment control flow. The
-experiment definitions, launcher scripts, and analysis tooling are stored in
-the repository under \texttt{eval/}, one directory per experiment; each run
-writes its resolved configuration, raw record and verdict streams, resource
-samples, and computed metrics into a timestamped results directory, so every
-reported number is reproducible from the archived artifacts.
+E1--E4 ran on the same Ubuntu~24.04 workstation with ROS~2 Kilted. The robot
+experiments used Gazebo and Nav2. These MQTT experiments used a local
+Mosquitto broker on port~1884. E5 used the same workstation for Gazebo and
+Nav2, an Ubuntu~24.04 Raspberry Pi for collection and the broker, and a macOS
+laptop for checking. Gazebo and RViz were used to inspect the robot
+experiments, but the experiment scripts did not depend on either graphical
+interface. The quantitative E5 run was completely headless. The screenshots
+in this chapter come from GUI runs of the same fixed missions. They make the
+route changes, robot crossings, and physical three-machine setup visible;
+the tables are calculated from the recorded experiment artifacts rather than
+from the screenshots.
 
-\paragraph{Metrics.} Four metric groups recur throughout the chapter.
+The terms \emph{integrated} and \emph{split} describe process placement, not
+the number of physical machines. E1 checks properties inside the monitor
+process. In E2--E4, the ROS~2-facing monitor and the verifier are separate
+processes, but they still run on the same workstation and exchange records
+through an MQTT broker on \texttt{localhost}. This setup checks whether the
+two runtime roles can be separated without changing the verdicts. It does not
+measure communication between physical machines. E5 uses the same split but
+places the ROS~2 application, monitor, and verifier on three computers. DDS
+carries the robot topics from the workstation to the Pi, and MQTT carries the
+resulting data records from the Pi to the laptop.
 
-\begin{description}
-  \item[Detection latency.] Wall-clock time from the collector receiving the
-    triggering message (the \texttt{timestamp} field of the data record) to
-    the verdict reaching its exporter. The built-in verdict exporters stamp
-    verdicts with the timestamp of the triggering \emph{input} record, so an
-    evaluation-owned exporter plugin
-    (\texttt{TimestampedVerdictFileExporter}) additionally records the
-    emission wall-clock time per verdict line. Verdicts are joined to their
-    triggering records through the \texttt{input\_record\_ids} field. On a
-    single host both timestamps come from the same clock; for distributed
-    runs the residual clock offset after NTP synchronization is reported
-    alongside.
-  \item[Throughput and loss.] Records per second sustained per source, and
-    message loss measured as gaps in the per-source record sequence numbers
-    embedded in record identifiers.
-  \item[Verdict correctness.] The online verdict stream is compared one-to-one
-    against an offline oracle: the recorded input stream is re-evaluated
-    against the same property definition, yielding the expected sequence of
-    state transitions. Matched, missed, and spurious verdicts give precision
-    and recall. Because verdicts carry their triggering record identifiers,
-    a match requires not only the correct verdict polarity but also the
-    correct triggering record.
-  \item[Resource overhead.] CPU utilization and resident set size of the
-    monitoring processes, sampled from \texttt{/proc} at 1\,Hz. For the Nav2
-    experiments the overhead on the system under test is additionally
-    measured by A/B comparison with the monitor disabled.
-\end{description}
+Each experiment has one JSON deployment description. The configuration
+generator described in Section~\ref{sec:impl-config-gen} turns this description
+into the YAML files used by the monitor and, for a split deployment, the
+verifier. Values that change between runs, such as the output directory and a
+property threshold, are supplied when the files are generated. The generated
+YAML, the original JSON description, the collected data records, and the
+verdicts are stored together for each run. This checks an important part of
+the implementation: the experiments use generated configurations rather than
+separate hand-written runtime files.
 
-\section{E1: Correctness and Intrinsic Overhead Baseline}
+The expected result is calculated independently from the online verdict. For
+a threshold property, the recorded input is replayed and compared with the
+threshold. For a navigation goal, the measured duration and final action
+status determine the expected result. Gazebo positions provide an additional
+check for the robot experiments. A verdict is considered correct only when
+its result and its contributing data-record identifiers match the expected
+ones.
+
+The reported detection latency is the time between collection of the record
+that determines a result and export of the verdict. E5 also measures the DDS
+part with a low-rate message whose header contains the workstation wall clock.
+The three clocks are compared at the beginning and end of the run. Their
+measured offsets are subtracted from cross-machine latency, and the remaining
+clock uncertainty is reported with the result. Record counts and sequence
+numbers are used to check that unfiltered observations are not lost. CPU use
+and resident memory are sampled during each run. These measurements describe
+the prototype on the evaluation hardware; they are not intended as general
+performance bounds for ROS~2 or Nav2.
+
+\section{E1: Topic Monitoring in an Integrated Deployment}
 \label{sec:eval-e1}
 
-The first experiment establishes that the monitor detects property violations
-correctly in the simplest possible setting and measures the intrinsic cost of
-the pipeline itself, free of any transport: it is the reference point that
-the distributed experiments are compared against.
+E1 establishes the simplest working path through the infrastructure.
 
-\paragraph{Setup.} A single Ubuntu machine (Ubuntu 24.04, 16 cores, Python
-3.12, ROS~2 Kilted) runs two processes: a deterministic stimulus node and one
-monitor process. The stimulus publishes \texttt{/cmd\_vel}
-(\texttt{geometry\_msgs/msg/Twist}) at 5\,Hz, alternating
-\texttt{linear.x} between $1.85$\,m/s and $0.2$\,m/s every three seconds ---
-a square wave of known violation and recovery phases. The monitored property
-is a commanded speed limit, $\texttt{linear.x} \le 0.5$\,m/s, evaluated
-in-process inside the monitor node by a converter--verdict chain
-(\texttt{CmdVelSpeedConverter} followed by an edge-triggered
-\texttt{ThresholdVerdict}): a verdict is emitted only when the property
-changes state, negative on the first violating record and positive on the
-first recovering record. All data records and verdicts are written to JSONL
-files for the offline oracle.
+\paragraph{Deployment.} One physical workstation runs two ROS~2 processes: a
+stimulus node and the monitor. The collector, converter, and verdict service
+all run inside the monitor. No MQTT broker or separate verifier is used.
 
-\paragraph{Results.} Table~\ref{tab:eval-e1} summarizes the reference run of
-120\,s; a shorter smoke run produced consistent values. The stimulus produced
-40 property state transitions; the monitor emitted exactly 40 verdicts, each
-attributable to the first record crossing the threshold, giving precision and
-recall of $1.0$. No record sequence gaps occurred. Detection latency from
-collector receipt to verdict emission was $0.36$\,ms on average
-($p_{95} = 0.46$\,ms, maximum $0.63$\,ms). Steady-state CPU load of the
-monitor process was around $1.2$\,\% of one core with a resident set below
-74\,MB; only the first sampling interval, covering interpreter start-up and
-DDS discovery, exceeded 5\,\%.
+\paragraph{Sources and expected observations.}
+Table~\ref{tab:eval-e1-sources} lists the only source in this experiment.
 
-\begin{table}[htb]
-  \centering
-  \caption{E1 reference run (120\,s, single host, no transport).}
-  \label{tab:eval-e1}
-  \begin{tabular}{lr}
-    \toprule
-    Metric & Value \\
-    \midrule
-    Records collected (\texttt{/cmd\_vel}) & 593 (5.01\,Hz sustained) \\
-    Record sequence gaps & 0 \\
-    Oracle transitions / online verdicts & 40 / 40 \\
-    Precision / recall & 1.0 / 1.0 \\
-    Detection latency, mean / median & 0.36\,ms / 0.36\,ms \\
-    Detection latency, $p_{95}$ / max & 0.46\,ms / 0.63\,ms \\
-    Monitor CPU, steady-state mean & 1.2\,\% \\
-    Monitor RSS, maximum & 73.5\,MB \\
-    \bottomrule
-  \end{tabular}
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.29\textwidth}
+    >{\raggedright\arraybackslash}p{0.14\textwidth}
+    >{\raggedright\arraybackslash}p{0.47\textwidth}
+}
+\toprule
+\textbf{Source} & \textbf{Kind} & \textbf{Expected observations} \\
+\midrule
+\texttt{/cmd\_vel} & Topic & One message every 0.2 seconds.
+\texttt{linear.x} alternates between $1.85$~m/s and $0.2$~m/s every three
+seconds. Each change across the $0.5$~m/s limit should produce one verdict. \\
+\bottomrule
+\end{tabular}
+\caption{Sources and expected observations in E1.}
+\label{tab:eval-e1-sources}
 \end{table}
 
-\paragraph{Conclusion.} With respect to RQ1, the monitor is exact at these
-rates on a single host: no messages were lost and the verdict stream matched
-the oracle without missed or spurious verdicts. The intrinsic pipeline cost
---- sub-millisecond detection latency and a small constant footprint ---
-is negligible compared to the network transports introduced in the following
-experiments, so latency differences observed there can be attributed to the
-transport and deployment structure rather than to the pipeline itself.
+\paragraph{Rules.} The monitor converts the speed field and checks the
+following rule:
 
-% ---------------------------------------------------------------------------
-% The following sections are completed incrementally as experiments E2-E5
-% are executed; see eval/PLAN.md for the full experiment designs.
-% ---------------------------------------------------------------------------
+\[
+    \texttt{linear.x} \leq 0.5\ \text{m/s}.
+\]
 
-\section{E2: Distributed Evaluation over MQTT}
+The verdict is negative when the speed first exceeds the limit and positive
+when it returns below the limit. Repeated messages in the
+same state do not produce repeated verdicts.
+
+\paragraph{Results.}
+The reference run lasted 120 seconds. It contained 593 topic records and 40
+changes between the satisfied and violated states. The monitor produced the
+same 40 results. Every result referred to the first data record on the new
+side of the threshold, and no topic sequence numbers were missing.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{lr}
+\toprule
+\textbf{Check} & \textbf{Result} \\
+\midrule
+Collected \texttt{/cmd\_vel} records & 593 at 5.01~Hz \\
+Expected / produced verdicts & 40 / 40 \\
+Missed or additional verdicts & 0 \\
+Mean detection latency & 0.29~ms \\
+95th-percentile detection latency & 0.41~ms \\
+Mean monitor CPU use & 1.07\,\% \\
+Maximum resident memory & 73.2~MB \\
+\bottomrule
+\end{tabular}
+\caption{Results of E1.}
+\label{tab:eval-e1}
+\end{table}
+
+\paragraph{Finding.} E1 shows that the basic topic path works as intended. The
+collector, converter, and verdict service preserve the expected sequence of
+property changes, while the cost of the monitor remains small on the
+evaluation machine.
+
+\section{E2: Topics, Services, and Actions in a Split Deployment}
 \label{sec:eval-e2}
 
-The second experiment splits collection and evaluation into separate
-processes connected only through an MQTT broker, and widens the observation
-scope to all three ROS~2 interaction primitives. Its central claim is
-\emph{distribution transparency}: relocating the evaluation stage behind a
-message transport must not change the verdicts.
+E2 separates collection from checking while adding service and action
+observations.
 
-\paragraph{Setup.} On the same machine as E1, the monitor node observes two
-topics (\texttt{/cmd\_vel}, \texttt{/odom}), one service
-(\texttt{/reset\_pose}, collected through service introspection events), and
-one action (\texttt{/fibonacci}, feedback and status phases). All data
-records are exported both to a local file and over MQTT to a dedicated
-Mosquitto broker, from which an \texttt{rclpy}-free \texttt{node\_runner}
-process consumes them. Three deterministic stimulus nodes drive the system:
-the E1 speed square wave, a reset-pose robot whose odd service calls
-actually reset the odometry while even calls do not, and a Fibonacci action
-fixture that sends a goal of order~6 every five seconds.
+\paragraph{Deployment.} All components still run on one physical workstation,
+but in separate processes. Three ROS~2 stimulus processes
+publish the test data. A monitor process collects their observations through
+DDS. It writes the records locally and sends them to a Mosquitto process. A
+separate verifier process receives the records from MQTT on
+\texttt{localhost}. The speed rule runs both inside the monitor and inside the
+verifier; the reset rule runs in the verifier.
 
-Correctness is established by three independent checks. First, the speed
-property from E1 is evaluated \emph{twice} from the same collected records
---- in-process inside the monitor node and remotely in the runner behind the
-MQTT hop --- and the two verdict streams are compared field-by-field on
-property identifier, verdict polarity, and triggering-record identifiers.
-Second, the remote verdict stream is verified against the offline oracle as
-in E1. Third, the service and action observables are checked against their
-constructed ground truth: reset-effect verdicts must alternate between
-satisfied (odd calls) and violated (even calls), each attributed to one
-service-response record and one odometry record, and every action goal must
-yield exactly five feedback records and one \textsc{succeeded} status entry.
+\paragraph{Sources and expected observations.}
+Table~\ref{tab:eval-e2-sources} lists all four monitored sources.
 
-\paragraph{Results.} In the 120\,s reference run the monitor collected 1454
-records across the four sources without sequence gaps. The local and remote
-verdict streams for the speed property were identical: 40 verdicts each,
-agreeing on property, polarity, and triggering record for every entry. The
-remote stream also matched the offline oracle exactly (precision and recall
-$1.0$). The reset-effect property produced 39 verdicts alternating between
-satisfied and violated, starting with the effective first call, each
-correctly attributed to its service-response and odometry records --- a
-property that spans two different interaction primitives. The action fixture
-sent 23 goals; the monitor recorded $23 \times 5$ feedback records and 23
-\textsc{succeeded} status entries, exactly matching the ground truth.
-As a secondary observation, detection latency across the localhost MQTT hop
-was $2.4$\,ms on average ($p_{95} = 3.1$\,ms), compared to $0.36$\,ms
-in-process in E1.
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.29\textwidth}
+    >{\raggedright\arraybackslash}p{0.14\textwidth}
+    >{\raggedright\arraybackslash}p{0.47\textwidth}
+}
+\toprule
+\textbf{Source} & \textbf{Kind} & \textbf{Expected observations} \\
+\midrule
+\texttt{/cmd\_vel} & Topic & The same 5~Hz alternating speed
+sequence as E1. Local and remote checks should produce identical verdicts. \\
+\texttt{/reset\_pose} & Service & One request and response
+every three seconds. Every response reports success. Odd calls should reset
+the pose; even calls deliberately should not. \\
+\texttt{/odom} & Topic & Pose updates at 5~Hz. After odd
+reset calls, the next positions should return close to the origin. After even
+calls, they should remain away from the origin. \\
+\texttt{/fibonacci} & Action & One order-6 goal every five
+seconds. Each completed goal should produce five feedback observations and a
+\textsc{succeeded} status. \\
+\bottomrule
+\end{tabular}
+\caption{Sources and expected observations in E2.}
+\label{tab:eval-e2-sources}
+\end{table}
 
-During bring-up, the correctness harness itself exposed a fixture defect:
-the speed stimulus also published an odometry stream fixed at the origin,
-which made ineffective resets appear effective. The alternation check failed
-immediately and the verdict details (\texttt{distance\_to\_origin} $= 0$ on
-even calls) identified the cause; after remapping the extra stream away, all
-checks passed. This incident illustrates the practical value of
-record-attributed verdicts for diagnosing a monitored system.
+\paragraph{Rules.} The monitor and verifier check the following speed rule:
 
-\paragraph{Conclusion.} With respect to RQ2, distributing evaluation over
-MQTT preserved the verdict stream bit-for-bit under the compared fields; the
-transport contributes milliseconds of latency but no semantic change. With
-respect to RQ3, topics, services, and actions were monitored concurrently in
-one session, and service records participated in a cross-primitive property
-correlating service responses with subsequent odometry. This local
-transparency result is the invariant that the distributed experiment E5
-re-tests across physical machines.
+\[
+    \texttt{linear.x} \leq 0.5\ \text{m/s}.
+\]
 
-\section{E3: Case Study --- Supervising Nav2}
+The verifier also checks the following reset rule:
+
+\[
+    \text{distance to origin after a successful reset}
+    \leq 0.05\ \text{m within 1 second}.
+\]
+
+The speed rule is checked twice from the same records, so the local and remote
+verdict streams should be identical. The reset rule uses a service-response
+record and a later odometry record. The Fibonacci action has no separate rule;
+its expected feedback and final status are used to check action collection.
+
+\paragraph{Results.}
+In the 120-second reference run, the monitor collected 1458 records from the
+four sources. The local and remote speed checks each produced 40 verdicts,
+with the same result and contributing record identifiers in every case. The
+reset rule produced 39 alternating positive and negative verdicts, as expected
+from the test node. The action collector recorded all feedback and final
+statuses for 23 goals.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.55\textwidth}
+    >{\raggedright\arraybackslash}p{0.34\textwidth}
+}
+\toprule
+\textbf{Check} & \textbf{Result} \\
+\midrule
+Local and remote speed verdicts & 40 / 40 identical \\
+Remote speed verdicts compared with recorded input & 40 / 40 correct \\
+Reset-service verdicts & 39, alternating as expected \\
+Reset verdict attribution & Service response and odometry present in every
+verdict \\
+Fibonacci actions & 23 goals, 115 feedback records, 23 successful statuses \\
+Mean remote detection latency & 1.85~ms \\
+95th-percentile remote detection latency & 3.61~ms \\
+\bottomrule
+\end{tabular}
+\caption{Results of E2.}
+\label{tab:eval-e2}
+\end{table}
+
+\paragraph{Finding.} E2 shows that the same records can be checked locally or
+after transport over MQTT without changing the verdicts. It also shows that
+topic, service, and action observations can be collected in one run, and that
+records from a service and a topic can contribute to one result.
+
+\section{E3: Monitoring a Nav2 Application}
 \label{sec:eval-e3}
 
-The third experiment replaces the synthetic stimuli with a production-grade
-navigation stack: an unmodified Nav2 system driving a TurtleBot3 through a
-custom corridor world in Gazebo while obstacles are spawned into its path at
-runtime. The experiment tests whether the monitoring infrastructure can
-supervise a realistic robot software stack without any application
-modification, and whether its verdicts remain correct when the monitored
-behavior is no longer scripted.
+E3 replaces the small test nodes with an unmodified Nav2 application. A
+TurtleBot3 moves between the left and right sides of a corridor map in Gazebo.
+The purpose is to check whether the infrastructure can follow real Nav2 topic
+and action data while the available route and action outcome change.
 
-\paragraph{Setup.} Gazebo simulates the corridor world; Nav2 (ROS~2 Kilted,
-stock \texttt{nav2\_bringup} launch with only the AMCL initial pose preset
-in the parameter file) navigates. The monitor observes \texttt{/cmd\_vel}
-(\texttt{TwistStamped}), \texttt{/odom} (rate-throttled to 5\,Hz with field
-extraction), and the \texttt{/navigate\_to\_pose} action (feedback and
-status), exporting over MQTT to the evaluation runner as in E2. A
-deterministic mission script drives three goals through the corridor and
-logs every event with wall-clock timestamps: goal~A with a clear corridor;
-goal~B in the opposite direction while three boxes are spawned into the
-robot's path mid-drive; and goal~C after a wall of boxes has blocked the
-direct route. Two properties are evaluated: P1, a commanded speed bound
-(threshold below cruise speed, so ordinary driving produces
-violation/recovery cycles that exercise the oracle); and P2, a per-goal
-deadline of 45\,s on the navigation action, evaluated by a new case-study
-converter that raises a violation \emph{in flight} on the first action
-record past the deadline, or at terminal status otherwise.
+\paragraph{Deployment.} One physical workstation runs Gazebo, Nav2, the
+mission process, the monitor, Mosquitto, and the verifier. Nav2 and the monitor
+are separate ROS~2 processes connected through DDS. The monitor and verifier
+are also separate processes and exchange records through MQTT on
+\texttt{localhost}. The deployment is therefore split at the process level,
+but it is not a multi-machine deployment.
 
-Correctness is again established against ground truth that does not depend
-on how the robot happens to move: P1 verdicts are checked against the
-offline oracle over the recorded records, and P2 verdicts against the
-mission log's independently measured goal durations and outcomes.
+\paragraph{Sources and expected observations.}
+Table~\ref{tab:eval-e3-sources} lists the three monitored Nav2 sources.
 
-\paragraph{Results.} In the reference run the monitor collected 14\,409
-records (2\,145 velocity commands at 17.8\,Hz, 11\,606 action records at
-94.6\,Hz, and throttled odometry) with zero sequence gaps on the unthrottled
-sources. The speed property produced ten verdicts, all matching the offline
-oracle (precision and recall $1.0$). The goal-deadline property matched the
-mission log for all three goals: goal~A (39.7\,s) satisfied; goal~B, slowed
-by the spawned obstacles to 62.0\,s, was flagged as a violation exactly at
-the 45\,s deadline --- \emph{16.9 seconds before Nav2 itself reported the
-goal finished} --- and goal~C satisfied, because Nav2 simply planned around
-the blocking wall and reached the goal in 14.4\,s. The odometry stream shows
-3\,274 dropped sequence numbers, which here measure the configured
-\texttt{RateThrottler} reduction (about 30\,Hz to 5\,Hz) rather than
-transport loss --- the monitor-side transformers reduced the exported
-odometry volume by roughly a factor of six.
+\begin{table}[H]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.29\textwidth}
+    >{\raggedright\arraybackslash}p{0.14\textwidth}
+    >{\raggedright\arraybackslash}p{0.47\textwidth}
+}
+\toprule
+\textbf{Source} & \textbf{Kind} & \textbf{Expected observations} \\
+\midrule
+\texttt{/cmd\_vel} & Topic & Nav2 velocity commands
+during motion and stopping. Every change across $0.2$~m/s should produce the
+corresponding speed verdict. \\
+\texttt{/odom} & Topic & Robot pose and velocity while the
+mission runs. Only the required fields should be retained, at no more than
+5~Hz. This source is recorded but has no separate online rule in E3. \\
+\texttt{/navigate\_to\_pose} & Action & Feedback and
+status for three goals. A goal should receive a positive verdict only if its
+final status is \textsc{succeeded} within 35 seconds. A late, cancelled, or
+aborted goal should receive a negative verdict. \\
+\bottomrule
+\end{tabular}
+\caption{Sources and expected observations in E3.}
+\label{tab:eval-e3-sources}
+\end{table}
 
-Two observations are worth recording. First, goal~C illustrates why the
-correctness methodology deliberately avoids assuming the robot's behavior:
-the blocked corridor was expected to cause a failure, but Nav2 found a
-detour, and the ground-truth check accepts either outcome as long as the
-verdict agrees with what actually happened. Second, the action feedback
-stream dominates record volume (Nav2 publishes NavigateToPose feedback at
-its controller rate), which motivates throttling it in the multi-robot
-experiments.
+\paragraph{Rules.} The verifier checks the following speed rule:
 
-\paragraph{Conclusion.} With respect to RQ4, an unmodified Nav2 stack was
-supervised end-to-end by configuration alone --- two topics and one action
-named in YAML, with the same converter/verdict machinery as the synthetic
-experiments. With respect to RQ3, the action observable carried a real
-safety property rather than mere record collection, and the in-flight
-deadline violation demonstrates the practical value of runtime verification
-over post-hoc analysis: the verdict was available 17 seconds before the
-navigation stack itself reported the outcome.
+\[
+    \texttt{linear.x} \leq 0.2\ \text{m/s}.
+\]
 
-\section{E4: Fleet-Level Runtime Verification}
+It also checks the following navigation rule:
+
+\[
+    \text{goal status} = \textsc{succeeded}
+    \quad\text{and}\quad
+    \text{duration} \leq 35\ \text{s}.
+\]
+
+A goal receives a negative verdict if it exceeds the time limit, is
+cancelled, or ends with an aborted status. Odometry is reduced to the required
+fields and limited to 5~Hz before it is stored and sent to the verifier, but
+it has no separate online rule in E3.
+
+\paragraph{Mission.} The mission contains three goals. Goal~A uses the normal
+lower route through the right-hand partition. Before goal~B, one obstacle
+closes the complete lower opening, so the robot must return through the upper
+opening. Before goal~C, a second obstacle closes the upper opening while the
+first remains in place. No route then connects the two sides of the map.
+Figures~\ref{fig:eval-e3-goals-a-b} and~\ref{fig:eval-e3-goal-c} show this
+progression and the verdict log produced as each goal is decided.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.82\textwidth]{figures/evaluation/e3_a.png}\\[-1mm]
+{\small (a) Goal A uses the open lower route and succeeds.}
+
+\smallskip
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e3_b.png}\\[-1mm]
+{\small (b) Goal B follows the upper route.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e3_b_fails.png}\\[-1mm]
+{\small (c) The verifier reports the 35-second violation.}
+\end{minipage}
+\caption{The first two E3 goals. (a) Goal A reaches the right side through the
+lower opening. After the red obstacle closes that opening, (b) goal B takes
+the upper route and (c) remains active beyond the deadline. The additional
+\texttt{result: false} entry in the verifier terminal is the online verdict
+for goal B.}
+\label{fig:eval-e3-goals-a-b}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e3_c_start.png}\\[-1mm]
+{\small (a) Goal C starts with both openings closed.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e3_c_fails.png}\\[-1mm]
+{\small (b) Nav2 aborts and the verifier reports failure.}
+\end{minipage}
+\caption{Goal C in E3. Both red obstacles remain in the central partition, so
+the robot cannot reach the right side. Nav2 ends the action with an aborted
+status, and the last line in the verifier terminal is the corresponding
+negative verdict.}
+\label{fig:eval-e3-goal-c}
+\end{figure}
+
+\paragraph{Results.} The route was checked from the Gazebo position log.
+During goal~A, the robot crossed the partition at $y=-1.287$~m. During goal~B,
+it crossed at $y=1.055$~m, confirming that closing the lower opening changed
+the route. Goal~C never crossed the partition.
+
+Goal~A succeeded in 24.34 seconds and therefore satisfied the 35-second rule.
+Goal~B eventually succeeded, but required 69.72 seconds. The verifier emitted
+its negative verdict as soon as the deadline passed while the action was
+still active. Goal~C was aborted by Nav2 after 33.10 seconds, producing the
+third verdict immediately from the observed action status. The independently
+recorded mission log confirmed all three results.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.18\textwidth}
+    >{\raggedright\arraybackslash}p{0.21\textwidth}
+    >{\raggedright\arraybackslash}p{0.24\textwidth}
+    >{\raggedright\arraybackslash}p{0.25\textwidth}
+}
+\toprule
+\textbf{Goal} & \textbf{Nav2 result} & \textbf{Route} &
+\textbf{Navigation-rule verdict} \\
+\midrule
+A & Succeeded in 24.34~s & Lower opening & Positive \\
+B & Succeeded in 69.72~s & Upper opening & Negative; time limit exceeded \\
+C & Aborted in 33.10~s & No crossing & Negative; goal did not succeed \\
+\bottomrule
+\end{tabular}
+\caption{Navigation results and verdicts in E3.}
+\label{tab:eval-e3-goals}
+\end{table}
+
+The run contained 15,833 records: 2422 velocity records, 12,720 action
+records, and 691 odometry records after rate limiting. The speed rule produced
+12 verdicts, all matching the recorded velocity input. The navigation rule
+produced one verdict for each goal, and all three matched the measured action
+outcome and duration. Mean speed-verdict latency was 0.58~ms. Gazebo also
+confirmed the initial pose and the physical endpoints of goals~A and~B; their
+position errors were $0.171$~m and $0.047$~m, within the configured $0.5$~m
+tolerance.
+
+\paragraph{Finding.} E3 shows that the infrastructure can monitor a realistic
+ROS~2 application without changes to Nav2. The three goals exercise the
+complete navigation rule: success before the deadline, a goal still running
+at the deadline, and an explicit Nav2 failure. In each case the online verdict
+agreed with the route and action logs recorded independently.
+
+\section{E4: Monitoring Two Nav2 Robots}
 \label{sec:eval-e4}
 
-\todo{E4 pending}
-This experiment evaluates per-robot properties and a fleet-level minimum
-separation predicate across two Nav2-driven robots on crossing routes.
-Results will be added when the experiment has been executed.
+E4 uses two namespaced TurtleBot3 and Nav2 instances. The robots start on
+opposite sides of the map, move past each other, and then return. The purpose
+is to check that observations remain associated with the correct robot and
+that one rule can combine positions from both namespaces.
 
-\section{E5: Distributed Deployment on Heterogeneous Hardware}
+\paragraph{Deployment.} All components again run on one physical workstation.
+Gazebo simulates both robots, and two namespaced Nav2 stacks run as separate
+ROS~2 components. One monitor collects both namespaces through DDS. The
+monitor sends records through a local Mosquitto process to one verifier
+process. The verifier contains two independent speed checks and one check that
+uses positions from both robots. As in E2 and E3, MQTT separates processes but
+does not cross a physical network.
+Figure~\ref{fig:eval-e4-deployment} summarizes this placement and the two
+communication steps.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{\input{diagrams/e4_deployment.tex}}
+\caption{Deployment of E4. Gazebo, both namespaced Nav2 stacks, the monitor,
+the local MQTT broker, and the verifier are separate processes on one Ubuntu
+workstation. DDS carries the six ROS~2 topic streams to the monitor; MQTT
+carries the resulting data records to the verifier.}
+\label{fig:eval-e4-deployment}
+\end{figure}
+
+\paragraph{Sources and expected observations.}
+E4 monitors six sources. All six are topics; actions are not monitored in this
+experiment because action collection was already exercised in E2 and E3.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.29\textwidth}
+    >{\raggedright\arraybackslash}p{0.14\textwidth}
+    >{\raggedright\arraybackslash}p{0.47\textwidth}
+}
+\toprule
+\textbf{Source} & \textbf{Kind} & \textbf{Expected observations} \\
+\midrule
+\texttt{/robot1/cmd\_vel},
+\texttt{/robot2/cmd\_vel} & Topic & Commanded speed
+for each robot. Each namespace should feed only its own $0.3$~m/s speed check,
+and every threshold change should produce one verdict. \\
+\texttt{/robot1/amcl\_pose},
+\texttt{/robot2/amcl\_pose} & Topic & Localized positions in the shared map
+frame. Their distance should fall below 1.0~m and later recover during each of
+the two crossings, producing two violation and two recovery verdicts. \\
+\texttt{/robot1/odom},
+\texttt{/robot2/odom} & Topic & Pose and velocity in each
+robot's odometry frame, reduced to the required fields and limited to 5~Hz.
+These sources are recorded but do not feed the separation rule. \\
+\bottomrule
+\end{tabular}
+\caption{Sources and expected observations in E4.}
+\label{tab:eval-e4-sources}
+\end{table}
+
+\paragraph{Rules.} The verifier checks the following speed rule separately for
+each robot:
+
+\[
+    \texttt{linear.x} \leq 0.3\ \text{m/s}.
+\]
+
+It also checks the following separation rule:
+
+\[
+    \text{distance between the two robots} \geq 1.0\ \text{m}.
+\]
+
+The separation rule uses the localized poses because both positions are then
+expressed in the shared map frame. Each new pose is paired with the latest pose
+of the other robot. A negative verdict is produced when the distance first
+falls below 1.0~m, and a positive verdict is produced when it rises above the
+limit again. Gazebo positions are recorded separately so that this result can
+also be compared with the simulated physical distance.
+
+\paragraph{Mission.} The robots start on opposite sides of the map. Each robot
+navigates to the other side and then returns to its starting side, producing
+two crossings and four completed navigation goals.
+Figure~\ref{fig:eval-e4-crossings} shows both namespaced RViz views and the two
+physical crossings in Gazebo.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.84\textwidth]{figures/evaluation/e4_meet_rviz.png}\\[-1mm]
+{\small (a) Independent \texttt{/robot1} and \texttt{/robot2} RViz views.}
+
+\smallskip
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e4_meet_first.png}\\[-1mm]
+{\small (b) First crossing.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e4_meet_second.png}\\[-1mm]
+{\small (c) Return crossing.}
+\end{minipage}
+\caption{The E4 two-robot mission. The two RViz windows show that each Nav2
+stack keeps its own pose, path, and costmap. Gazebo shows the corresponding
+physical robot positions during the first and second crossings, where the
+minimum-separation rule is violated and later recovers.}
+\label{fig:eval-e4-crossings}
+\end{figure}
+
+\paragraph{Results.} All four navigation goals succeeded. The monitor
+collected 3463 records. The two speed checks produced 12 and 20 verdicts
+respectively; every verdict matched the recorded command stream for that
+robot. The separation check produced two violation periods and two
+corresponding recovery verdicts. All four transitions matched the replay of
+the localized pose records, including the contributing record identifiers.
+
+The smallest distance calculated from the localized poses was $0.587$~m. The
+smallest physical distance reported by Gazebo was $0.623$~m. Both physical
+periods below 1.0~m overlapped with the online violation periods, and no
+additional online period was produced. The four physical goal positions were
+between $0.050$~m and $0.073$~m from their requested positions. Mean
+detection latency for the separation rule was $0.64$~ms. The monitor used
+$4.34$\,\% CPU on average and no more than 91.5~MB of resident memory.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.55\textwidth}
+    >{\raggedright\arraybackslash}p{0.34\textwidth}
+}
+\toprule
+\textbf{Check} & \textbf{Result} \\
+\midrule
+Robot~1 speed verdicts & 12 / 12 correct \\
+Robot~2 speed verdicts & 20 / 20 correct \\
+Separation transitions & 4 / 4 correct \\
+Online violation periods compared with Gazebo & 2 / 2 matched \\
+Minimum localized / physical distance & $0.587$~m / $0.623$~m \\
+Successful physical goal positions & 4 / 4 within $0.5$~m \\
+Mean separation-verdict latency & 0.64~ms \\
+\bottomrule
+\end{tabular}
+\caption{Results of E4.}
+\label{tab:eval-e4}
+\end{table}
+
+\paragraph{Finding.} E4 shows that the same monitor process can keep the two
+robot namespaces separate while also checking a rule that needs observations
+from both robots. The agreement with Gazebo confirms that the online
+separation verdicts reflect the simulated robot motion rather than only an
+error in the localized poses.
+
+\section{E5: Distributed Deployment on Three Machines}
 \label{sec:eval-e5}
 
-\todo{E5 pending}
-The final experiment runs the E4 scenario with the robots, the monitor tier,
-and the verdict tier on three physical machines (an Ubuntu workstation, a
-Raspberry Pi, and a macOS laptop) communicating over the local network via
-MQTT. Results will be added when the experiment has been executed.
+E5 repeats the E4 mission and rules, but changes where the runtime roles run.
+The purpose is to check whether the same monitoring setup continues to work
+when DDS and MQTT cross physical-machine boundaries and the verifier has no
+ROS~2 installation.
+
+\paragraph{Deployment.} The Ubuntu workstation runs Gazebo, two Nav2 stacks,
+and the mission. A Raspberry Pi running Ubuntu receives the six E4 topics over
+DDS, collects them as data records, and publishes them to a Mosquitto broker
+on the same Pi. A macOS laptop receives these records over MQTT and runs the
+three E4 checks using Homebrew Python. The Pi and workstation use ROS~2
+Kilted and the default Fast DDS implementation. The laptop runs no ROS~2
+software.
+
+The Pi also runs a second verifier as an experimental reference. The Pi and
+Mac verifiers subscribe to the same MQTT topic and use the same generated
+checking configuration. Comparing their verdict files therefore tests whether moving
+the verifier to the Mac changes the property result or its contributing
+record identifiers. This reference process is not required by the deployment
+itself.
+Figure~\ref{fig:eval-e5-deployment} shows the resulting placement across the
+three machines.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{\input{diagrams/e5_deployment.tex}}
+\caption{Deployment of E5. The workstation runs the simulated robots and
+Nav2, the wired Raspberry Pi collects their ROS~2 topics and hosts the MQTT
+broker, and the Mac runs the verifier without ROS~2. The dashed Pi-local
+verifier receives the same records only to compare its verdicts with the Mac.}
+\label{fig:eval-e5-deployment}
+\end{figure}
+
+Figure~\ref{fig:eval-e5-setup} shows the wired Pi and the workstation GUI.
+Figures~\ref{fig:eval-e5-first-crossing}
+and~\ref{fig:eval-e5-second-crossing} then follow the two crossings; the Mac
+terminal gains one verdict entry when the robots become too close and another
+when their separation is restored.
+
+\begin{figure}[htbp]
+\centering
+\begin{minipage}[c]{0.29\textwidth}
+\centering
+\includegraphics[width=\linewidth,height=0.29\textheight,keepaspectratio]{figures/evaluation/e5_pi_wired.jpg}\\[-1mm]
+{\small (a) Raspberry Pi connected to the router by Ethernet.}
+\end{minipage}\hfill
+\begin{minipage}[c]{0.68\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e5_gui_ready.png}\\[-1mm]
+{\small (b) Gazebo and the two RViz windows on the workstation.}
+\end{minipage}
+\caption{The physical and simulated sides of the E5 setup. The Pi provides
+the ROS~2-facing monitor and MQTT broker on the LAN; the workstation displays
+the two simulated robots and their namespaced Nav2 views.}
+\label{fig:eval-e5-setup}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.78\textwidth]{figures/evaluation/e5_start.jpg}\\[-1mm]
+{\small (a) Start of the first leg.}
+
+\smallskip
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e5_first_meet.jpg}\\[-1mm]
+{\small (b) First minimum-separation violation.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e5_first_clean.jpg}\\[-1mm]
+{\small (c) Separation restored after the first crossing.}
+\end{minipage}
+\caption{First E5 crossing. The external display shows Gazebo and both RViz
+views on the Ubuntu workstation. The foreground Mac runs the remote verifier;
+the added verdict line when the robots meet reports the violation, and the
+next line reports recovery once their distance again exceeds 1.0~m.}
+\label{fig:eval-e5-first-crossing}
+\end{figure}
+
+\begin{figure}[htbp]
+\centering
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e5_second_meet.jpg}\\[-1mm]
+{\small (a) Violation during the return crossing.}
+\end{minipage}\hfill
+\begin{minipage}[t]{0.49\textwidth}
+\centering
+\includegraphics[width=\linewidth]{figures/evaluation/e5_second_clean.jpg}\\[-1mm]
+{\small (b) Separation restored.}
+\end{minipage}
+\caption{Second E5 crossing. The robot motion produces the same negative and
+positive separation transitions on the return leg, visible as two further
+verdict entries in the Mac terminal.}
+\label{fig:eval-e5-second-crossing}
+\end{figure}
+
+\FloatBarrier
+
+\paragraph{Measurements.} Nav2 message headers use simulation time, so they
+cannot be compared with a wall-clock collection timestamp. An additional
+5~Hz pose message therefore carries the workstation wall clock in its header.
+It is collected on the Pi but does not feed a rule. This provides a separate
+measurement of the workstation-to-Pi DDS path.
+
+The workstation compares its clock with the Pi and Mac clocks at the start
+and end of the run. The measured offsets are subtracted from the DDS and
+remote-verdict latencies. For the reported run, mean Mac-minus-Pi offset was
+$+1.369$~ms. The offset changed during the run, and the network exchange used
+to estimate it also has finite delay. The combined uncertainty bound was
+1.926~ms. The corrected cross-machine latency values should therefore be read
+at millisecond precision.
+
+\paragraph{Results.} All four navigation goals succeeded. In the first leg,
+robot~2 and robot~1 finished in 24.6 and 35.9 seconds. In the second leg,
+robot~1 and robot~2 finished in 28.1 and 30.5 seconds. The Pi collected 3667
+records from the E4 sources and 506 measurement-probe records. Both verifiers
+received all 4173 data records. The Mac subscribed after the initial session
+bookend had been sent, but received every data record and the final bookend.
+
+The two speed streams contained 12 and 18 transitions. Every Mac verdict
+matched replay of the corresponding Pi command stream. The separation stream
+contained two violation periods and two recoveries. All four transitions
+matched replay, including both contributing pose-record identifiers. They
+also matched the two physical periods below 1.0~m in the Gazebo position log.
+The minimum localized and physical separations were $0.547$~m and $0.621$~m.
+All four final physical positions were within $0.10$~m of the requested goal.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.57\textwidth}
+    >{\raggedright\arraybackslash}p{0.32\textwidth}
+}
+\toprule
+\textbf{Check} & \textbf{Result} \\
+\midrule
+Robot~1 speed verdicts on Mac & 12 / 12 correct \\
+Robot~2 speed verdicts on Mac & 18 / 18 correct \\
+Separation transitions on Mac & 4 / 4 correct \\
+Pi-reference / Mac verdict streams & 12 / 12, 18 / 18, and 4 / 4 identical \\
+MQTT data delivery to Pi reference / Mac & 4173 / 4173; 4173 / 4173 \\
+Online violation periods compared with Gazebo & 2 / 2 matched \\
+Minimum localized / physical distance & $0.547$~m / $0.621$~m \\
+Successful physical goal positions & 4 / 4 within $0.10$~m \\
+\bottomrule
+\end{tabular}
+\caption{Correctness and delivery results of E5.}
+\label{tab:eval-e5-correctness}
+\end{table}
+
+The DDS probe took 0.668~ms on average from publication on the workstation to
+collection on the Pi, with a 1.044~ms 95th percentile. From Pi collection to
+verdict export on the Mac, the two speed rules took 4.026 and 3.665~ms on
+average, and the separation rule took 3.458~ms. The corresponding Pi-local
+reference values were 1.154, 1.231, and 1.328~ms. In this run, the physical
+Mac path therefore added approximately 2.1--2.9~ms to the Pi-local MQTT path,
+subject to the reported clock uncertainty.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.43\textwidth}
+    >{\raggedright\arraybackslash}p{0.22\textwidth}
+    >{\raggedright\arraybackslash}p{0.22\textwidth}
+}
+\toprule
+\textbf{Measured part} & \textbf{Mean} & \textbf{95th percentile} \\
+\midrule
+Workstation publish to Pi collection & 0.668~ms & 1.044~ms \\
+Pi collection to Mac robot~1 speed verdict & 4.026~ms & 5.576~ms \\
+Pi collection to Mac robot~2 speed verdict & 3.665~ms & 7.051~ms \\
+Pi collection to Mac separation verdict & 3.458~ms & 3.905~ms \\
+\bottomrule
+\end{tabular}
+\caption{Clock-corrected E5 latency. The Mac-minus-Pi offset uncertainty is
+1.926~ms.}
+\label{tab:eval-e5-latency}
+\end{table}
+
+The serialized fleet records contained 18.245~Mbit over 105.1 seconds, or
+173.6~kbit/s of MQTT application payload. Including the DDS measurement probe
+raised this to 197.0~kbit/s. These values exclude MQTT, TCP, IP, and link-layer
+headers. The Pi monitor and reference verifier together used 12.73\,\% of one
+CPU core on average and at most 113.4~MB resident memory. The Mac verifier used
+1.41\,\% CPU and 27.5~MB. The Gazebo and Nav2 process tree on the workstation
+used 3.54 CPU cores on average and at most 1.47~GB resident memory.
+
+\paragraph{Finding.} E5 shows that the collector and verifier can run on
+different operating systems and processor architectures while preserving the
+same verdict stream. Direct DDS discovery between the workstation and Pi
+remained available for the full mission, and MQTT delivered every data record
+to the Mac. The observed violations and recoveries on the Mac, together with
+the identical Pi reference stream, show that physical distribution did not
+change the meaning of the E4 checks.
+
+\section{Answer to RQ4}
+\label{sec:eval-rq4-answer}
+
+Table~\ref{tab:eval-rq4-summary} summarizes the monitoring needs exercised by
+the experiments. Every experiment used a JSON deployment description to
+generate its runtime YAML files. The same data-record format and checking
+interfaces were used in integrated and split deployments, with synthetic
+nodes, one Nav2 robot, two Nav2 robots, and a heterogeneous physical
+deployment.
+
+\begin{table}[htbp]
+\centering
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.38\textwidth}
+    >{\centering\arraybackslash}p{0.085\textwidth}
+    >{\centering\arraybackslash}p{0.085\textwidth}
+    >{\centering\arraybackslash}p{0.085\textwidth}
+    >{\centering\arraybackslash}p{0.085\textwidth}
+    >{\centering\arraybackslash}p{0.085\textwidth}
+}
+\toprule
+\textbf{Monitoring need} & \textbf{E1} & \textbf{E2} & \textbf{E3} &
+\textbf{E4} & \textbf{E5} \\
+\midrule
+Topic observations & \cmark & \cmark & \cmark & \cmark & \cmark \\
+Service observations & -- & \cmark & -- & -- & -- \\
+Action feedback and status & -- & \cmark & \cmark & -- & -- \\
+Integrated checking & \cmark & \cmark & -- & -- & -- \\
+Split checking over MQTT & -- & \cmark & \cmark & \cmark & \cmark \\
+Generated runtime configuration & \cmark & \cmark & \cmark & \cmark & \cmark \\
+More than one observation in a rule & -- & \cmark & \cmark & \cmark & \cmark \\
+Multiple robot namespaces & -- & -- & -- & \cmark & \cmark \\
+Three physical machines & -- & -- & -- & -- & \cmark \\
+\bottomrule
+\end{tabular}
+\caption{Monitoring needs exercised in E1--E5.}
+\label{tab:eval-rq4-summary}
+\end{table}
+
+The results answer RQ4 positively within the scope of the prototype. The
+infrastructure supports the application-level monitoring needs exercised by
+these case studies: topic, service, and action observations; processing before
+transport; checking in the monitor or in a separate verifier; correlation of
+several observations; and separation of data from multiple robots. The Nav2
+experiments show that these capabilities apply to an existing ROS~2
+application without modifying its navigation code. The generated
+configurations show that deployment and checking components can be
+changed through configuration rather than changes to the monitoring core.
+E5 additionally shows that the ROS~2-facing part can run on a Pi while the
+checking part runs on a macOS machine without ROS~2.
+
+The evaluated scope is one local network, up to two simulated robots, and the
+topic, service, and action observations selected in
+Chapter~\ref{chapter:design}. Within that scope, E1--E5 provide consistent
+evidence that the implemented infrastructure supports the monitoring needs
+stated in RQ4, from local topic checks to a three-machine Nav2 deployment.

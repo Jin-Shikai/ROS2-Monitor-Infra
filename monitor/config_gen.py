@@ -55,6 +55,7 @@ class TransportSpec:
     qos: int = 1
     topic: str | None = None          # explicit dsl topic (else derived)
     topic_prefix: str | None = None   # records namespace (else "monitor/")
+    publish_bookends: bool | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any] | None) -> "TransportSpec":
@@ -66,6 +67,7 @@ class TransportSpec:
             qos=int(raw.get("qos", 1)),
             topic=raw.get("topic"),
             topic_prefix=raw.get("topic_prefix"),
+            publish_bookends=raw.get("publish_bookends"),
         )
 
 
@@ -77,6 +79,10 @@ class SourceSpec:
     source_kind: str  # "topic" | "service" | "action"
     name: str
     interface: str | None = None
+    transformers: list[dict[str, Any]] = field(default_factory=list)
+    exporters: list[dict[str, Any]] = field(default_factory=list)
+    qos: int | None = None
+    phases: list[str] | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "SourceSpec":
@@ -85,6 +91,10 @@ class SourceSpec:
             source_kind=str(data.get("source_kind", "topic")),
             name=str(data.get("name", "")),
             interface=data.get("interface"),
+            transformers=[dict(v) for v in data.get("transformers", []) or []],
+            exporters=[dict(v) for v in data.get("exporters", []) or []],
+            qos=data.get("qos"),
+            phases=list(data["phases"]) if data.get("phases") is not None else None,
         )
 
 
@@ -129,12 +139,15 @@ class RuntimeSpec:
 class HostSpec:
     id: str
     runtimes: list[RuntimeSpec] = field(default_factory=list)
+    params: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "HostSpec":
+        raw = dict(data)
         return cls(
             id=str(data["id"]),
             runtimes=[RuntimeSpec.from_dict(r) for r in data.get("runtimes", []) or []],
+            params={k: v for k, v in raw.items() if k not in {"id", "runtimes"}},
         )
 
 
@@ -292,13 +305,16 @@ def _records_exporter(link: LinkSpec) -> dict[str, Any]:
             "filename_suffix": "",
         }
     if t.kind == "mqtt":
-        return {
+        exporter = {
             "type": "mqtt",
             "broker": t.broker,
             "port": t.port,
             "topic_prefix": _records_prefix(link),
             "qos": t.qos,
         }
+        if t.publish_bookends is not None:
+            exporter["publish_bookends"] = t.publish_bookends
+        return exporter
     raise _unsupported(link)
 
 
@@ -503,7 +519,15 @@ def _source_entry(src: SourceSpec, exporters: list[dict[str, Any]]) -> dict[str,
     entry: dict[str, Any] = {"name": src.name}
     if src.interface:
         entry["type"] = src.interface
-    entry["exporters"] = exporters
+    if src.transformers:
+        entry["transformers"] = [dict(v) for v in src.transformers]
+    if src.qos is not None:
+        entry["qos"] = src.qos
+    if src.phases is not None:
+        entry["phases"] = list(src.phases)
+    combined = [*src.exporters, *exporters]
+    if combined:
+        entry["exporters"] = combined
     return entry
 
 
@@ -512,9 +536,16 @@ def _build_monitor_host(host: HostSpec, idx: _Index) -> GeneratedConfig:
     converters = [r for r in host.runtimes if r.kind == "converter"]
     verdicts = [r for r in host.runtimes if r.kind == "verdict_service"]
 
-    config: dict[str, Any] = {
-        "monitor": {"output_dir": _output_dir(host.id), "session_id_prefix": host.id},
-    }
+    config: dict[str, Any] = {"monitor": {
+        "output_dir": host.params.get("output_dir", _output_dir(host.id)),
+        "session_id_prefix": host.params.get("session_id_prefix", host.id),
+    }}
+
+    # Explicit host exporters opt into the modern global-exporter shape. It
+    # permits one shared JSONL file plus one MQTT stream for every source,
+    # matching the hand-written runtime YAML used by the evaluation suite.
+    explicit_exporters = [dict(v) for v in host.params.get("exporters", []) or []]
+    global_exporters = list(explicit_exporters)
 
     for mon in monitors:
         cross = idx.cross_links(idx.links_from.get(mon.id, []), host.id, "records")
@@ -523,14 +554,25 @@ def _build_monitor_host(host: HostSpec, idx: _Index) -> GeneratedConfig:
         for e in exporters:
             if e not in deduped:
                 deduped.append(e)
-        if not deduped:
+        if explicit_exporters:
+            for e in deduped:
+                if e not in global_exporters:
+                    global_exporters.append(e)
+            source_exporters: list[dict[str, Any]] = []
+        elif not deduped:
             deduped = [{"type": "file"}]
+            source_exporters = deduped
+        else:
+            source_exporters = deduped
         for sid in mon.subscribe:
             src = idx.sources.get(sid)
             if src is None:
                 continue
             section = _KIND_TO_SECTION.get(src.source_kind, "topics")
-            config.setdefault(section, []).append(_source_entry(src, list(deduped)))
+            config.setdefault(section, []).append(_source_entry(src, list(source_exporters)))
+
+    if global_exporters:
+        config["exporters"] = global_exporters
 
     graph = _GraphSection(host, idx)
     for conv in converters:
@@ -560,7 +602,10 @@ def _build_runner_host(host: HostSpec, idx: _Index) -> GeneratedConfig:
     converters = [r for r in host.runtimes if r.kind == "converter"]
     verdicts = [r for r in host.runtimes if r.kind == "verdict_service"]
 
-    config: dict[str, Any] = {"monitor": {"output_dir": _output_dir(host.id)}}
+    monitor_block = {"output_dir": host.params.get("output_dir", _output_dir(host.id))}
+    if "session_id_prefix" in host.params:
+        monitor_block["session_id_prefix"] = host.params["session_id_prefix"]
+    config: dict[str, Any] = {"monitor": monitor_block}
 
     graph = _GraphSection(host, idx)
     for conv in converters:
@@ -592,6 +637,35 @@ def project(request: GenerationRequest) -> dict[str, GeneratedConfig]:
 # CLI
 # --------------------------------------------------------------------------- #
 
+def _parse_variable(value: str) -> tuple[str, Any]:
+    if "=" not in value:
+        raise ValueError(f"expected KEY=VALUE, got {value!r}")
+    key, raw = value.split("=", 1)
+    if not key:
+        raise ValueError("variable name cannot be empty")
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        parsed = raw
+    return key, parsed
+
+
+def substitute_variables(value: Any, variables: dict[str, Any]) -> Any:
+    """Replace JSON string tokens ``@KEY@``; exact tokens preserve value type."""
+    if isinstance(value, dict):
+        return {k: substitute_variables(v, variables) for k, v in value.items()}
+    if isinstance(value, list):
+        return [substitute_variables(v, variables) for v in value]
+    if not isinstance(value, str):
+        return value
+    for key, replacement in variables.items():
+        token = f"@{key}@"
+        if value == token:
+            return replacement
+        if token in value:
+            value = value.replace(token, str(replacement))
+    return value
+
 def main() -> int:
     import argparse
     import os
@@ -604,9 +678,22 @@ def main() -> int:
         "-o", "--out-dir", default=".",
         help="Directory to write generated <host>.yaml files (default: cwd).",
     )
+    parser.add_argument(
+        "--var", action="append", default=[], metavar="KEY=VALUE",
+        help=("Replace @KEY@ tokens before projection. JSON values retain their "
+              "type; non-JSON values are strings. May be repeated."),
+    )
     args = parser.parse_args()
 
-    request = GenerationRequest.load(args.request)
+    try:
+        variables = dict(_parse_variable(item) for item in args.var)
+    except ValueError as ex:
+        parser.error(str(ex))
+    with open(args.request, "r", encoding="utf-8") as f:
+        raw_request = json.load(f)
+    request = GenerationRequest.from_dict(
+        substitute_variables(raw_request, variables)
+    )
     generated = project(request)
     os.makedirs(args.out_dir, exist_ok=True)
 

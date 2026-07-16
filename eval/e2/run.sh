@@ -10,6 +10,9 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 DURATION="${1:-60}"
+
+# Remove interrupted E2 children and ensure the dedicated broker port is free.
+eval/e2/cleanup.sh --quiet
 RUN_DIR="eval/e2/results/run_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RUN_DIR"
 
@@ -22,8 +25,10 @@ mkdir -p "$RUN_DIR"
   { mosquitto -h 2>&1 || true; } | head -1
 } > "$RUN_DIR/env.txt"
 
-sed "s|@RUN_DIR@|$RUN_DIR|" eval/e2/monitor.yaml.in > "$RUN_DIR/monitor.yaml"
-sed "s|@RUN_DIR@|$RUN_DIR|" eval/e2/runner.yaml.in > "$RUN_DIR/runner.yaml"
+# Project the two-host deployment JSON into monitor.yaml + runner.yaml.
+cp eval/e2/request.json "$RUN_DIR/request.json"
+python3 monitor/config_gen.py "$RUN_DIR/request.json" -o "$RUN_DIR" \
+  --var "RUN_DIR=$RUN_DIR" > "$RUN_DIR/config_gen.log"
 
 mosquitto -c eval/e2/mosquitto.conf > "$RUN_DIR/broker.log" 2>&1 &
 BROKER_PID=$!
@@ -60,8 +65,24 @@ cleanup() {
   kill -INT "$TOPIC_PID" "$RESET_PID" "$ACTION_PID" \
     "$MON_PID" "$RUNNER_PID" 2>/dev/null || true
   kill "$SAMPLER_PID" "$BROKER_PID" 2>/dev/null || true
+  sleep 2
+  eval/e2/cleanup.sh --quiet || true
 }
 trap cleanup EXIT
+
+stop_pid() {
+  local pid="$1" signal="${2:-TERM}" ticks="${3:-50}" state
+  kill "-$signal" "$pid" 2>/dev/null || true
+  for _ in $(seq 1 "$ticks"); do
+    kill -0 "$pid" 2>/dev/null || break
+    state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+    [[ "$state" == Z* ]] && break
+    sleep 0.1
+  done
+  state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+  [ -z "$state" ] || [[ "$state" == Z* ]] || kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
 
 echo "E2 running for ${DURATION}s (results: $RUN_DIR)"
 sleep "$DURATION"
@@ -69,15 +90,16 @@ sleep "$DURATION"
 # Ordered shutdown so no records are in flight when a tier stops:
 # stimuli first, then monitor (flushes session_end over MQTT), then runner.
 kill -INT "$TOPIC_PID" "$RESET_PID" "$ACTION_PID" 2>/dev/null || true
-wait "$TOPIC_PID" "$RESET_PID" "$ACTION_PID" 2>/dev/null || true
+stop_pid "$TOPIC_PID" INT 50
+stop_pid "$RESET_PID" INT 50
+stop_pid "$ACTION_PID" INT 50
 sleep 2
-kill -INT "$MON_PID" 2>/dev/null || true
-wait "$MON_PID" 2>/dev/null || true
+stop_pid "$MON_PID" INT 100
 sleep 2
-kill -INT "$RUNNER_PID" 2>/dev/null || true
-wait "$RUNNER_PID" 2>/dev/null || true
-wait "$SAMPLER_PID" 2>/dev/null || true
-kill "$BROKER_PID" 2>/dev/null || true
+stop_pid "$RUNNER_PID" INT 100
+stop_pid "$SAMPLER_PID" TERM 30
+stop_pid "$BROKER_PID" TERM 30
+eval/e2/cleanup.sh --quiet
 trap - EXIT
 
 RECORDS=$(ls -t "$RUN_DIR"/e2mon_*.jsonl | grep -v verdicts_ | head -1)

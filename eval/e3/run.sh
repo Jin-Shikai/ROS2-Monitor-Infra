@@ -13,6 +13,8 @@ cd "$(dirname "$0")/../.."
 DEADLINE="${DEADLINE:-35}"
 HEADLESS="${HEADLESS:-True}"
 USE_RVIZ="${USE_RVIZ:-False}"
+CANCEL_AFTER="${CANCEL_AFTER:-90}"
+GOAL_TOLERANCE="${GOAL_TOLERANCE:-0.5}"
 RUN_DIR="eval/e3/results/run_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RUN_DIR"
 
@@ -32,22 +34,22 @@ MAP=/home/shikai/ros2_ws/src/my_nav2_worlds/maps/simple_nav_world.yaml
   python3 --version
   echo "ros_distro: ${ROS_DISTRO:-unknown}"
   echo "deadline_sec: $DEADLINE"
+  echo "cancel_after_sec: $CANCEL_AFTER"
+  echo "goal_tolerance_m: $GOAL_TOLERANCE"
   echo "headless: $HEADLESS"
 } > "$RUN_DIR/env.txt"
 
-sed "s|@RUN_DIR@|$RUN_DIR|" eval/e3/monitor.yaml.in > "$RUN_DIR/monitor.yaml"
-sed -e "s|@RUN_DIR@|$RUN_DIR|" -e "s|@DEADLINE@|$DEADLINE|" \
-  eval/e3/runner.yaml.in > "$RUN_DIR/runner.yaml"
+# Project the deployment JSON; --var preserves DEADLINE as a numeric YAML
+# value rather than relying on textual substitution in a hand-written file.
+cp eval/e3/request.json "$RUN_DIR/request.json"
+python3 monitor/config_gen.py "$RUN_DIR/request.json" -o "$RUN_DIR" \
+  --var "RUN_DIR=$RUN_DIR" --var "DEADLINE=$DEADLINE" \
+  > "$RUN_DIR/config_gen.log"
 
 # Purge leftovers of earlier simulation sessions: a stale nav2 container
 # would register duplicate lifecycle nodes and abort the new bringup.
 # ([b]racket patterns avoid pkill matching this script's own command line.)
-purge_sim() {
-  pkill -f "[c]omponent_container" 2>/dev/null || true
-  pkill -f "[g]z sim" 2>/dev/null || true
-  pkill -f "[r]obot_state_publisher" 2>/dev/null || true
-  pkill -f "[p]arameter_bridge" 2>/dev/null || true
-}
+purge_sim() { eval/e3/cleanup.sh --quiet; }
 purge_sim
 sleep 1
 
@@ -73,52 +75,74 @@ python3 eval/common/proc_sampler.py --pid "$MON_PID" --pid "$RUNNER_PID" \
   --interval 1 --out "$RUN_DIR/proc.csv" &
 SAMPLER_PID=$!
 
+# Simulator truth is independent of AMCL and catches a map/initial-pose
+# offset even when Nav2 itself reports SUCCEEDED.
+python3 eval/e4/gt_logger.py --robots turtlebot3_waffle \
+  --out "$RUN_DIR/gt_poses.csv" > "$RUN_DIR/gt_logger.log" 2>&1 &
+GT_PID=$!
+
 cleanup() {
-  kill -INT "$MON_PID" "$RUNNER_PID" "$NAV_PID" 2>/dev/null || true
+  kill -INT "$MON_PID" "$RUNNER_PID" "$NAV_PID" "$GT_PID" 2>/dev/null || true
   kill "$SAMPLER_PID" "$BROKER_PID" 2>/dev/null || true
   sleep 3
   purge_sim
 }
 trap cleanup EXIT
 
+stop_pid() {
+  local pid="$1" signal="${2:-TERM}" ticks="${3:-50}" state
+  kill "-$signal" "$pid" 2>/dev/null || true
+  for _ in $(seq 1 "$ticks"); do
+    kill -0 "$pid" 2>/dev/null || break
+    state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+    [[ "$state" == Z* ]] && break
+    sleep 0.1
+  done
+  state="$(ps -o stat= -p "$pid" 2>/dev/null || true)"
+  [ -z "$state" ] || [[ "$state" == Z* ]] || kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+
 echo "E3: waiting for Nav2 to become active (results: $RUN_DIR)"
-for _ in $(seq 1 90); do
-  grep -q "Managed nodes are active" "$RUN_DIR/nav2.log" 2>/dev/null && break
-  sleep 2
-done
-grep -q "Managed nodes are active" "$RUN_DIR/nav2.log" || {
+active_count() {
+  grep -c "Managed nodes are active" "$RUN_DIR/nav2.log" 2>/dev/null || true
+}
+for _ in $(seq 1 90); do [ "$(active_count)" -ge 2 ] && break; sleep 2; done
+[ "$(active_count)" -ge 2 ] || {
   echo "Nav2 did not become active; aborting." >&2
   exit 1
 }
 sleep 5
 
-# nav2_simple_commander's activation wait can hang on a service-discovery
-# race if it starts during bringup; a bounded retry recovers (no goals have
-# been sent when the hang occurs, so a restart is side-effect free).
+# mission.py avoids lifecycle get_state calls and uses bounded AMCL-pose plus
+# NavigateToPose action readiness. Retry only before any goal has been sent.
 echo "E3: running mission"
 MISSION_OK=0
 for attempt in 1 2; do
   if timeout 420 env PYTHONUNBUFFERED=1 \
       python3 eval/e3/mission.py --log "$RUN_DIR/mission_log.json" \
+      --cancel-after "$CANCEL_AFTER" \
       2>&1 | tee "$RUN_DIR/mission.log"; then
     MISSION_OK=1
     break
   fi
-  echo "mission attempt $attempt did not finish; retrying" >&2
+  if grep -q "starting mission" "$RUN_DIR/mission.log"; then
+    echo "mission failed after a goal may have been sent; not retrying" >&2
+    break
+  fi
+  echo "mission attempt $attempt did not start; retrying" >&2
 done
-[ "$MISSION_OK" = 1 ] || echo "mission failed after retries" >&2
+[ "$MISSION_OK" = 1 ] || { echo "mission failed" >&2; exit 1; }
 
 # Ordered shutdown: drain in-flight records, then monitor, then runner.
 sleep 3
-kill -INT "$MON_PID" 2>/dev/null || true
-wait "$MON_PID" 2>/dev/null || true
+stop_pid "$MON_PID" INT 100
 sleep 2
-kill -INT "$RUNNER_PID" 2>/dev/null || true
-wait "$RUNNER_PID" 2>/dev/null || true
-wait "$SAMPLER_PID" 2>/dev/null || true
-kill -INT "$NAV_PID" 2>/dev/null || true
-sleep 5
-kill "$BROKER_PID" 2>/dev/null || true
+stop_pid "$RUNNER_PID" INT 100
+stop_pid "$SAMPLER_PID" TERM 30
+stop_pid "$GT_PID" INT 30
+stop_pid "$NAV_PID" INT 100
+stop_pid "$BROKER_PID" TERM 30
 purge_sim
 trap - EXIT
 
@@ -140,6 +164,19 @@ python3 eval/e3/check_goals.py \
   --mission-log "$RUN_DIR/mission_log.json" --verdicts "$NAV" \
   --deadline "$DEADLINE" \
   --out "$RUN_DIR/goals.json" || STATUS=1
+
+# Independent physical check: Gazebo spawn and every successful endpoint
+# must agree with the map-frame poses recorded by the mission.
+python3 eval/e3/check_physical_poses.py \
+  --gt "$RUN_DIR/gt_poses.csv" --mission-log "$RUN_DIR/mission_log.json" \
+  --tolerance "$GOAL_TOLERANCE" \
+  --out "$RUN_DIR/physical_poses.json" || STATUS=1
+
+# Scenario-value check: A crosses the lower opening, B must be rerouted through
+# the upper opening, and C must not cross after both openings are closed.
+python3 eval/e3/check_routes.py \
+  --gt "$RUN_DIR/gt_poses.csv" --mission-log "$RUN_DIR/mission_log.json" \
+  --out "$RUN_DIR/routes.json" || STATUS=1
 
 echo "E3 done (status=$STATUS): $RUN_DIR"
 exit "$STATUS"

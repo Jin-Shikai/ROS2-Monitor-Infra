@@ -25,19 +25,22 @@ Users describe the monitoring setup in YAML files. They can
 select data sources, reduce or filter data, choose outputs, and connect
 property-specific checking components. New data converters, verdict services,
 input sources, and output exporters can also be added as separately developed
-components without changing the monitoring core. The deployment configuration are 
-generated automatically from the user's selections.
+components without changing the monitoring core. The deployment
+configurations are generated automatically from the user's selections.
 
 The infrastructure runs in two ways. In the integrated setup, data collection
 and checking run together. In the split setup, data is collected near the robot
-and sent to a separate verifier runs on a different machine. The concrete prototype supports file and MQTT
-transport and provides processing steps such as field selection, rate limiting,
-and change filtering.
+and sent to a separate verifier that can run on a different machine. The
+concrete prototype supports file and MQTT transport and provides processing
+steps such as field selection, rate limiting, and change filtering.
 
 We evaluated the prototype through case studies covering topic, service, and
 action monitoring, including a Navigation~2 case study, complemented by unit
-tests, Docker Compose deployments, offline replay, and a multi-robot scenario.
+tests, Docker Compose deployments, offline replay, a multi-robot scenario, and
+a three-machine deployment on Ubuntu, Raspberry Pi, and macOS.
 Across these scenarios, the same data format and processing chain connected
 ROS~2 topics, service events, and action progress to reusable checking
-components in both integrated and split deployments.
+components in both integrated and split deployments. In the three-machine
+experiment, both verifier processes received all 4173 data records, and all
+34 verdict transitions on the macOS verifier matched the Pi reference exactly.
 \endgroup

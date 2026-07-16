@@ -5,14 +5,20 @@ Drives the TB3 through three corridor goals while obstacles are spawned at
 scripted times, and writes a wall-clock-timestamped JSON log that serves as
 the ground truth for the goal-deadline property check:
 
-  goal A: down the corridor, no obstacles          (expected: within deadline)
-  goal B: back through the obstacle zone while the `three_boxes` preset
-          spawns boxes into the robot's path        (expected: slowed)
-  goal C: down the corridor again after the `temporary_wall` preset has
-          blocked it                               (expected: late or aborted)
+  goal A: down the corridor, no obstacles          (unobstructed baseline)
+  goal B: close the lower opening in the right partition before sending the
+          return goal, forcing the upper opening    (topological detour)
+  goal C: keep that barrier and close the remaining upper opening before
+          sending the final goal                    (no east-west route)
 
-A goal still running `--cancel-after` seconds after being sent is canceled
-so the mission always terminates.
+The mission does not hard-code verdict polarity: the checker derives it from
+each measured result and duration for the selected DEADLINE. This keeps the
+correctness check valid when simulator speed changes with host load.
+
+A goal still running `--cancel-after` seconds after being sent is canceled.
+Readiness deliberately avoids lifecycle get_state services: it waits only for
+an AMCL pose callback and the NavigateToPose action server, both of which are
+actual prerequisites for this mission.
 
     python3 eval/e3/mission.py --log mission_log.json [--cancel-after 90]
 """
@@ -38,9 +44,17 @@ RESULT_NAMES = {
 
 # The robot spawns at (-2.0, -0.5); AMCL's initial pose is preset to the
 # same coordinates in eval/e3/nav2_params.yaml.
+START = (-2.0, -0.5, 0.0)
 GOAL_A = (2.5, 0.0, 0.0)
 GOAL_B = (-2.0, -0.5, math.pi)
 GOAL_C = (2.5, 0.0, 0.0)
+
+# The vertical partition at x=1.4 has exactly two traversable gaps. A single
+# long box bridges each complete 1.275 m gap between the static wall segments;
+# unlike the former scattered boxes, these barriers change map connectivity.
+# The lower barrier remains in Gazebo when the upper one is added for goal C.
+RIGHT_LOWER_GATE = "0.0,e3_right_lower_gate,1.4,-1.2625,0.5,0.5,1.2,1.0"
+RIGHT_UPPER_GATE = "0.0,e3_right_upper_gate,1.4,1.2625,0.5,0.5,1.2,1.0"
 
 
 def make_pose(nav: BasicNavigator, x: float, y: float, yaw: float) -> PoseStamped:
@@ -54,16 +68,37 @@ def make_pose(nav: BasicNavigator, x: float, y: float, yaw: float) -> PoseStampe
     return pose
 
 
-def spawn_obstacles(scenario: str, events: list, wait: bool) -> subprocess.Popen:
-    events.append({"type": "obstacles_started", "scenario": scenario, "t": time.time()})
-    proc = subprocess.Popen(
-        ["ros2", "run", "my_nav2_worlds", "spawn_dynamic_obstacles",
-         "--scenario", scenario]
+def wait_until_ready(nav: BasicNavigator, timeout_sec: float) -> None:
+    """Wait for localization data and navigation action discovery, bounded."""
+    deadline = time.monotonic() + timeout_sec
+    next_pose_publish = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        rclpy.spin_once(nav, timeout_sec=0.2)
+        action_ready = nav.nav_to_pose_client.server_is_ready()
+        if nav.initial_pose_received and action_ready:
+            print("robot ready: AMCL pose + NavigateToPose action", flush=True)
+            return
+        if time.monotonic() >= next_pose_publish:
+            # Republish the explicitly assigned START pose without resetting
+            # initial_pose_received (setInitialPose would reset that flag).
+            nav._setInitialPose()
+            next_pose_publish = time.monotonic() + 2.0
+    raise TimeoutError(
+        f"robot not ready after {timeout_sec:.1f}s "
+        f"(amcl_pose={nav.initial_pose_received}, "
+        f"navigate_to_pose={nav.nav_to_pose_client.server_is_ready()})"
     )
-    if wait:
-        proc.wait()
-        events.append({"type": "obstacles_done", "scenario": scenario, "t": time.time()})
-    return proc
+
+
+def spawn_barrier(name: str, obstacle: str, events: list) -> None:
+    """Spawn one route-closing barrier and wait for Gazebo to confirm it."""
+    events.append({"type": "obstacles_started", "scenario": name, "t": time.time()})
+    subprocess.run(
+        ["ros2", "run", "my_nav2_worlds", "spawn_dynamic_obstacles",
+         "--obstacle", obstacle],
+        check=True,
+    )
+    events.append({"type": "obstacles_done", "scenario": name, "t": time.time()})
 
 
 def run_goal(
@@ -100,28 +135,32 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", required=True)
     parser.add_argument("--cancel-after", type=float, default=90.0)
+    parser.add_argument("--ready-timeout", type=float, default=30.0)
     args = parser.parse_args()
 
     rclpy.init()
     nav = BasicNavigator()
     events: list[dict] = []
 
-    # AMCL's initial pose is set via parameters (eval/e3/nav2_params.yaml),
-    # so waiting for the stack to become active is sufficient here.
-    nav.waitUntilNav2Active()
+    # Keep BasicNavigator's internal initial pose consistent with both the
+    # Gazebo spawn and nav2_params.yaml. Otherwise its readiness helper can
+    # republish the library default (0, 0) during a discovery race.
+    nav.setInitialPose(make_pose(nav, *START))
+    wait_until_ready(nav, args.ready_timeout)
+    events.append({"type": "initial_pose", "t": time.time(), "pose": START})
     events.append({"type": "nav2_active", "t": time.time()})
-    print("nav2 active; starting mission", flush=True)
+    print("nav2 ready; starting mission", flush=True)
 
     run_goal(nav, "A", GOAL_A, events, args.cancel_after)
 
-    # Boxes appear in the corridor while the robot drives back through it.
-    boxes = spawn_obstacles("three_boxes", events, wait=False)
+    # Close the lower of the right partition's two gaps before dispatching B.
+    # The only remaining east-west route crosses the upper gap near y=+1.26.
+    spawn_barrier("right_lower_gate", RIGHT_LOWER_GATE, events)
     run_goal(nav, "B", GOAL_B, events, args.cancel_after)
-    boxes.wait()
-    events.append({"type": "obstacles_done", "scenario": "three_boxes", "t": time.time()})
 
-    # Block the corridor, then try to cross it again.
-    spawn_obstacles("temporary_wall", events, wait=True)
+    # Keep the lower barrier and close the upper gap too. This disconnects the
+    # east and west halves; C reveals whether Nav2 fails, waits, or is canceled.
+    spawn_barrier("right_upper_gate", RIGHT_UPPER_GATE, events)
     run_goal(nav, "C", GOAL_C, events, args.cancel_after)
 
     with open(args.log, "w", encoding="utf-8") as f:

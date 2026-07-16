@@ -1,0 +1,49 @@
+{
+  "hosts": [
+    {
+      "id": "monitor",
+      "output_dir": "@RUN_DIR@",
+      "session_id_prefix": "e1",
+      "exporters": [{"type": "file"}],
+      "runtimes": [
+        {
+          "id": "ros2_e1",
+          "kind": "ros2",
+          "sources": [
+            {
+              "id": "cmd_vel",
+              "source_kind": "topic",
+              "name": "/cmd_vel",
+              "interface": "geometry_msgs/msg/Twist"
+            }
+          ]
+        },
+        {"id": "monitor_e1", "kind": "monitor", "subscribe": ["cmd_vel"]},
+        {
+          "id": "cmd_speed",
+          "kind": "converter",
+          "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter",
+          "input_from": ["cmd_vel"],
+          "output_to": "cmd_speed_record"
+        },
+        {
+          "id": "speed_check",
+          "kind": "verdict_service",
+          "class_path": "custom.threshold:ThresholdVerdict",
+          "input_from": ["cmd_speed_record"],
+          "property_id": "speed_check",
+          "threshold": 0.5,
+          "output_to": [
+            {
+              "kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter",
+              "path": "verdicts_{session_id}.jsonl"
+            },
+            {"kind": "stdout"}
+          ]
+        }
+      ]
+    }
+  ],
+  "links": []
+}

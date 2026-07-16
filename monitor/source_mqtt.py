@@ -46,6 +46,8 @@ class MQTTSource(Source[DataRecord]):
         self.keepalive = int(keepalive)
         self._exporter: Exporter[DataRecord] | None = None
         self._received = 0
+        self._received_data = 0
+        self._received_bookends = 0
 
         if client is not None:
             self._client = client
@@ -94,6 +96,10 @@ class MQTTSource(Source[DataRecord]):
         try:
             self._exporter.export(record)
             self._received += 1
+            if record._type == "data":
+                self._received_data += 1
+            else:
+                self._received_bookends += 1
         except Exception as ex:
             logger.error("MQTTSource downstream export error: %s", ex)
 
@@ -116,5 +122,11 @@ class MQTTSource(Source[DataRecord]):
         try:
             self._client.loop_stop()
             self._client.disconnect()
+            logger.info(
+                "MQTTSource stopped: received=%d data=%d bookends=%d",
+                self._received,
+                self._received_data,
+                self._received_bookends,
+            )
         except Exception as ex:
             logger.warning("MQTTSource stop error: %s", ex)

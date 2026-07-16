@@ -1,0 +1,15 @@
+{
+  "id": "separation_verdict",
+  "kind": "verdict",
+  "name": "Separation Distance Verdict",
+  "class_path": "custom.separation:SeparationDistanceVerdict",
+  "params": [
+    {
+      "key": "min_distance",
+      "label": "Minimum separation (m)",
+      "type": "number",
+      "required": true,
+      "default": 1.0
+    }
+  ]
+}
