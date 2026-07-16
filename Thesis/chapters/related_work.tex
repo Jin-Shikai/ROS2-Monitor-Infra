@@ -31,17 +31,17 @@ monitored. The monitor changes ROS messages into events and sends them to an
 external \emph{oracle}. The oracle checks the events against a property.
 
 The useful idea for this thesis is the boundary between ROS message handling and
-the external oracle. ROSMonitoring shows that the checker does not have to live
-inside the ROS-facing code. In this thesis, that boundary is combined with
+the external oracle. ROSMonitoring shows that the checker can run outside the
+ROS-facing code. In this thesis, that boundary is combined with
 passive subscriptions and service introspection, so records can be routed
-through separate processing, transport, checking, and output stages without
-placing a proxy in the normal application communication path.
+through separate processing, transport, checking, and output stages while the
+normal application communication path remains free of proxies.
 
 ROSMonitoring 2.0 adds support for services and studies message
 ordering~\cite{saadat2024rosmonitoring2}. Some service support is available
 for ROS~2. Full ROS~2 support and action monitoring are left as future work.
-Ordering is an important topic because messages may not arrive at the monitor
-in the same order in which they were published.
+Ordering is an important topic because messages may reach the monitor in a
+different order from publication.
 
 For this thesis, ROSMonitoring 2.0 is mainly a reminder that services and
 ordering become visible as soon as monitoring moves beyond plain topic streams.
@@ -62,7 +62,7 @@ connect external services. ROMoSu also includes a user interface, a dashboard,
 and configuration storage.
 
 ROMoSu is the closest work in spirit because it treats monitoring as something
-that should be configured, not hand-written from scratch each time. Its scope is
+that should be configured from reusable descriptions. Its scope is
 broader on the user-facing side: it includes a dashboard, storage, and a larger
 platform around the monitoring process. The prototype here concentrates on the
 internal infrastructure stages - collectors, transformers, converters, verdict
@@ -114,11 +114,9 @@ suspicious run, and a trace can help explain the execution details behind it.
 ROS-FM observes ROS network traffic using eBPF and
 XDP~\cite{rivera2020rosfm}. It can collect network information, apply security
 rules, and support distributed visualization. Because it works below the ROS
-application layer, it can observe communication without adding a normal ROS
-subscriber for every topic.
+application layer, it observes communication directly from network traffic.
 
-This kind of monitor sees traffic without adding a ROS subscriber. The
-difficult part is reconstructing application meaning from packets. The design
+The difficult part is reconstructing application meaning from packets. The design
 in this thesis stays at the application level, where ROS~2 messages already
 carry the type information that converters and checkers need.
 
@@ -169,7 +167,7 @@ checking components.
 
 Caldas et al.\ provide guidance for runtime verification and field-based
 testing of ROS systems~\cite{caldas2024runtime}. They explain that real-world
-conditions cannot always be fully reproduced in simulation. Robotic software
+conditions extend beyond simulation. Robotic software
 should therefore support data collection, isolation, monitoring reactions, and
 the use of field evidence.
 
@@ -177,7 +175,7 @@ This paper helped frame the practical side of the record format. If field data
 is later used as evidence, the record needs enough context to connect an
 observation to a source, a session, and a verdict. The prototype supports that
 kind of evidence trail through JSONL and MQTT outputs. The wider field-testing
-process, automatic recovery, and test generation remain outside its scope.
+process, automatic recovery, and test generation are future integration areas.
 
 \section{Summary Comparison}
 
@@ -227,8 +225,7 @@ plugin-based pipeline underneath such a platform. \\
 FRET--Ogma--Copilot &
 Generating monitors from structured requirements &
 Generated real-time checking code &
-Good candidate for a future verdict-service backend; not part of the current
-prototype. \\
+Potential future verdict-service backend. \\
 \midrule
 
 RTAMT &
@@ -240,7 +237,7 @@ input. \\
 
 \texttt{ros2\_tracing} &
 Low-level ROS~2 and operating-system tracing &
-Trace analysis instead of property verdicts &
+Trace analysis &
 Occupies a lower layer than the typed application records used here. \\
 \midrule
 
@@ -279,7 +276,8 @@ transport, checking, and output stages. \\
 The qualitative comparison above is complemented by two capability matrices.
 The symbols have the following meaning: \cmark{} means direct support,
 \pmark{} means limited support or support through a specific condition, and
-\xmark{} means that the capability is not a main feature of the approach. In
+\xmark{} means that the capability lies outside the approach's main feature
+set. In
 the observable-element matrix, ``Life.'' refers to node lifecycle or node-state
 information, and ``Kernel'' refers to low-level operating-system or tracing
 events.
@@ -400,7 +398,7 @@ FRETISH requirements and generated Copilot monitors &
 \cmark & \xmark \\
 \midrule
 \texttt{ros2\_tracing} &
-Trace collection and analysis, not a property language &
+Trace collection and analysis &
 \cmark & \cmark \\
 \midrule
 RTAMT &
@@ -420,8 +418,8 @@ Configurable converter and verdict-service plugins &
 
 \section{Research Gap}
 
-After reviewing these approaches, the missing piece is not another
-property language. The gap is the infrastructure between ROS~2 communication
+After reviewing these approaches, the main gap lies in the infrastructure
+between ROS~2 communication
 and property-specific checking: a way to collect several kinds of ROS~2
 observations, keep their context, process them uniformly, and then hand them to
 different checkers.

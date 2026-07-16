@@ -2,9 +2,8 @@
 
 This chapter explains how we designed the monitoring infrastructure. The
 design starts from the feature model that we developed to answer RQ2. We used
-the model as a map of the design space rather than as an implementation
-checklist: it made clear which parts of ROS~2 monitoring could reasonably fit
-into one thesis prototype and which parts should remain outside the scope.
+the model to map the design space and select the parts of ROS~2 monitoring that
+could reasonably fit into one thesis prototype.
 
 \section{Feature Model as Design Input}
 
@@ -28,14 +27,14 @@ as a network tap, or through lower-level middleware and tracing tools.
 
 The concrete prototype implements one path through this map: application-level
 data that can be collected passively, represented in a common format, and
-configured without rewriting the monitoring core.
+configured through YAML and plugins around a stable monitoring core.
 
 \section{Selected Feature Coverage}
 
 Table~\ref{tab:selected-feature-coverage} summarizes how the implemented
 prototype relates to the feature model. The table distinguishes between
 features that are implemented directly, features that are represented by the
-demonstration scenarios, and features that remain outside the current design.
+demonstration scenarios, and unselected feature variants.
 
 \begin{table}[htbp]
 \centering
@@ -47,7 +46,7 @@ demonstration scenarios, and features that remain outside the current design.
 \toprule
 \textbf{Feature dimension} &
 \textbf{Selected coverage} &
-\textbf{Not covered in the prototype} \\
+\textbf{Unselected variants} \\
 \midrule
 Observable elements &
 Topics, service request and response events, and action feedback and status are
@@ -85,21 +84,20 @@ monitor implementations. \\
 \label{tab:selected-feature-coverage}
 \end{table}
 
-This coverage is intentionally narrower than the full feature model. The goal
-is not to cover every possible monitoring technique. The goal is to build and
-validate a reusable path from ROS~2 application observations to checking
-components, while keeping the parts that usually change between applications
-configurable.
+This coverage selects a focused subset of the full feature model. The goal is
+to build and validate a reusable path from ROS~2 application observations to
+checking components, while keeping the parts that usually change between
+applications configurable.
 
 \section{Design Requirements}
 \label{sec:design-requirements}
 
 The selected feature coverage led to a few design requirements that shaped the
 prototype. The most important one is the common record format. Topics, service
-events, and action feedback/status should not force later components to deal
-with three unrelated data shapes. The record therefore has to carry not only
-the payload, but also the source, timestamp, session, and identity information
-needed to connect observations with later verdicts.
+events, and action feedback/status need a single data shape for later
+components. The record therefore carries the payload together with the source,
+timestamp, session, and identity information needed to connect observations
+with later verdicts.
 
 We also wanted processing to happen early in the pipeline. Raw ROS~2 messages
 can be large or frequent, and in many cases the checker only needs a few fields
@@ -107,9 +105,10 @@ or only needs records when values change. This pushed field extraction,
 throttling, and filtering into the infrastructure before storage or transport.
 
 The remaining requirements are about keeping changeable parts apart. Collection
-needs ROS~2 type and communication knowledge without being tied to one checking
-language. A converter may adapt records for a checker, while a verdict service
-contains the property-specific logic. YAML configuration covers common choices,
+handles ROS~2 types and communication, while checker-specific knowledge stays
+in converters and verdict services. A converter may adapt records for a
+checker, while a verdict service contains the property-specific logic. YAML
+configuration covers common choices,
 and plugins cover project-specific conversion, checking, input, and output
 behaviour. The same chain should then be usable both when everything runs in
 one ROS~2-facing process and when records cross a transport boundary to a
@@ -132,7 +131,7 @@ verification language or checking algorithm.
 
 Figure~\ref{fig:pipeline-components} shows the main pipeline stages. The same
 chain is used for topic messages, service events, and action feedback or status
-records, so a new source type does not require a new checking architecture.
+records, so the same checking architecture accommodates each source type.
 
 \begin{figure}[htbp]
     \centering
@@ -251,7 +250,8 @@ number. \\
 \end{table}
 
 The record format is deliberately uniform across ROS~2 communication methods.
-Topics have no phase because each message is a complete unit. Service events
+Each topic message is a complete unit and uses a single record form. Service
+events
 are unwrapped into request and response records, with the service event metadata
 kept for correlation. Actions use feedback and status records directly, while
 goal and result phases can be represented when service introspection for those
@@ -288,8 +288,8 @@ observations and sends data records to a verifier-side process. The verifier
 uses a source adapter to read those records and then executes the same
 converter, verdict service, and verdict exporter chain that is used in the
 integrated deployment. The prototype implements file replay and MQTT for these
-flows, but transport remains an exporter/source choice rather than part of the
-checking logic.
+flows. Transport is an exporter/source choice, separate from the checking
+logic.
 
 The split deployment is closest to the orchestrated organisation in
 Figure~\ref{fig:org-orchestrated}: the trace is produced at the observed

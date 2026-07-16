@@ -23,7 +23,7 @@ library \texttt{rclpy}, which allows the monitor to join the ROS graph as a
 normal node. Python also has runtime type utilities through
 \texttt{rosidl\_runtime\_py}. These utilities resolve ROS~2 message, service,
 and action classes from their type names, so a configured source can be
-collected without generating source-specific monitoring code. Python also keeps
+collected through runtime type resolution. Python also keeps
 project-specific converters and verdict services simple to add.
 
 Only the collector layer imports ROS~2 packages. The remaining modules use the
@@ -108,7 +108,7 @@ passed to the checking graph when one is configured.
 
 Each run is marked with two session records. The first record is
 \texttt{session\_start}; it contains the complete parsed configuration, so an
-output file can be interpreted later without the original YAML file. On
+output file is self-contained for later interpretation. On
 shutdown, collectors are stopped, a \texttt{session\_end} record with summary
 statistics is emitted, and exporters are flushed and closed.
 
@@ -144,13 +144,13 @@ and status topics of the configured action:
 action type. The status topic uses the standard goal-status array message from
 \texttt{action\_msgs}. The configured phases decide
 whether feedback, status, or both are collected. Goal, result, and cancellation
-exchanges use services inside ROS~2 actions. The prototype leaves those phases
-to service introspection and does not collect them in the action collector.
+exchanges use services inside ROS~2 actions. Service introspection handles those
+phases, while the action collector handles feedback and status.
 
 Collectors also try to record the source node that produced an observation.
 DDS discovery may still be incomplete when the first message arrives. In that
-case, ROS~2 can report a placeholder publisher name. The collectors do not
-cache such placeholders. They retry the lookup on later callbacks and store the
+case, ROS~2 can report a placeholder publisher name. The collectors retry
+placeholder lookups on later callbacks and store the
 node name once a real name is available. Until then, the record simply omits
 the source-node field.
 
@@ -164,8 +164,8 @@ source name, message type, timestamp, payload, and optional metadata.
 
 Records are serialized as JSON Lines (JSONL), with one JSON object per line.
 Empty optional fields are omitted. Deserialization restores the same record
-fields, so records can pass through files or network transports without losing
-their monitoring context. A data record identifier combines the session
+fields, so records preserve their monitoring context across files and network
+transports. A data record identifier combines the session
 identifier, source type, source name, phase, and per-collector sequence number.
 The identifier is unique within one session and remains readable in logs and
 output files. The following shortened JSONL line shows a topic record after
@@ -186,7 +186,7 @@ field extraction:
 Each collector sends its records through a transformer pipeline before they
 are exported or checked. Transformers run in the order given in the
 configuration. A transformer can return a modified record, the same record, or
-no record. Returning no record drops the observation and stops the remaining
+\texttt{None}. Returning \texttt{None} drops the observation and stops the remaining
 transformers for that observation.
 
 Three transformers are built in:
@@ -222,27 +222,27 @@ MQTT exporter publishes data records to topics derived from the source:
 \texttt{<prefix><source\_type>/<source\_name>}. Session records are published
 on a separate \texttt{<prefix>\_session} topic. The connection is established
 asynchronously, reconnects automatically, and uses a bounded outbound queue so
-that a slow broker does not block ROS~2 callback threads.
+that ROS~2 callback threads remain responsive while the broker is slow.
 
 A source is the verifier-side counterpart of an exporter. It reads records
 from a transport and injects them into a dispatcher. The MQTT source subscribes
 to a topic filter and parses each payload into a data record. The file source
 replays a JSONL file. With the \texttt{follow} option, it keeps reading new
-lines appended to the file. Without \texttt{follow}, it replays the file once,
+lines appended to the file. The default one-shot mode replays the file once,
 optionally with a delay between records.
 
 Converter output can also cross a transport boundary. The same file and MQTT
 carriers are implemented for converter output, and verdicts have file,
 standard-output, and MQTT exporters. Because each boundary is represented by
 an exporter on one side and a source on the other, a pipeline stage can run
-in-process or across a transport without changing the stage implementation.
+in-process or across a transport with the same stage implementation.
 
 \section{Converters and Verdict Services}
 \label{sec:impl-checking}
 
 Checking is split into two component types. A converter receives a data record.
 It can return a checker-ready dictionary, a derived data record for another
-converter, or no output. A converter may also run its own timer, which is
+converter, or \texttt{None}. A converter may also run its own timer, which is
 needed for deadline properties. A verdict service evaluates checker-ready data
 and may return a verdict. A verdict contains a timestamp, a property
 identifier, a boolean result, and details.
@@ -250,8 +250,8 @@ identifier, a boolean result, and details.
 The infrastructure attaches correlation data to each verdict. This includes
 the monitor session and the identifiers of the records that led to the
 verdict. A later analysis can therefore connect a verdict to the observations
-behind it. Converters and verdict services do not import ROS~2 packages and do
-not assume a particular property language.
+behind it. Converters and verdict services remain independent of ROS~2 packages
+and property languages.
 
 The concrete checking components used in the case studies live in the
 \texttt{custom/} package. They are selected from YAML by import path:
@@ -341,7 +341,7 @@ keeps component placement in the configuration files.
 \label{sec:impl-node-runner}
 
 The verifier-side entry point is \texttt{node\_runner.py}. It runs the same
-checking graph without a ROS~2 dependency. Its configuration uses
+checking graph as a ROS-independent process. Its configuration uses
 \texttt{inputs} in place of collector sections. An input receives data records
 or converter output from MQTT or a file and feeds them into the graph.
 
@@ -473,16 +473,15 @@ configuration for a host that only runs checking components.
 
 The generator projects this description onto one YAML file per host. A host
 with a monitor runtime receives a monitor-process configuration. A host with
-only converters or verdict services receives a runner configuration. A host
-that only runs the observed ROS~2 application does not need a generated file.
+only converters or verdict services receives a runner configuration. The
+generator produces files only for hosts that run monitoring roles.
 
 Runtimes on the same host are wired in-process by matching their declared
 record identifiers. Cross-host communication requires an explicit link. The
 writer and reader of a link derive their transport namespace from the same
 link identity, so they use matching MQTT topics or shared file paths. Unsupported
-placements are rejected during generation. For example, a converter on a
-monitor host cannot consume a cross-host record stream, because cross-host
-record inputs are handled by the runner runtime.
+placements are rejected during generation. The runner runtime handles all
+cross-host record inputs.
 
 For repeatable deployment, the repository also provides a container image
 based on a ROS~2 base image. The image packages the monitor, the custom

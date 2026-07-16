@@ -11,18 +11,16 @@
     {Gazebo: two TurtleBot3 models};
 \node[process,minimum width=3.45cm] (nav2) at (-4.90,0.74)
     {Nav2 \texttt{/robot1}\\Nav2 \texttt{/robot2}};
-\node[process,minimum width=3.45cm] (mission) at (-4.90,-0.42)
+\node[process,minimum width=3.45cm] (mission) at (-4.90,-0.70)
     {two-leg mission};
-\node[process,minimum width=3.45cm] (probe) at (-4.90,-1.50)
-    {DDS timing probe};
-\node[align=center] at (-4.90,-2.65)
+\node[align=center] at (-4.90,-2.35)
     {ROS~2 Kilted\\Gazebo and RViz};
 
 \draw[thick] (-2.15,-3.35) rectangle (2.15,3.35);
 \node[font=\normalsize\bfseries] at (0,2.98) {Raspberry Pi};
 \node[font=\scriptsize] at (0,2.66) {$\ll$device$\gg$ Ubuntu};
 \node[process,minimum width=3.20cm] (monitor) at (0,1.42)
-    {\texttt{monitor\_node}\\six topic collectors + probe};
+    {\texttt{monitor\_node}\\six topic collectors};
 \node[process,minimum width=3.20cm] (broker) at (0,-0.02)
     {Mosquitto broker\\port 1884};
 \node[process,minimum width=3.20cm] (reference) at (0,-1.62)
@@ -40,7 +38,7 @@
 \node[process,minimum width=3.45cm] (verdicts) at (4.90,-1.62)
     {verdict files};
 \node[align=center] at (4.90,-2.65)
-    {Homebrew Python\\no ROS~2 installation};
+    {Homebrew Python\\standalone verifier};
 
 \draw[flow] (nav2.east) -- node[above,font=\scriptsize] {DDS} (monitor.west);
 \draw[flow] (monitor.south) -- (broker.north);
