@@ -1,1 +1,214 @@
 \chapter{Conclusions}\label{chapter:conclusions}
+
+ROS~2 applications expose runtime behaviour through topics, services, and
+actions. At the ROS application-data level, the reviewed approaches mainly
+cover topics. ROSMonitoring 2.0 adds service monitoring with partial ROS~2
+support, while ROS~2 action monitoring remains an open gap in the reviewed
+work. This thesis addressed this gap together with the recurring effort
+required to process, route, and check these observations. The objective was to
+design, implement, and evaluate a configurable infrastructure for topic
+messages, service events, and action feedback and status that makes monitoring
+and deployment choices explicit and reuses the common monitoring tasks.
+
+We approached this objective in four steps. First, we reviewed existing ROS and
+ROS~2 monitoring approaches and the observation mechanisms available in ROS~2.
+Second, we captured the commonalities and variabilities of the domain in a
+feature model. Third, we derived a reference architecture and implemented it as
+a Python prototype. Finally, we evaluated the prototype through five
+experiments that progressed from one local topic check to a multi-robot Nav2
+application distributed across three physical machines.
+
+\section{Answers to the Research Questions}
+
+\paragraph{RQ1: Existing capabilities and observation gaps.}
+ROS~2 applications can be observed at several levels. Topics can be collected
+through normal subscriptions. Service requests and responses can be exposed
+through service introspection when it is enabled by a client or server. Action
+progress and final status can be followed through the hidden feedback and
+status topics. Network observation and lower-level tracing provide additional
+views of communication and execution.
+
+The reviewed approaches cover different parts of these mechanisms. Topic
+observation is common. ROSMonitoring 2.0 provides service monitoring, although
+its ROS~2 implementation is partial. ROS~2 action monitoring is absent from the
+reviewed approaches. The prototype addresses this gap in action monitoring by
+collecting feedback and status records from the hidden topics, together with
+topic messages and service events. Tools for tracing, network monitoring,
+rule checking, and user-facing monitoring platforms address other
+monitoring goals.
+
+The review identified a gap between these observation mechanisms and
+rule-specific checking. ROS~2 developers need a reusable way to collect
+several kinds of typed observations, retain their context, reduce and route the
+data, and deliver it to different checking components. The combined support
+for topic messages, service request and response events, action feedback and
+status, configurable processing, and integrated or split checking forms the
+specific gap addressed by this thesis.
+
+\paragraph{RQ2: Commonalities and variabilities.}
+The reviewed monitoring architectures share a set of main tasks: collecting,
+processing, routing, storing, checking, and using the results. They vary in the
+elements they observe, the monitoring architecture, the monitoring mode, the
+system configuration, and the implementation paradigm. These dimensions are
+captured in the feature model presented in Chapter~\ref{chapter:design}.
+
+The feature model shows why a single fixed monitor is insufficient for the
+domain. An application may need topic data, service events, action progress, or
+lower-level execution information. It may need online or offline monitoring,
+passive reporting or active intervention, and centralized or distributed
+placement. Treating these choices as separate feature dimensions provides a
+systematic description of the monitoring solution and identifies the parts
+that should remain configurable.
+
+\paragraph{RQ3: Reference architecture and feature incorporation.}
+The resulting reference architecture is a configurable dataflow pipeline. A
+collector turns one ROS~2 observation into a common data record. Transformers
+can select fields, limit the record rate, or keep changed values. Dispatchers
+route records to data exporters and checking chains. Converters adapt records
+to the input expected by rule-specific verdict services, and verdict
+exporters deliver the checking results. Sources introduce records from MQTT or
+files on the verifier side.
+
+The common data record connects these roles. It stores the observed payload
+together with the source type and name, phase, timestamps, session identifier,
+record identifier, and metadata. This context allows the same processing and
+checking interfaces to handle topic messages, service events, and action
+feedback and status, and allows verdicts to refer back to their contributing
+records.
+
+Converters and verdict services are user-defined plugin points. A converter
+changes a common data record into the input format required by a user's DSL. A
+verdict service holds or calls the corresponding checking engine and returns a
+common verdict. Users select both Python classes in YAML by import path and can
+pass their settings through the same configuration. This design supports custom
+DSLs while keeping ROS~2 collection, record handling, and deployment separate
+from the language used for checking. The two plugins can run in one process or
+on separate hosts. A split converter/verdict path sends their JSON-serializable
+DSL records through a file or MQTT link.
+
+The architecture incorporates the selected features from the feature model in
+two deployment forms. The integrated deployment runs collection, processing,
+checking, and output in one ROS~2-facing process. The split deployment keeps
+collection near the system under monitoring and sends records to a separate,
+ROS-independent verifier. File and MQTT transports, YAML configuration,
+project-specific plugins, and generated host configurations provide the
+variation points around the shared pipeline. The implementation therefore
+supports the selected passive, application-level path through the feature
+model. Complete action traces, parameters, lifecycle states, lower-level
+tracing, active intervention, and fault-tolerant distributed verification
+remain outside the prototype scope.
+
+\paragraph{RQ4: Support for realistic ROS~2 monitoring needs.}
+The evaluation gives a positive answer within the scope of the prototype. E1
+showed that the integrated topic path produced every expected speed verdict.
+E2 collected topic messages, service events, and action feedback and status in
+one run. It also produced identical local and MQTT-transported speed verdicts
+and correlated a service response with later odometry in one rule.
+
+The Nav2 experiments extended this evidence to an existing ROS~2 application.
+E3 monitored navigation speed, action progress, deadlines, and final action
+status while the Nav2 code remained unchanged. Its online verdicts agreed with
+the mission and Gazebo logs. E4 kept observations from two robot namespaces
+separate and combined their localized poses in a minimum-separation rule.
+E5 retained the same checking graph while placing the application, monitor, and
+verifier on Ubuntu, Raspberry Pi, and macOS machines. The remote and reference
+verifiers each received all 3667 monitored data records and produced the same
+34 verdict transitions.
+
+Every experiment used the deployment description to generate its runtime YAML
+files. The experiments therefore exercise both the runtime pipeline and the
+configuration path that places monitoring roles. Together they show support
+for topic messages, service request and response events, action feedback and
+status, early data reduction, local and remote checking, rules over
+several observations, multiple robot namespaces, offline evidence, and
+heterogeneous deployment. This evidence applies to the evaluated local network, the selected ROS~2
+interfaces, and scenarios with up to two simulated robots.
+
+\section{Main Contribution}
+
+The main contribution of this thesis is the architectural and implementation
+layer between ROS~2 communication and rule-specific checking. The layer
+separates reusable monitoring work from application and rule knowledge.
+Collectors handle ROS~2 interfaces and types; the common data record preserves
+the observation context; transformers and dispatchers process and route the
+records; and converters and verdict services contain checker-specific logic.
+This separation allows the monitoring core to remain stable while sources,
+rules, outputs, transports, and placement change through configuration or
+plugins.
+
+The feature model gives a systematic account of the larger monitoring design
+space, and the reference architecture realizes one useful path through that
+space. The prototype demonstrates that topic messages, service request and
+response events, and action feedback and status can share the same data-record
+and processing interfaces. The checking chain can run in integrated or split
+deployments. The configuration generator further turns one multi-host
+deployment description into matching runtime files. Recorded data and verdict
+correlation provide an evidence trail that supports replay and later analysis.
+
+Action feedback and status monitoring form a distinct part of this
+contribution because action monitoring is absent from the reviewed approaches.
+This coverage follows action progress and final status without changing the
+observed application. A complete action trace would additionally require goal,
+cancellation, and result service events.
+
+The contribution is intentionally a foundation. It supplies collection,
+processing, transport, checking interfaces, deployment configuration, and
+evidence handling. Users can add a custom DSL as a converter and verdict-service
+plugin pair. The converter prepares the DSL input, and the verdict service runs
+the user's checking logic and returns the common verdict. The threshold,
+deadline, service-effect, and multi-robot checks in the evaluation are examples
+of this mechanism. They are plugin implementations built on the infrastructure,
+while the plugin interfaces provide the general extension point.
+
+\section{Future Work}
+
+Future work can first extend the observable elements. A complete action trace
+could combine feedback and status with goal, cancellation, and result service
+events. New collectors could cover parameters, lifecycle transitions, and
+DDS-level QoS events. Connections to \texttt{ros2\_tracing} and network-level
+observation could add execution, middleware, and security information when an
+application-level record provides only part of the required context.
+
+The distributed path also needs stronger operational support. Duplicate
+suppression, persistent queues, recovery after disconnection, clock
+synchronization, and defined handling for records that arrive late would give
+multi-host rules clearer delivery and time behaviour. Several verifier
+processes, automatic placement, component health checking, and security support
+would extend the split deployment towards larger and longer-running systems.
+Evaluation with physical robots, larger fleets, unreliable networks, and
+long-duration runs would then provide evidence about scalability, resource use,
+and failure behaviour.
+
+The existing converter and verdict-service interfaces can support further
+custom DSLs and checking engines. Future work can provide templates, reusable
+tests, and clear documentation of plugin settings and DSL-record fields so that
+users can add these plugins more easily. Example plugin packages could prepare
+timestamped signals for a temporal-logic DSL, translate observations into
+events for a state-machine DSL, or connect a project-specific rule language.
+Each package would reuse the same common records, checking graph, deployment
+choices, and verdict format.
+
+The exporter and source interfaces already accept user-defined classes. File
+and MQTT are the current built-in transports for data records and DSL records,
+and verdicts can also be printed to standard output. Future work could add
+ready-to-use plugins for ROS~2 topics, TCP or other socket connections, HTTP or
+WebSocket endpoints, databases, and other message brokers. These additions
+would let the same monitoring pipeline fit more deployment environments and
+existing software systems.
+
+A Web UI is a further usability direction. It could discover the ROS graph,
+guide the selection of sources, fields, transformers, and checking components,
+show their placement across hosts, invoke the configuration generator, and
+present records and verdicts. A usability study could then measure whether this
+guided workflow reduces the effort and configuration errors involved in
+building a monitoring setup.
+
+Overall, the thesis shows that the recurring parts of ROS~2 runtime monitoring
+can be organized as a configurable and reusable infrastructure. A common data
+record preserves the context of heterogeneous observations, and a stable
+pipeline connects them to local or remote checking components. Within the
+evaluated scope, this design supports local topic checks, the reset-service
+rule, action feedback and status monitoring in Nav2, and multi-robot
+verification across several machines. It also provides clear extension points
+for broader observation, richer checking, and more robust deployment in future
+systems.

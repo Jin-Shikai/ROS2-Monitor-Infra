@@ -237,21 +237,34 @@ standard-output, and MQTT exporters. Because each boundary is represented by
 an exporter on one side and a source on the other, a pipeline stage can run
 in-process or across a transport with the same stage implementation.
 
+Exporter and source types use the same plugin mechanism as the checking
+components. Built-in names select the file and MQTT implementations, while an
+import path selects a user-defined class. A new output destination requires an
+exporter. A new transport between pipeline stages requires an exporter and a
+matching source.
+
 \section{Converters and Verdict Services}
 \label{sec:impl-checking}
 
 Checking is split into two component types. A converter receives a data record.
 It can return a checker-ready dictionary, a derived data record for another
 converter, or \texttt{None}. A converter may also run its own timer, which is
-needed for deadline properties. A verdict service evaluates checker-ready data
-and may return a verdict. A verdict contains a timestamp, a property
-identifier, a boolean result, and details.
+needed for deadline rules. A verdict service evaluates checker-ready data
+and may return a verdict. A verdict contains a timestamp, a rule identifier
+(the \texttt{property\_id} field), a boolean result, and details.
 
 The infrastructure attaches correlation data to each verdict. This includes
 the monitor session and the identifiers of the records that led to the
 verdict. A later analysis can therefore connect a verdict to the observations
 behind it. Converters and verdict services remain independent of ROS~2 packages
-and property languages.
+and rule languages.
+
+Together, a converter and a verdict service are an adapter for a custom DSL.
+The converter maps data records to the DSL input chosen by the user. The
+verdict service can contain the checking logic or call a separate DSL engine,
+then returns the result as a common verdict. Both classes are selected from
+YAML by import path. When the two stages run on different hosts, their DSL
+records must be JSON-serializable so they can cross a file or MQTT link.
 
 The concrete checking components used in the case studies live in the
 \texttt{custom/} package. They are selected from YAML by import path:
@@ -262,18 +275,18 @@ The concrete checking components used in the case studies live in the
     used for threshold-style checks.
 
     \item \textbf{ThresholdVerdict} compares one field with a bound. It emits a
-    violation verdict when the violation starts, and a recovery verdict when
+    negative verdict when the violation starts, and a positive verdict when
     the value returns inside the bound. It can require the violation to last
     for a configured duration before reporting it.
 
-    \item \textbf{ResetPoseEffectConverter} checks a property over two
+    \item \textbf{ResetPoseEffectConverter} checks a rule over two
     interfaces. After a successful \texttt{/reset\_pose} service response, the
     odometry should return close to the origin within a deadline. The converter
     correlates service records with odometry records and uses a timer to report
-    a violation when the deadline expires.
+    a negative verdict when the deadline expires.
 
     \item \textbf{RelativeSpeedConverter} joins odometry streams from two
-    robots and emits their relative speed. This demonstrates a property that
+    robots and emits their relative speed. This demonstrates a rule that
     uses more than one data source.
 \end{itemize}
 

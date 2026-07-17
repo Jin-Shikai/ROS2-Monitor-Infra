@@ -15,7 +15,7 @@ goals are different.
 
 The comparison follows the questions that kept recurring during the domain
 analysis: which part of the system is observed, which ROS interfaces are
-covered, how properties are checked, what can be configured or extended, where
+covered, how rules are checked, what can be configured or extended, where
 collection and checking run, and what the approach is mainly trying to achieve.
 
 These questions follow the general monitoring tasks identified by Rabiser et
@@ -28,7 +28,7 @@ ROSMonitoring is a runtime-verification framework for
 ROS~\cite{ferrando2020rosmonitoring}. It adds monitor nodes between selected
 publishers and subscribers. A YAML file describes the topics that should be
 monitored. The monitor changes ROS messages into events and sends them to an
-external \emph{oracle}. The oracle checks the events against a property.
+external \emph{oracle}. The oracle checks the events against a rule.
 
 The useful idea for this thesis is the boundary between ROS message handling and
 the external oracle. ROSMonitoring shows that the checker can run outside the
@@ -86,15 +86,15 @@ for this thesis are simpler custom converter and verdict-service classes.
 \section{RTAMT}
 
 RTAMT is a library for monitoring Signal Temporal Logic (STL)
-properties~\cite{yamaguchi2024rtamt}. It supports online and offline checking
-and can work with ROS~2. RTAMT can return a robustness value, which shows how
-strongly a signal satisfies or violates a property.
+specifications~\cite{yamaguchi2024rtamt}. It supports online and offline
+checking and can work with ROS~2. RTAMT can return a robustness value, which
+shows how strongly a signal satisfies or violates a rule.
 
 RTAMT helped clarify the role of converters in our design. STL monitoring needs
 timestamped signals, while another checker may want a different record shape.
 For that reason, the prototype keeps conversion separate from the verdict
 service. The thesis demonstrates that boundary with threshold-style and custom
-property plugins; an RTAMT-specific plugin remains future work.
+rule plugins; an RTAMT-specific plugin remains future work.
 
 \section{Tracing and Performance Monitoring}
 
@@ -106,7 +106,7 @@ and operating system events.
 \texttt{ros2\_tracing} sits below the level used in this thesis. It is the
 right tool when the question is about callback execution, message flow, or
 middleware timing. The prototype stays with typed application data. In
-practice, the two levels are complementary: a property verdict can point to a
+practice, the two levels are complementary: a rule verdict can point to a
 suspicious run, and a trace can help explain the execution details behind it.
 
 \section{Network-Level Monitoring and Security}
@@ -144,7 +144,7 @@ Distributed runtime verification is a wider research field. It studies how
 monitoring can work when the monitored system and monitors are spread across
 different machines~\cite{francalanza2018distributed}. Important problems
 include clock differences, message delays, failures, and the division of a
-property between local monitors.
+rule between local monitors.
 
 The split mode in this thesis is deliberately simpler than distributed runtime
 verification. Collection and checking can run on different machines, but
@@ -156,7 +156,7 @@ Betzer et al.\ use a digital twin for runtime verification of an autonomous
 mobile robot under uncertainty~\cite{betzer2024digitaltwinrv}. Their monitors
 are synthesized from TeSSLa specifications and run with a cloud-located digital
 twin. The digital twin estimates the robot state, checks safety and performance
-properties, and can intervene when a property is about to be violated.
+rules, and can intervene when a rule is about to be violated.
 
 The interesting contrast is that the digital twin gives the checker a richer
 world model. The prototype in this thesis stays closer to the ROS~2
@@ -229,7 +229,7 @@ Potential future verdict-service backend. \\
 \midrule
 
 RTAMT &
-Checking timestamped signals against STL properties &
+Checking timestamped signals against STL specifications &
 Online and offline STL monitoring &
 Motivates the converter boundary because STL checkers expect signal-shaped
 input. \\
@@ -420,7 +420,7 @@ Configurable converter and verdict-service plugins &
 
 After reviewing these approaches, the main gap lies in the infrastructure
 between ROS~2 communication
-and property-specific checking: a way to collect several kinds of ROS~2
+and rule-specific checking: a way to collect several kinds of ROS~2
 observations, keep their context, process them uniformly, and then hand them to
 different checkers.
 
@@ -428,7 +428,7 @@ The combination pursued here is passive collection from topics, service events, 
 action feedback/status; one common record format with source, time, session,
 and identity information; configurable data reduction before storage or
 transport; and separate routing, checking, and output stages. Plugins then make
-the property-specific parts replaceable, while the same checking chain can be
+the rule-specific parts replaceable, while the same checking chain can be
 used in integrated and split deployments.
 
 The contribution of this thesis is this combination as one reusable

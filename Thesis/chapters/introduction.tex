@@ -30,7 +30,7 @@ behaviour, or check whether the system follows expected
 rules~\cite{rabiser2019domain,leucker2009brief}. The component that performs
 this task is called a \emph{monitor}: it observes the running system, records
 what it sees as observations, and can analyse these observations, for example
-by checking them against an expected property and reporting a verdict. Unlike
+by checking them against an expected rule and reporting a verdict. Unlike
 model checking, runtime monitoring does not study every possible system state.
 It studies the behaviour that actually happens during an execution. When the
 emphasis is on checking the observed behaviour against a specification, the
@@ -72,7 +72,7 @@ They have to decide \emph{how} to observe it: through extra subscriptions,
 service introspection, lower-level tracing, or instrumented application code.
 They have to decide how much data to keep: complete messages support offline
 replay, while a few fields from a high-rate stream may be all that a check
-needs. They have to decide how the properties of interest are specified and
+needs. They have to decide how the rules of interest are specified and
 checked: as simple thresholds, state machines, temporal-logic formulas, or
 project-specific checking services. Finally, they have to decide \emph{where} the
 monitor is deployed: together with the application, close to the robot, or on
@@ -95,11 +95,10 @@ implementation effort should be reduced by automation and by reusable,
 configurable infrastructure support.
 
 These two problems, the systematic specification of a monitoring solution and
-the reusable implementation of it, are the subject of this thesis. The thesis
-is not concerned with how properties are specified or how they are checked.
-Existing specification languages and checking tools can be attached to the
-infrastructure through defined interfaces; the infrastructure delivers the
-observations they need.
+the reusable implementation of it, are the subject of this thesis. Rule
+specification and checking remain the responsibility of attached tools or
+user-provided plugins. The infrastructure supplies converter and verdict-service
+interfaces and delivers the observations needed by these components.
 
 \section{Research Objective and Questions}
 
@@ -142,7 +141,7 @@ To answer RQ2, we perform a domain analysis of the reviewed monitoring
 approaches. We identify the tasks they share, such as collecting, processing,
 routing, checking, and reporting, and the points where they differ, such as
 the observable elements, the monitoring architecture, the monitoring mode, the
-system configuration, and the implementation technique. We capture these
+system configuration, and the implementation paradigm. We capture these
 commonalities and variabilities in a feature model
 (Chapter~\ref{chapter:design}).
 
@@ -154,7 +153,7 @@ action feedback and status stream and stores each observation in a common data
 record that carries the payload together with source information, timestamps,
 a session identifier, and a record identifier. Optional transformers reduce or
 reshape records, dispatchers route them to outputs and checking components,
-converters prepare them for property-specific verdict services, and exporters
+converters prepare them for rule-specific verdict services, and exporters
 deliver data and verdicts to files, standard output, or MQTT. The same
 pipeline supports an integrated deployment, in which all steps run in one
 ROS~2-facing process, and a split deployment, in which a robot-side monitor
@@ -162,12 +161,11 @@ sends records over MQTT to a separate verifier without a ROS~2 dependency. We
 then check the architecture against the feature model from RQ2 to determine
 which of the identified features it can incorporate.
 
-To answer RQ4, we evaluate the prototype through case studies that cover the
-three ROS~2 communication mechanisms and both deployment forms, including a
-Navigation~2 (Nav2) case study; Nav2 is chosen because it combines topics,
-services, and actions in a realistic robotic application. The case studies are
-complemented by unit tests, Docker Compose deployment examples, offline
-replay, a multi-robot scenario, and a three-machine LAN deployment across
+To answer RQ4, we evaluate the prototype through five case studies that cover
+the three ROS~2 communication mechanisms and both deployment forms, including
+a Navigation~2 (Nav2) case study; Nav2 is chosen because it combines topics,
+services, and actions in a realistic robotic application. The case studies
+extend to a multi-robot scenario and a three-machine LAN deployment across
 Ubuntu, Raspberry Pi, and macOS (Chapter~\ref{chapter:evaluation}).
 
 \section{Contributions}
@@ -182,7 +180,7 @@ The contributions of this thesis are:
     ROS~2 monitoring solutions (RQ2).
 
     \item A reference architecture for ROS~2 monitoring that separates
-    observation, processing, transport, checking, feedback, and evidence
+    observation, processing, transport, checking, and evidence
     handling. The architecture maps the general monitoring tasks identified in
     the software-monitoring literature~\cite{rabiser2019domain} to ROS~2
     systems and makes the placement of monitoring functions explicit (RQ3).
@@ -190,29 +188,30 @@ The contributions of this thesis are:
     \item A monitoring model that can express several
     patterns found in existing work: ROS-facing collection with an external
     oracle as in ROSMonitoring~\cite{ferrando2020rosmonitoring}, configurable
-    monitoring services as in ROMoSu~\cite{stadler2023romosu}, and remote
-    verification loops such as digital-twin runtime
+    monitoring services as in ROMoSu~\cite{stadler2023romosu}, and the
+    observation and remote-checking side of digital-twin runtime
     verification~\cite{betzer2024digitaltwinrv}. The same architecture also
     supports combinations that are not covered by these systems alone,
-    such as passive ROS~2 topic, service, and action observation feeding either
-    local or remote checking components (RQ3).
+    such as passive collection of ROS~2 topic messages, service events, and
+    action feedback and status for either local or remote checking components
+    (RQ3).
 
     \item An evaluation of the infrastructure through five experiments
     (RQ4). A speed-limit experiment demonstrates topic monitoring: velocity
-    messages are collected, reduced to the relevant fields, and checked
-    against a threshold in both the integrated and the split deployment. A
+    messages are collected and checked against a threshold in both the
+    integrated and the split deployment. A
     service-reset experiment demonstrates service monitoring: reset requests
     and responses are captured through service introspection and checked for
     their effect on the robot state. Navigation~2 experiments demonstrate
     action monitoring in a realistic application: navigation goals are
     followed through action feedback and status, together with the topics that
     Nav2 uses during navigation. They then extend this setup to two robots, a
-    property over both robot traces, and a physical three-machine deployment.
+    rule over both robot traces, and a physical three-machine deployment.
 \end{enumerate}
 
 The main contribution is the reusable monitoring architecture and the
 infrastructure that realizes it. The thesis provides the architectural layer between ROS~2
-communication and property-specific checking. This layer can host deployment
+communication and rule-specific checking. This layer can host deployment
 styles used in existing monitoring frameworks and extend them with uniform
 ROS~2 observations, split robot/verifier deployment, replay, and evidence
 handling.

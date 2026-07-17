@@ -32,9 +32,10 @@ configured through YAML and plugins around a stable monitoring core.
 \section{Selected Feature Coverage}
 
 Table~\ref{tab:selected-feature-coverage} summarizes how the implemented
-prototype relates to the feature model. The table distinguishes between
-features that are implemented directly, features that are represented by the
-demonstration scenarios, and unselected feature variants.
+prototype relates to the feature model. The table distinguishes between the
+feature coverage that is implemented and exercised by the five evaluation
+experiments (Chapter~\ref{chapter:evaluation}) and unselected feature
+variants.
 
 \begin{table}[htbp]
 \centering
@@ -55,9 +56,9 @@ Parameters, node lifecycle states, DDS-level QoS events, network packets, and a
 complete action trace with goal, cancellation, and result events. \\
 \midrule
 Monitoring architecture &
-The infrastructure supports an integrated setup and a split robot/verifier
-setup. Demo scenarios also exercise hybrid, multi-robot, global, choreographed,
-and offline replay organizations. &
+The infrastructure supports an integrated deployment and a split
+robot/verifier deployment. The evaluation exercises both forms with one and
+two robots on a single machine and across three physical machines. &
 Automatic monitor placement, fault-tolerant distributed verification, global
 message ordering, and clock synchronization guarantees. \\
 \midrule
@@ -68,8 +69,9 @@ Active intervention, automatic recovery, message blocking, or changes to robot
 behaviour. \\
 \midrule
 System configuration &
-Single-robot and multi-robot configurations can be expressed with the same YAML
-configuration concepts and record format. &
+Single-robot and multi-robot configurations are expressed with the same YAML
+configuration concepts and record format; the evaluation generates them from
+one deployment description per experiment. &
 Automatic generation of the full monitoring configuration from a system model
 or graphical tool. \\
 \midrule
@@ -107,7 +109,7 @@ throttling, and filtering into the infrastructure before storage or transport.
 The remaining requirements are about keeping changeable parts apart. Collection
 handles ROS~2 types and communication, while checker-specific knowledge stays
 in converters and verdict services. A converter may adapt records for a
-checker, while a verdict service contains the property-specific logic. YAML
+checker, while a verdict service contains the rule-specific logic. YAML
 configuration covers common choices,
 and plugins cover project-specific conversion, checking, input, and output
 behaviour. The same chain should then be usable both when everything runs in
@@ -123,11 +125,18 @@ rate, or emitting only changed values. Dispatchers then route the record to data
 exporters and to optional checking chains.
 
 Checking is deliberately separated into two steps. A converter prepares a data
-record for one property-specific checker. A verdict service evaluates the
+record for one rule-specific checker. A verdict service evaluates the
 prepared data and returns a structured verdict. Verdict exporters then deliver
 the result to standard output, a file, MQTT, or another configured destination.
 This separation keeps the ROS~2 collection layer independent from a particular
 verification language or checking algorithm.
+
+A converter and a verdict service can also form an adapter for a user-defined
+DSL. The converter translates common data records into the input format of the
+DSL, and the verdict service holds or calls its checking engine. Both components
+can be supplied as plugins. This keeps the DSL and its checking logic outside
+the monitoring core while giving every checker the same record, deployment,
+and verdict interfaces.
 
 Figure~\ref{fig:pipeline-components} shows the main pipeline stages. The same
 chain is used for topic messages, service events, and action feedback or status
@@ -166,11 +175,11 @@ following meanings in the design:
     \item[Source] A verifier-side input adapter that reads data records from a
     transport or replay file and injects them into the same checking chain.
 
-    \item[Converter] A property-specific adapter that projects a data record
+    \item[Converter] A rule-specific adapter that projects a data record
     into the input shape expected by a checker.
 
     \item[Verdict service] A checker that evaluates converted data and returns
-    a structured verdict when a property state is observed.
+    a structured verdict when a rule state is observed.
 
     \item[Verdict exporter] A sink for verdicts, such as standard output, a
     JSONL file, or an MQTT verdict topic.
@@ -178,16 +187,17 @@ following meanings in the design:
 
 This naming keeps the infrastructure precise: collectors and sources introduce
 records, transformers change records, dispatchers route records, converters
-adapt records for property logic, and verdict services perform the actual
+adapt records for rule logic, and verdict services perform the actual
 checking.
 
 \section{Common Data Record}
 
 The common data record is the central abstraction of the infrastructure. Every
-captured topic message, service event, and action observation is converted into
-this format before it reaches processing, transport, or checking. Records are
-serialized as JSONL, with one JSON object per line. Empty optional fields are
-omitted from the serialized output to keep files and MQTT payloads compact.
+captured topic message, service event, and action feedback or status observation
+is converted into this format before it reaches processing, transport, or
+checking. Records are serialized as JSONL, with one JSON object per line. Empty
+optional fields are omitted from the serialized output to keep files and MQTT
+payloads compact.
 
 Table~\ref{tab:data-record-schema} summarizes the fields used by the record.
 The field names follow the implementation and the detailed record
@@ -269,11 +279,13 @@ introduced in Section~\ref{sec:monitoring-organisations}.
 
 In the integrated deployment, collection, processing, checking, and output run
 in one ROS~2-facing process. This form is useful for local development and for
-properties that can be checked close to the observed application. It
+rules that can be checked close to the observed application. It
 corresponds to the traditional organisation in
 Figure~\ref{fig:org-traditional}: the application and the complete monitoring
-pipeline share one location and one clock, so the records form a totally
-ordered trace that a single monitor process analyses.
+pipeline share one location and one clock. The monitor processes the received
+records in a local order and one process analyses this observed trace. DDS
+delivery can still differ from publication order when records come from
+several publishers.
 
 \begin{figure}[htbp]
     \centering

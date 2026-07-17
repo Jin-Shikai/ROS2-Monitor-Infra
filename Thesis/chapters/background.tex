@@ -120,10 +120,10 @@ security monitoring, and requirements checking~\cite{rabiser2019domain}.
 
 Runtime verification is a closely related technique in which an observed
 execution is checked against a specification~\cite{leucker2009brief}. It can
-report whether the observed behaviour satisfies or violates a property, but it
+report whether the observed behaviour satisfies or violates a rule, but it
 does not establish correctness for all possible executions. In this
 thesis, runtime monitoring is used as the broader term for observing and
-processing runtime data, while runtime verification denotes the property-checking
+processing runtime data, while runtime verification denotes the rule-checking
 task that such monitoring can support.
 
 The same basic roles appear in model-driven runtime-verification approaches
@@ -143,15 +143,17 @@ This thesis uses the following terms:
 
     \item[Trace] A sequence of observations used for later checking.
 
-    \item[Property] A rule or expected condition.
+    \item[Rule] An expected condition that the observed behaviour is checked
+    against. The literature also calls this a
+    \emph{property}~\cite{leucker2009brief}.
 
-    \item[Monitor] A component that observes the system or checks properties.
+    \item[Monitor] A component that observes the system or checks rules.
 
-    \item[Verdict] The result of a property check.
+    \item[Verdict] The result of a rule check.
 \end{description}
 
 Figure~\ref{fig:monitoring-terms} shows how these terms relate. The monitor
-captures observations from the system under monitoring. Based on a property,
+captures observations from the system under monitoring. Based on a rule,
 it evaluates the observed behaviour and reports a verdict to a user or to
 another component.
 
@@ -164,14 +166,14 @@ another component.
   \node[box] (system) {System under\\monitoring};
   \node[box, right=2.6cm of system] (monitor) {Monitor};
   \node[box, right=2.6cm of monitor] (user) {User or\\component};
-  \node[box, dashed, above=1.0cm of monitor] (property) {Property};
+  \node[box, dashed, above=1.0cm of monitor] (property) {Rule};
   \draw[msg] (system) -- node[above] {\small observations}
       node[below] {\small (trace)} (monitor);
   \draw[msg] (monitor) -- node[above] {\small verdict} (user);
   \draw[msg] (property) -- (monitor);
 \end{tikzpicture}
 \caption{Basic runtime monitoring terminology. A monitor captures observations
-from the system under monitoring, checks them against a property, and reports
+from the system under monitoring, checks them against a rule, and reports
 a verdict.}
 \label{fig:monitoring-terms}
 \end{figure}
@@ -349,10 +351,9 @@ to reduce the amount of data.
 
 \subsection{Routing and Storage}
 
-After processing, raw data is wrapped as event trace, and 
-needs to be sent to the correct destination. For example, one
-event trace may be written to a file, sent over a network, and passed to a
-checking component. Adding or changing such destinations
+After processing, the collected data needs to be sent to the correct
+destination. For example, the same observation stream may be written to a
+file, sent over a network, and passed to a checking component. Adding or changing such destinations
 should not require changes to the components that collect the data.
 
 Storage also supports later analysis. A stable data format makes it easier to
@@ -360,7 +361,7 @@ replay a run or to compare results from different checking tools.
 
 \subsection{Checking and Verdicts}
 
-Checking decides whether observed data follows an expected property. Different
+Checking decides whether observed data follows an expected rule. Different
 tools need different input formats. A simple threshold checker may need one
 number, while a temporal-logic checker may need a sequence of timestamped
 values.
@@ -520,7 +521,7 @@ single global clock and form one synchronised, totally ordered trace, but the
 monitoring work is decomposed into several monitors. The monitors can interact
 to combine their partial results, and processes and monitors may be placed at
 different locations that share the global clock. This decomposition reflects
-that a global property can often be split into smaller properties that
+that a global rule can often be split into smaller rules that
 cooperating monitors check
 independently~\cite{francalanza2018distributed}.
 
@@ -557,9 +558,9 @@ locations, while remote monitors at a central location perform the analysis
 In a \emph{choreographed} monitoring setup
 (Figure~\ref{fig:org-choreographed}), the verification work is instead pushed
 to the locations where the traces are produced. Local monitors analyse local
-traces and, when they contribute to the same global property, coordinate with
+traces and, when they contribute to the same global rule, coordinate with
 each other. This reduces data exposure and communication overhead, but it is
-more complex to set up: the properties have to be decomposed into coordinated
+more complex to set up: the rules have to be decomposed into coordinated
 local monitors, and the monitored locations must allow the extra local
 computation~\cite{francalanza2018distributed}.
 

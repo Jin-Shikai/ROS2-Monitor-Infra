@@ -1,1 +1,362 @@
 \chapter{Discussion}\label{chapter:discussion}
+
+This chapter interprets the results of the thesis and places them within the
+scope established by the research questions. It first discusses what the
+feature model, reference architecture, and evaluation show when considered
+together. It then examines the boundaries of the prototype and the evaluation,
+followed by directions for future work.
+
+\section{Interpretation of the Results}
+
+\subsection{From the Monitoring Design Space to a Reusable Infrastructure}
+
+The review in Chapter~\ref{chapter:related_work} shows that existing approaches
+usually specialize in one part of the monitoring problem. Some approaches
+collect ROS messages for an external oracle, some generate checkers from
+requirements, and others observe network traffic or lower-level execution
+events. Topic monitoring is common in the reviewed ROS-focused approaches.
+ROSMonitoring 2.0 extends this coverage to services, with partial ROS~2
+support, while ROS~2 action monitoring remains an open gap in the reviewed
+work. No reviewed approach combines typed ROS~2 topic messages, service events,
+and action progress in a configurable infrastructure that can place collection
+and checking in separate processes. These boundaries explain the observation
+gaps identified for RQ1 and the broader research gap described in
+Chapter~\ref{chapter:related_work}.
+
+The feature model developed for RQ2 gives structure to this broad design space.
+Its main value is the separation of observable elements, monitoring
+architecture, monitoring mode, system configuration, and implementation
+paradigm. These dimensions make the design choices explicit. For example, the
+choice between application-level and lower-level observation is separate from
+the choice between integrated and distributed placement. This separation
+prevents one deployment decision from becoming a fixed property of every
+collector or checker.
+
+The prototype implements the focused path summarized in
+Table~\ref{tab:selected-feature-coverage}: passive application-level collection
+through ROS~2-facing monitor nodes, configurable processing and checking, and
+integrated or split deployment. The selected path covers the research gap
+identified in Chapter~\ref{chapter:related_work}. Topic messages, service
+events, and action feedback and status enter the same pipeline, while
+converters and verdict services keep rule-specific knowledge outside the
+collection layer. This result answers RQ3 for the selected feature set. The reference
+architecture incorporates the common monitoring tasks and preserves the
+variation points needed for sources, processing steps, checking components,
+outputs, and placement.
+
+Several unselected feature variants map onto these variation points and could
+therefore be hosted without structural change. Parameter changes and
+lifecycle transitions are published on regular topics
+(\texttt{/parameter\_events} and the lifecycle transition-event topics), so
+they need only additional collector configurations or collector types. A
+complete action trace requires service collectors for the goal, cancellation,
+and result events of the hidden action services. A new transport requires an
+exporter and a matching source, and a new checker a converter and
+verdict-service pair. Other variants would change the assumptions of the
+design: active intervention needs a feedback path into the application,
+global message ordering and clock guarantees need coordination that the
+record format alone does not provide, and network taps or kernel tracing
+observe data without the typed source identity that the collectors rely on.
+
+The common data record is central to this result. Uniform fields let sources,
+transformers, transports, and checking components exchange one representation.
+At the same time, \texttt{source\_type}, \texttt{source\_name},
+\texttt{phase}, timestamps, and metadata retain the distinctions between ROS~2
+communication mechanisms. The uniform representation therefore simplifies
+the pipeline boundary while preserving the context needed by later checking.
+The session and record identifiers also provide an evidence trail from a
+verdict back to its contributing observations. E1--E5 use this attribution to
+compare online verdicts with recorded inputs.
+
+This architecture reduces repeated monitoring work. Runtime type resolution,
+message conversion, record creation, JSONL serialization, routing, and
+transport are implemented once in the infrastructure. A new application still
+requires decisions about useful sources and rules. Once these decisions
+are made, YAML configuration and project-specific plugins reuse the same
+monitoring core. The prototype therefore automates the recurring
+infrastructure tasks described in the problem statement while leaving
+application knowledge explicit.
+
+\subsection{Meaning of the Evaluation Results}
+
+The five experiments provide complementary evidence for RQ4. E1 establishes
+the complete integrated path for a topic rule. E2 shows that topic
+messages, service request and response events, and action feedback and status
+can coexist in one session. It also shows that a rule can correlate a
+service response with later topic data. Its identical local and remote speed
+verdicts show that serialization and MQTT transport preserved the meaning and
+record attribution of the check in that run.
+
+E3 is important because it replaces the small stimulus processes with an
+existing Nav2 application. The monitor observes Nav2 through its published
+interfaces, and the navigation code remains unchanged. The three goals cover a
+\textsc{succeeded} status within the deadline, a goal that remains active beyond
+the deadline, and an \textsc{aborted} status. Agreement between the online
+verdicts, the mission log, and the Gazebo route data shows that the checking
+chain responded to meaningful changes in application behaviour. It also
+demonstrates the value of combining topic messages with action feedback and
+status: topic data describes robot motion, while the action records describe
+progress and the final status.
+
+E4 extends this result from one trace to two robot namespaces. The independent
+speed checks show that \texttt{source\_name} keeps the robot streams separate.
+The separation check shows that one converter can combine observations from
+both robots. This is a useful form of multi-robot monitoring because several
+robot-local streams can feed one rule while the collection mechanism
+remains unchanged. The agreement with Gazebo positions gives an additional
+source of evidence for the four separation transitions.
+
+E5 changes placement while retaining the E4 checking graph. DDS carries the
+robot observations from the workstation to the Raspberry Pi, and MQTT carries
+the data records to a ROS-independent verifier on macOS. Both verifier
+processes received every data record from the six monitored E4 sources, and
+the 34 verdict transitions on the macOS verifier matched the Pi reference.
+These results show that the split deployment works across the operating systems
+and processor architectures used in the experiment. They also support the
+design decision to keep ROS~2 dependencies in the collection layer: the remote
+verifier needs the record and checking interfaces, while ROS~2 type handling
+stays near the system under monitoring.
+
+Taken together, the experiments support a positive answer to RQ4 within the
+scope stated in Section~\ref{sec:eval-rq4-answer}. The infrastructure handles
+the selected application-level observations, processing steps, checking
+placements, and multi-source rules in both small examples and Nav2 case
+studies. The results establish feasibility and functional correctness for the
+observed runs. Broader guarantees depend on the limitations discussed below.
+
+\subsection{Design Trade-offs}
+
+Early processing is useful for high-rate ROS~2 sources. Field extraction keeps
+only the values required by a rule, rate limiting reduces repeated
+observations, and change filtering suppresses stable values. E3 demonstrates
+this choice by reducing odometry before storage and MQTT transport. The same
+choice makes the monitoring configuration part of the checking setup. A
+rate limit can hide a short-lived state, and field extraction can remove data
+needed by a later checker. Users therefore need to select transformers with the
+timing and data needs of each rule in mind. Keeping the applied transformer
+names in record metadata helps later interpretation. Discarded observations
+remain unavailable to downstream components.
+
+The split deployment moves checking work away from the ROS~2 application and
+allows the verifier to use a plain Python environment. It also introduces a
+transport boundary. Network delay, temporary disconnection, queue limits, and
+broker availability can affect when records reach the checker. The integrated
+deployment avoids this boundary and keeps the trace within one process, while
+sharing processor and memory resources with the ROS~2-facing monitor. The two
+deployment forms therefore serve different operational needs. The
+configuration keeps this choice separate from converter and verdict-service
+logic, which allows the same checking graph to be placed according to the
+available resources and network.
+
+Plugin interfaces provide flexibility at the checking boundary. A user can
+provide a converter and a verdict service as Python classes and select them in
+YAML by their import paths. Together, these two plugins form an adapter for the
+user's DSL. The converter changes the common data record into the input format
+of that DSL. The verdict service holds or calls the checking engine and changes
+its result into the common verdict format. The infrastructure treats the data
+between these plugins as a DSL record, so the DSL syntax and checking logic stay
+inside the user-provided classes.
+
+The converter and verdict service can run in the same process or on different
+hosts. In the second case, the DSL record is serialized as JSON and sent through
+a file or MQTT link. This keeps the DSL adapter separate from its placement,
+provided that the converter produces a JSON-serializable record.
+
+The case-study plugins show several simple uses of this extension point. A
+converter can select one value, combine records from several sources, or emit a
+record when a timer expires. A verdict service can check a threshold, a
+deadline, or a change of state. The same interfaces can also connect a larger
+DSL engine. For example, a converter could prepare timestamped signals for a
+temporal-logic DSL, or translate ROS~2 observations into events for a
+project-specific state-machine DSL. These extensions reuse the common record,
+checking graph, deployment configuration, and verdict exporters.
+
+\section{Limitations of the Prototype}
+
+\subsection{Observation and Checking Scope}
+
+The prototype concentrates on passive application-level observation. A topic
+collector sees the messages delivered to its own subscription, so compatible
+QoS settings and successful DDS discovery remain necessary. Service monitoring
+depends on service introspection being enabled by a client or server. Action
+collection covers feedback and status directly. Goal, cancellation, and result
+exchanges require observation of the corresponding service events, which means
+that a complete action trace needs service collectors in addition to the
+current action collector.
+
+Several feature-model variants remain outside this implementation. These
+include parameters, node lifecycle states, DDS-level QoS events, network
+packets, and operating-system or tracing events. The prototype also uses
+ROS~2-facing nodes as its observation mechanism. Decorator-based interception,
+network tapping, and LTTng tracing would require additional collector types and
+different assumptions about types and source identity.
+
+The implemented monitoring mode is passive. Verdicts are exported to standard
+output, files, or MQTT for later use. Recovery actions, message blocking, and
+changes to robot behaviour remain outside the runtime path. This scope keeps
+the monitor from directly affecting application decisions, while limiting its
+role to observation, checking, and reporting.
+
+The infrastructure leaves the choice of rule language to user-provided
+plugins. Users can support their own DSL by implementing a converter and a
+verdict service, and the framework checks that both classes implement the
+required interfaces. The two plugins still have to agree on the shape of the
+DSL record, and the user has to implement and test the meaning of the rule.
+The current project provides examples of this process, while reusable
+templates, common test support, and clearer plugin descriptions could make
+custom DSL integration easier.
+
+Global rules are currently implemented by converters that keep the
+required state from several sources. Automatic decomposition of a rule
+among several monitors is beyond the current split deployment, whose checking
+remains logically centralized at a verifier.
+
+\subsection{Ordering, Time, and Delivery}
+
+Each data record has a monitor-side wall-clock timestamp and a per-source
+sequence number. These fields support attribution and ordering within one
+collector. An integrated monitor also has a local processing order for the
+records it receives. The infrastructure does not reconstruct publication order
+across several publishers or establish a global order across hosts and clocks.
+A distributed rule can therefore observe records in an order influenced by
+DDS and MQTT delivery. The E4 and E5 separation converter pairs each new
+position with the latest position received for the other robot. This approach
+is suitable for the evaluated rule, while its result contains the sampling
+and arrival-time difference between the two streams.
+
+MQTT QoS and record identifiers provide useful transport support. End-to-end
+exactly-once delivery remains outside the current prototype. A queued message
+can be dropped when a bounded outbound queue is full, and QoS~1 delivery can
+introduce duplicates after reconnection. Record identifiers make such
+duplicates recognizable. Duplicate suppression, persistent buffering,
+recovery of missed intervals, and a defined policy for late records require
+further work.
+
+The prototype also lacks fault-tolerant checking and automatic failover. A
+broker or verifier failure can interrupt a split monitoring run, and a
+logically centralized verifier can become a bottleneck as the number or rate of
+sources grows. Authentication, access control, and protection of monitoring
+data were outside the evaluation. These concerns become more important when a
+split deployment crosses an untrusted network or carries sensitive robot data.
+
+\subsection{Configuration and Operation}
+
+The deployment generator reduces inconsistency between host configurations by
+projecting one JSON deployment description into matching runtime YAML files.
+The description still requires explicit hosts, runtime roles, sources, class
+paths, links, and transport parameters. Users need knowledge of the ROS graph,
+message fields, checker inputs, and deployment network before they can create a
+valid setup. Configuration validation catches structural errors, while the
+meaning of a selected source or rule still depends on the application.
+
+Source types can be discovered as a startup fallback, and the required ROS~2
+interface packages must be available in the monitor environment. The running
+pipeline uses the predefined collectors and component placement for the full
+run. Automatic reconfiguration after ROS graph or host changes remains future
+work. Systems with dynamic nodes and long-lived operation also need clearer
+operational state reporting.
+
+\section{Threats to Validity}
+
+The answers to RQ1 and RQ2 depend on the selection and interpretation of the
+related work. The reviewed approaches cover several observation levels and
+checking styles, while additional research or industrial systems may expose
+further features. Differences in terminology and the level of detail provided
+by each publication can also affect the capability classification. The
+prototype shows that the selected path through the feature model can be
+implemented. Independent review of the model by ROS~2 developers and monitoring
+experts remains future validation work.
+
+The evaluation combines deterministic stimuli, recorded JSONL artifacts,
+offline replay, mission logs, and Gazebo positions. This combination strengthens
+the correctness argument because verdicts can be checked against both recorded
+inputs and application-level outcomes. Some comparisons replay the same records
+through rule logic that is closely related to the online checker. A shared
+implementation error could therefore affect both results. The independently
+recorded mission and Gazebo data in E3--E5 reduce this threat for navigation
+outcomes and robot separation. Independent oracle coverage remains limited for
+individual field conversions and pipeline operations.
+
+The experiments select representative configurations from a larger feature
+model. They cover three ROS~2 communication mechanisms, two deployment forms,
+multi-source checks, and a three-machine setup. Many valid combinations remain
+untested, including other plugins, file transport across hosts, different QoS
+profiles, and several simultaneous verifier chains. The results therefore
+provide evidence for the implemented paths exercised by E1--E5. Other
+configurations admitted by the model require separate evaluation.
+
+External validity is limited by the experimental environment. The case studies
+use ROS~2 Kilted, Fast DDS, one MQTT broker, one local network, at most two
+simulated TurtleBot3 robots, and runs lasting a few minutes. E5 distributes the
+runtime over three physical computers, while Gazebo remains the source of the
+robot behaviour. Other ROS~2 distributions, DDS implementations, robot
+hardware, networks, fleet sizes, and long-running deployments may expose
+different timing, discovery, and resource behaviour.
+
+The evaluation focuses on whether the infrastructure supports the selected
+monitoring needs and whether the observed verdicts are correct. A systematic
+scalability study, failure-injection study, usability study, and performance
+comparison with the approaches in Chapter~\ref{chapter:related_work} remain
+future evaluation work. The five experiments provide limited evidence about
+production capacity and relative performance.
+
+\section{Future Work}
+
+The first direction is broader ROS~2 observation. A complete action trace could
+combine feedback and status with goal, cancellation, and result service events.
+Additional collectors could cover parameters, lifecycle transitions, and
+DDS-level QoS events. Adapters for \texttt{ros2\_tracing} or network-level data
+could complement the typed application records when a rule needs callback,
+scheduling, middleware, or security information. The common data record would
+need clear extensions for the identity and timing information of these sources.
+
+The second direction is stronger support for distributed monitoring. Record
+handling could add duplicate suppression, persistent queues, replay after
+reconnection, and explicit rules for records that arrive late. Clock
+synchronization and time windows based on record timestamps could improve
+rules that correlate observations from several hosts. Larger deployments
+would also benefit from several verifier
+processes, automatic placement, health checking, and recovery after component
+failure. Long-duration experiments over less reliable networks and with larger
+robot fleets would show how these mechanisms affect delivery, latency, and
+resource use. Security should be evaluated together with these extensions.
+
+The converter and verdict-service interfaces already allow users to add their
+own DSL and checking engine. Future work can make this extension path easier to
+use by providing plugin templates, a small test harness, and clear documentation
+of plugin parameters and DSL-record fields. Additional plugin packages could
+then support temporal-logic DSLs, state-machine DSLs, or project-specific rule
+languages. In each case, the converter would prepare the DSL input and keep the
+input record identifiers, while the verdict service would run the checker and
+return the common verdict. The collection and deployment parts of the
+infrastructure would remain unchanged.
+
+Exporters and transport endpoints provide a similar extension point. The
+interfaces already accept user-defined exporter and source classes. The
+built-in transports for data records and DSL records currently use files or
+MQTT, and verdicts can also be written to standard output. Future work could
+add ready-to-use plugins for ROS~2 topics, TCP or other socket connections,
+HTTP or WebSocket endpoints, databases, or other message brokers. A new output
+destination only needs an exporter. A new split-deployment transport needs an
+exporter and a matching source. These additions would give users more choices
+for connecting the monitoring pipeline to their existing systems while reusing
+collectors, converters, and verdict services.
+
+A Web UI is an important usability direction. It could discover the ROS graph,
+let users select topic, service event, and action feedback/status streams,
+message fields, transformers, and checking components, and show the placement
+of runtimes across hosts. The UI could then validate the selected links, create
+the JSON deployment description, invoke the configuration generator, and
+present data records and verdicts.
+This work would turn several manual YAML and deployment decisions into a guided
+workflow. Its evaluation should study whether users can build correct monitoring
+setups with less effort and whether the generated configuration still makes all
+deployment and rule choices visible.
+
+Finally, evaluation on physical robots and longer field runs would strengthen
+the practical evidence. Such studies could compare integrated and split
+placement under constrained robot hardware, measure the effect of high-rate
+sensor data, introduce broker and network failures, and examine how operators
+use the recorded evidence. These experiments would connect the reusable
+infrastructure developed in this thesis with the wider field-based testing and
+operational monitoring process.

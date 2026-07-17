@@ -10,7 +10,7 @@ monitoring needs of realistic ROS~2 applications?
 The evaluation uses five experiments. E1 starts with one topic and an
 integrated monitor. E2 adds services, actions, and a split deployment over
 MQTT. E3 applies the infrastructure to an unmodified Nav2 application. E4
-extends the same setup to two robots and a property that uses observations
+extends the same setup to two robots and a rule that uses observations
 from both robots. E5 places the robots, monitor, and verifier on three
 different physical machines. Together, the experiments cover the main
 capabilities introduced in Chapters~\ref{chapter:design}
@@ -35,7 +35,7 @@ Check topics, services, and actions, and compare local and remote verdicts. \\
 E3 & One TurtleBot3 using Nav2 in Gazebo & Split over MQTT & Check a realistic
 navigation application with changing routes and action outcomes. \\
 E4 & Two TurtleBot3 robots using Nav2 & Split over MQTT & Check namespaced
-robot data and a minimum-separation property using both robots. \\
+robot data and a minimum-separation rule using both robots. \\
 E5 & The E4 application on three computers & Split over DDS and MQTT on a LAN
 & Check physical distribution across Ubuntu, Raspberry Pi, and macOS. \\
 \bottomrule
@@ -57,7 +57,7 @@ three-machine setup visible;
 the tables are calculated from the recorded experiment artifacts.
 
 The terms \emph{integrated} and \emph{split} describe process placement. 
-E1 checks properties inside the monitor
+E1 checks rules inside the monitor
 process. In E2--E4, the monitor and the verifier are separate
 processes, but they still run on the same machine and exchange records
 through an MQTT broker on \texttt{localhost}. This setup checks whether the
@@ -107,7 +107,7 @@ following rule:
 \]
 
 The verdict is negative when the speed first exceeds the limit and positive
-when it returns below the limit. Verdicts occur only when the property state
+when it returns below the limit. Verdicts occur only when the rule state
 changes.
 
 \paragraph{Results.}
@@ -133,7 +133,7 @@ Missed or additional verdicts & 0 \\
 
 \paragraph{Finding.} E1 shows that the basic topic path works as intended. The
 collector, converter, and verdict service preserve the expected sequence of
-property changes.
+rule-state changes.
 
 \section{E2: Topics, Services, and Actions in a Split Deployment}
 \label{sec:eval-e2}
@@ -227,9 +227,10 @@ Fibonacci actions & 23 goals, 115 feedback records, 23 successful statuses \\
 \end{table}
 
 \paragraph{Finding.} E2 shows that the same records produce identical verdicts
-when checked locally or after transport over MQTT. It also shows that
-topic, service, and action observations can be collected in one run, and that
-records from a service and a topic can contribute to one result.
+when checked locally or after transport over MQTT. It also shows that topic
+messages, service request and response events, and action feedback and status
+can be collected in one run, and that records from a service and a topic can
+contribute to one result.
 
 \section{E3: Monitoring a Nav2 Application}
 \label{sec:eval-e3}
@@ -437,7 +438,7 @@ and every threshold change should produce one verdict. \\
 \texttt{/robot1/amcl\_pose},
 \texttt{/robot2/amcl\_pose} & Topic & Localized positions in the shared map
 frame. Their distance should fall below 1.0~m and later recover during each of
-the two crossings, producing two violation and two recovery verdicts. \\
+the two crossings, producing two negative and two positive verdicts. \\
 \texttt{/robot1/odom},
 \texttt{/robot2/odom} & Topic & Pose and velocity in each
 robot's odometry frame, reduced to the required fields and limited to 5~Hz.
@@ -501,8 +502,8 @@ minimum-separation rule is violated and later recovers.}
 \paragraph{Results.} All four navigation goals succeeded. The monitor
 collected 3463 records. The two speed checks produced 12 and 20 verdicts
 respectively; every verdict matched the recorded command stream for that
-robot. The separation check produced two violation periods and two
-corresponding recovery verdicts. All four transitions matched the replay of
+robot. The separation check produced two violation periods, each opened by a
+negative verdict and closed by a positive verdict. All four transitions matched the replay of
 the localized pose records, including the contributing record identifiers.
 
 The smallest distance calculated from the localized poses was $0.587$~m. The
@@ -557,7 +558,7 @@ Python runtime for checking.
 The Pi also runs a second verifier as an experimental reference. The Pi and
 Mac verifiers subscribe to the same MQTT topic and use the same generated
 checking configuration. Comparing their verdict files tests whether both
-placements produce the same property results and contributing record
+placements produce the same rule results and contributing record
 identifiers. The reference process serves only this experimental comparison.
 Figure~\ref{fig:eval-e5-deployment} shows the resulting placement across the
 three machines.
@@ -614,8 +615,9 @@ the two simulated robots and their namespaced Nav2 views.}
 \end{minipage}
 \caption{First E5 crossing. The external display shows Gazebo and both RViz
 views on the Ubuntu workstation. The foreground Mac runs the remote verifier;
-the added verdict line when the robots meet reports the violation, and the
-next line reports recovery once their distance again exceeds 1.0~m.}
+the added verdict line when the robots meet reports the negative verdict, and
+the next line reports the positive verdict once their distance again exceeds
+1.0~m.}
 \label{fig:eval-e5-first-crossing}
 \end{figure}
 
@@ -682,6 +684,24 @@ to the Mac. The observed violations and recoveries on the Mac, together with
 the identical Pi reference stream, show that physical distribution preserved
 the meaning of the E4 checks.
 
+\section{Resource Use and Latency}
+\label{sec:eval-performance}
+
+Performance analysis is not the focus of this thesis, but the recorded runs
+give an indication of the cost of monitoring. In E1, the monitor process used
+about 1\,\% of one processor core and about 73~MB of memory, and the mean
+time from collecting a record to exporting the verdict it produced was
+0.29~ms. Checking the same records behind the local MQTT broker in E2 raised
+this time to 1.85~ms on average. While observing the six E4 sources, the
+monitor stayed below 5\,\% of one core and 92~MB. In E5, the Raspberry Pi
+carried the collection of all six sources, the file export, the MQTT
+publication, and the reference verifier within 13\,\% of one core and 114~MB,
+while the macOS verifier used about 1.4\,\% of one core and 28~MB; verdicts followed
+their triggering records within a few milliseconds across the LAN. The
+monitoring components therefore place limited pressure on the observed
+system, have modest resource requirements, and deliver verdicts with a
+latency that is acceptable for the supervision rules considered here.
+
 \section{Answer to RQ4}
 \label{sec:eval-rq4-answer}
 
@@ -707,7 +727,7 @@ deployment.
 \textbf{E4} & \textbf{E5} \\
 \midrule
 Topic observations & \cmark & \cmark & \cmark & \cmark & \cmark \\
-Service observations & -- & \cmark & -- & -- & -- \\
+Service request and response events & -- & \cmark & -- & -- & -- \\
 Action feedback and status & -- & \cmark & \cmark & -- & -- \\
 Integrated checking & \cmark & \cmark & -- & -- & -- \\
 Split checking over MQTT & -- & \cmark & \cmark & \cmark & \cmark \\
@@ -723,18 +743,18 @@ Three physical machines & -- & -- & -- & -- & \cmark \\
 
 The results answer RQ4 positively within the scope of the prototype. The
 infrastructure supports the application-level monitoring needs exercised by
-these case studies: topic, service, and action observations; processing before
-transport; checking in the monitor or in a separate verifier; correlation of
-several observations; and separation of data from multiple robots. The Nav2
-experiments show that these capabilities apply to an existing ROS~2
-application with its navigation code unchanged. The generated
-configurations show that deployment and checking components can be
-changed through configuration while retaining the same monitoring core.
-E5 additionally shows that the ROS~2-facing part can run on a Pi while the
-checking part runs independently on a macOS machine.
+these case studies: topic messages, service request and response events, and
+action feedback and status; processing before transport; checking in the
+monitor or in a separate verifier; correlation of several observations; and
+separation of data from multiple robots. The Nav2 experiments show that these
+capabilities apply to an existing ROS~2 application with its navigation code
+unchanged. The generated configurations show that deployment and checking
+components can be changed through configuration while retaining the same
+monitoring core. E5 additionally shows that the ROS~2-facing part can run on a
+Pi while the checking part runs independently on a macOS machine.
 
 The evaluated scope is one local network, up to two simulated robots, and the
-topic, service, and action observations selected in
+topic messages, service events, and action feedback and status selected in
 Chapter~\ref{chapter:design}. Within that scope, E1--E5 provide consistent
 evidence that the implemented infrastructure supports the monitoring needs
 stated in RQ4, from local topic checks to a three-machine Nav2 deployment.
