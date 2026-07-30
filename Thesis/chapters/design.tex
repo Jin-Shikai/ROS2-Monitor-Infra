@@ -6,14 +6,13 @@
 The review in Chapter~\ref{chapter:related_work} shows that a monitoring
 solution is not defined by one checker. It combines choices about observable
 elements, observation and checking placement, monitoring mode, operation, and
-implementation. A feature model is needed to keep these choices explicit and
-to prevent one prototype configuration from being presented as the complete
-domain.
+implementation. A feature model keeps these choices explicit and separates the
+description of the domain from the configuration chosen for one prototype.
 
 The domain model in Figure~\ref{fig:feature-model-domain} was derived by
 identifying recurring capabilities in the reviewed literature, merging
-synonymous ones, and recording constraints between branches as cross-tree
-notes. It uses the FODA notation introduced in
+synonymous ones, and recording dependencies between branches as cross-tree
+constraints. It uses the FODA notation introduced in
 Section~\ref{sec:feature-models} and captures the design space rather than one
 tool. Deployment parameters such as host addresses, ROS names, and class paths
 are not features; they belong to the deployment specification.
@@ -48,7 +47,7 @@ are not features; they belong to the deployment specification.
   which the model records as a mandatory child of the split feature.
 
   \item[Monitoring mode.] Passive and active behaviour form an or group and
-  may coexist. An oracle or checker is applicable in both cases: a passive
+  may coexist. A checker is applicable in both cases: a passive
   solution reports its verdict, while an active solution can additionally use
   it for feedback.
 
@@ -126,9 +125,9 @@ requirements:
   \item[R6 --- Traceable evidence.] A verdict must be able to identify the
   observation records that contributed to it.
 
-  \item[R7 --- Extensibility.] New sources, transformers, transports,
-  converters, verdict services, and exporters must be addable behind stable
-  interfaces.
+  \item[R7 --- Extensibility.] It must be possible to add new sources,
+  transformers, transports, converters, verdict services, and exporters
+  behind stable interfaces.
 \end{description}
 
 \section{Reference Architecture}\label{sec:reference-architecture}
@@ -137,15 +136,19 @@ Figure~\ref{fig:pipeline-components} shows the overall organization of the
 monitoring infrastructure: user-provided specification and plug-ins, the
 ROS~2-facing robot edge node, and the runtime verification pipelines. Its
 monitors, filters, and exporters correspond to the collectors, transformers,
-and data exporters of the role-level view below.
+and data exporters of the role-level view below. As an architectural
+overview, the figure also contains elements that the prototype does not
+implement, such as the feedback runtime and the observation of parameters,
+lifecycle states, and QoS events.
 
 \begin{figure}[htbp]
   \centering
   \includegraphics[width=\textwidth]{diagrams/Components.png}
-  \caption{Main stages of the monitoring pipeline. Collectors create common
-  data records, transformers process them, dispatchers route them, converters
-  adapt them for checkers, and verdict exporters publish the checking
-  results.}
+  \caption{Overall organization of the monitoring infrastructure:
+  user-provided specification and plug-ins, the ROS~2-facing robot edge node,
+  and the runtime verification pipelines. Elements such as the feedback
+  runtime belong to the architecture but are not implemented in the
+  prototype.}
   \label{fig:pipeline-components}
 \end{figure}
 
@@ -178,7 +181,7 @@ and then through checking.
   checking chains. Data exporters retain JSONL evidence or send records over a
   configured transport.
 
-  \item A \emph{converter plug-in} changes a common data record into the input
+  \item A \emph{converter plug-in} converts a common data record into the input
   expected by a checker. A domain-specific language (DSL) is a language tailored
   to one problem domain, such as temporal properties or event-state patterns.
   The architecture calls the converter output a DSL record because every
@@ -196,7 +199,7 @@ A converter implements the stable conversion interface; a verdict service
 implements the stable evaluation interface. To add a DSL, a developer defines
 the DSL-record fields, implements these two classes, tests them against sample
 records, and selects their class paths and settings in the deployment
-configuration. ROS~2 collection, transport, and evidence handling are reused.
+specification. ROS~2 collection, transport, and evidence handling are reused.
 
 The architecture also shows an optional feedback adapter. It could translate a
 verdict into a ROS~2 command, service request, or other intervention. The
@@ -271,10 +274,10 @@ Section~\ref{sec:deployment-terminology}. In the notation of the figure, outer
 boxes are hosts and inner boxes are executable runtimes; arrows carry common
 data records. A \emph{ROS~2-facing runtime} is a process with ROS~2 libraries
 and graph access; it is not necessarily running on the robot itself. In terms
-of the monitoring organisations of
+of the monitoring organizations of
 Section~\ref{sec:monitoring-organisations}, the integrated form realizes the
-traditional organisation, and the split form realizes an orchestrated
-organisation with one central verifier.
+traditional organization, and the split form realizes an orchestrated
+organization with one central verifier.
 
 \begin{figure}[htbp]
   \centering

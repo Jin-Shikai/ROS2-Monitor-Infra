@@ -2,8 +2,9 @@
 
 \section{Review Criteria}
 
-Monitoring papers use the same terms for different goals, so each selected
-approach is described using the following questions:
+The reviewed approaches pursue different goals with overlapping terminology.
+To keep them comparable, each approach is described along the same six
+questions:
 
 \begin{enumerate}
   \item What is its goal and what observation level does it use?
@@ -52,11 +53,11 @@ ROSMonitoring is a topic-oriented runtime-verification framework for
 ROS~1~\cite{ferrando2020rosmonitoring}. A YAML description selects the topics.
 A generator creates monitor nodes and launch/remapping changes so selected
 messages pass through a monitor. The monitor converts ROS messages to JSON
-events. In online mode it sends events over WebSocket to an external oracle; in
-offline mode it records a trace. An online filtering mode can block or
-republish messages according to the oracle result. The property formalism is
-therefore supplied by the external oracle rather than fixed by the ROS-facing
-monitor.
+events. In online mode it sends events over WebSocket to an external checker
+(called an \emph{oracle} in ROSMonitoring); in offline mode it records a
+trace. An online filtering mode can block or republish messages according to
+the checker result. The property formalism is therefore supplied by the
+external checker rather than fixed by the ROS-facing monitor.
 
 ROSMonitoring 2.0 extends this approach to services and to explicitly ordered
 topic observations~\cite{saadat2024rosmonitoring2}. Its Runtime Monitoring
@@ -68,8 +69,9 @@ not covered.
 
 ROMoSu is a configurable platform for runtime monitoring of ROS-based
 applications~\cite{stadler2022towards,stadler2023romosu}. It separates a
-monitoring-configuration phase from data collection. Reusable system-under-
-monitoring types and monitor configurations describe topic fields, sampling,
+monitoring-configuration phase from data collection. Reusable
+system-under-monitoring types and monitor configurations describe topic
+fields, sampling,
 validation, storage, and presentation. At runtime, a ROS connector and
 adaptation manager collect data, and a runtime-data broker connects validation,
 persistency, dashboards, and external constraint services.
@@ -86,9 +88,9 @@ Perez et al.\ present a requirements-to-monitor toolchain for
 ROS~2~\cite{perez2022monitoringros2}. FRET, the Formal Requirements Elicitation
 Tool, lets a user write structured FRETISH requirements. Ogma is a generator
 that translates these requirements and the selected ROS~2 inputs into monitor
-artifacts. Copilot in this work is a stream-based runtime-verification language
-and framework, not an AI programming assistant. Ogma generates Copilot code,
-which is compiled to C99 and packaged as a ROS~2 node.
+artifacts. Copilot here denotes a stream-based runtime-verification language
+and framework, not the identically named AI programming assistant. Ogma
+generates Copilot code, which is compiled to C99 and packaged as a ROS~2 node.
 
 The approach observes selected topic values at the application level and checks
 generated temporal properties online. Its principal automation is the
@@ -157,7 +159,7 @@ observations and checking are spread across components and
 hosts~\cite{francalanza2018distributed}. It includes property decomposition,
 partial observations, clock and ordering assumptions, communication cost, and
 failures. Separating a collector from a central verifier is one deployment
-form, but it is not equivalent to decentralising the property itself.
+form, but it is not equivalent to decentralizing the property itself.
 
 \section{Digital-Twin Runtime Verification}
 
@@ -200,10 +202,10 @@ Chapter~\ref{chapter:background} and, in Chapter~\ref{chapter:evaluation},
 checks whether the proposed ROS~2 reference architecture covers the same
 responsibilities.
 
-\section{Focused Summary}
+\section{Comparison of the Reviewed Approaches}
 
-Table~\ref{tab:related-work-focused} summarizes the reviewed approaches with
-the same criteria. A dash means that the publication does not make that
+Table~\ref{tab:related-work-focused} summarizes the reviewed approaches along
+the review criteria. A dash means that the publication does not make that
 capability a principal part of the approach; it does not imply that the
 capability is impossible.
 
@@ -215,7 +217,7 @@ capability is impossible.
   >{\raggedright\arraybackslash}p{.21\textwidth}
   >{\raggedright\arraybackslash}p{.18\textwidth}
   >{\raggedright\arraybackslash}p{.18\textwidth}}
-\caption{Focused comparison of selected monitoring approaches.}
+\caption{Comparison of the reviewed monitoring approaches.}
 \label{tab:related-work-focused}\\
 \toprule
 \textbf{Approach} & \textbf{Observation} & \textbf{Property and checking} &
@@ -228,7 +230,7 @@ capability is impossible.
 \midrule
 \endhead
 ROSMonitoring / 2.0 & Topics; 2.0 adds services and ordering &
-External oracle; 2.0 also provides RML/past-time MTL &
+External checker; 2.0 also provides RML/past-time MTL &
 Online or offline; inserted monitor nodes &
 YAML selects sources; generator creates monitor/launch artifacts\\
 \midrule
@@ -298,5 +300,5 @@ language. The gaps relevant to this thesis are:
 \end{itemize}
 
 These gaps motivate a reference architecture for the infrastructure between
-ROS~2 observations and property-specific checkers. The proposed design is
-presented only after this neutral review, in the next chapter.
+ROS~2 observations and property-specific checkers; the next chapter presents
+this design.

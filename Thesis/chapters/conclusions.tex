@@ -3,13 +3,12 @@
 This thesis addressed the recurring infrastructure work between ROS~2
 communication and property-specific checking. It reviewed the domain, developed
 a feature model and reference architecture, implemented the selected path, and
-evaluated five increasingly distributed experiments.
+evaluated it in five increasingly distributed experiments.
 
 \section{Answers to the Research Questions}
 
-\textbf{RQ1: What monitoring capabilities and ROS~2 observation mechanisms
-exist, and which application-level observation gaps remain in the reviewed
-approaches?}
+\textbf{RQ1: What monitoring capabilities exist for ROS~2 applications, and
+which observation gaps remain?}
 
 ROS~2 behaviour can be observed through native typed interfaces,
 instrumentation, network or middleware probes, and system tracing. Topic
@@ -18,8 +17,8 @@ services with partial ROS~2 support, and the reviewed approaches do not combine
 ROS~2 topic messages, service events, and action feedback/status in one
 configurable application-level infrastructure.
 
-\textbf{RQ2: What are the commonalities and variabilities of monitoring
-solutions for ROS~2 applications?}
+\textbf{RQ2: What are the commonalities and variabilities among existing
+monitoring architectures for ROS~2 applications?}
 
 Solutions share collection, representation, processing, routing, checking, and
 result-use tasks. They vary in observable elements, observation level,
@@ -27,9 +26,8 @@ monitoring mode, online/offline operation, placement, property formalism,
 transport, output, and whether artifacts are configured, generated, or
 extended through plug-ins. The feature model makes these choices explicit.
 
-\textbf{RQ3: How can a reference architecture incorporate the selected
-monitoring features while separating reusable infrastructure from
-property-specific checking?}
+\textbf{RQ3: What does a generic reference architecture for ROS~2 monitoring
+look like, and how to incorporate the features identified in RQ2?}
 
 A collector converts a ROS~2 observation to a common record. Reusable
 transformers and dispatchers reduce and route it. A converter plug-in adapts the
@@ -41,7 +39,8 @@ roles can run together or be connected through a configured transport.
 implementation support the monitoring needs of representative ROS~2
 applications?}
 
-Within the tested scope, the support is demonstrated. The experiments covered
+Within the tested scope, the architecture and implementation supported the
+monitoring needs of the selected applications. The experiments covered
 topics, service request/response events, action feedback/status, local and
 MQTT-transported checking, multi-source properties, two namespaces, and a
 three-computer deployment. Reported verdicts matched controlled expectations,

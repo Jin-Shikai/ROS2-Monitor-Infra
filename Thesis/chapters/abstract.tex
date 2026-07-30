@@ -21,10 +21,11 @@ split checking through file or MQTT transport.
 
 Five experiments progress from a controlled topic property to unmodified Nav2,
 two-robot correlation, and a deployment across Ubuntu, Raspberry Pi, and macOS.
-In the reported runs, verdicts matched controlled expectations, recorded
-inputs, mission outcomes, or Gazebo positions. Identical local and remote
-verdict streams show that serialization and MQTT preserved result meaning in
-the evaluated configurations. The generator and reuse analysis show that
+In the reported runs, verdicts matched the transitions of the controlled
+stimuli, the recorded inputs, the mission outcomes, or the simulated robot
+positions. Identical local and remote verdict streams show that serialization
+and MQTT transport did not alter the checking results in the evaluated
+configurations. The generator and reuse analysis show that
 observation, serialization, routing, transport, and evidence handling do not
 have to be rewritten for each property. A role-level architectural mapping
 also shows that the reference architecture can accommodate the principal

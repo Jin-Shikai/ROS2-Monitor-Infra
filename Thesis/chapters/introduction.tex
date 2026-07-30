@@ -5,10 +5,11 @@
 Robots operate in changing environments. Their behaviour depends on software,
 hardware, sensors, communication, and the physical world. They also increasingly
 use artificial-intelligence components for perception and decision making.
-Uncertain sensor input, model confidence, and conditions that differ from
-training data can therefore influence a robot after deployment. Testing remains
-essential, but it cannot cover every environment and interaction that a robot
-may encounter. Developers also need to observe the robot during operation.
+Uncertain sensor input, varying model confidence, and conditions that differ
+from the training data can therefore affect a robot's behaviour after
+deployment. Testing remains essential, but it cannot cover every environment
+and interaction that a robot may encounter. Developers therefore also need to
+observe the robot during operation.
 
 Many modern robots are built with the Robot Operating System~2 (ROS~2).
 Despite its name, ROS~2 is not an operating system in the traditional sense;
@@ -50,15 +51,15 @@ more precisely.
 \section{Problem Statement}\label{sec:problem}
 
 A monitoring solution must make several connected choices. The developer has
-to decide \emph{what} to observe: which topics, services, and actions carry
-the relevant behaviour. They have to decide \emph{how} to observe it: through
-extra subscriptions, service introspection, lower-level tracing, or
-instrumented application code. They have to decide how much data to keep:
-complete messages support offline replay, while a few fields from a high-rate
-stream may be all that a check needs. They have to decide how the properties
-of interest are specified and checked: as simple thresholds, state machines,
-temporal-logic formulas, or project-specific checking services. Finally, they
-have to decide \emph{where} the monitoring components are deployed: together
+to decide \emph{what} to observe (which topics, services, and actions carry
+the relevant behaviour) and \emph{how} to observe it (through extra
+subscriptions, service introspection, lower-level tracing, or instrumented
+application code). A further choice is how much data to keep: complete
+messages support offline replay, while a few fields from a high-rate stream
+may be all that a check needs. The properties of interest must be specified
+and checked in some form, such as simple thresholds, state machines,
+temporal-logic formulas, or project-specific checking services. Finally, the
+developer has to decide \emph{where} the monitoring components run: together
 with the application, close to the robot, or on a separate machine that
 receives the observations over a network.
 
@@ -67,8 +68,8 @@ other. Observing everything makes checking flexible but can overload storage
 and transport; a remote verifier eases the load on the robot but adds a
 network boundary. The choices also change between applications and
 deployments: a local developer test may keep collection and checking in one
-process, while a fielded robot may keep ROS~2-facing collection near the robot
-and send records to a separate verifier. Because the choices interact, an
+process, while a fielded robot may keep collection near the robot and send
+records to a separate verifier. Because the choices interact, an
 ad-hoc combination assembled for one application rarely carries over to the
 next one. There is a need for a systematic way to specify a monitoring
 solution: a description of the available options and a means to select among
@@ -82,8 +83,8 @@ decoding typed messages, attaching timestamps and context, serializing data,
 and transporting it to checkers and files---is essentially the same in every
 project, yet it is written again for each application. This boilerplate
 obscures the application-specific decisions and makes monitoring setups harder
-to reproduce. The repeated implementation effort should be reduced by
-automation and by reusable, configurable infrastructure support.
+to reproduce. Reducing this repeated effort calls for automation and for
+reusable, configurable infrastructure.
 
 These two problems, the systematic specification of a monitoring solution and
 its reusable implementation, are the subject of this thesis. Property
@@ -115,38 +116,20 @@ and split placement of collection and checking.
 The objective is refined into four research questions:
 
 \begin{description}
-  \item[RQ1.] What monitoring capabilities and ROS~2 observation mechanisms
-  exist, and which application-level observation gaps remain in the reviewed
-  approaches?
+  \item[RQ1.] What monitoring capabilities exist for ROS~2 applications, 
+  and which observation gaps remain?
 
-  \item[RQ2.] What are the commonalities and variabilities of monitoring
-  solutions for ROS~2 applications?
+  \item[RQ2.] What are the commonalities and variabilities 
+  among existing monitoring architectures for ROS~2 applications?
 
-  \item[RQ3.] How can a reference architecture incorporate the selected
-  monitoring features while separating reusable infrastructure from
-  property-specific checking?
+  \item[RQ3.] What does a generic reference architecture
+  for ROS~2 monitoring look like, and how to
+  incorporate the features identified in RQ2?
 
   \item[RQ4.] To what extent do the proposed reference architecture and its
   implementation support the monitoring needs of representative ROS~2
   applications?
 \end{description}
-
-\section{Scope}
-
-The prototype follows a deliberately focused path through the monitoring design
-space. It observes the application-level data that ROS~2 exposes through
-topics, service introspection, and hidden action feedback and status topics.
-It supports passive online monitoring and recorded-data replay. Checking may run
-inside the ROS~2-facing monitor or in a separate runtime reached through a file
-or MQTT transport.
-
-The following concerns are outside the implemented scope: a new property
-formalism, automatic synthesis of checking algorithms, active intervention in
-the system under monitoring, global ordering across hosts, fault-tolerant
-distributed verification, network-packet inspection, and operating-system
-tracing. The reference architecture keeps explicit extension points for several
-of these concerns; Chapter~\ref{chapter:discussion} discusses which extension
-points remain open.
 
 \section{Approach and Contributions}
 
@@ -176,9 +159,9 @@ record; transformers reduce or reshape records; dispatchers route them to
 outputs and checking components; converters prepare them for property-specific
 verdict services; and exporters deliver data and verdicts to files, standard
 output, or MQTT. The same pipeline supports an integrated deployment, in which
-all steps run in one ROS~2-facing process, and a split deployment, in which a
-robot-side monitor sends records over MQTT to a separate verifier without a
-ROS~2 dependency.
+all steps run in one ROS~2-facing process (a process that joins the ROS~2
+graph), and a split deployment, in which a robot-side monitor sends records
+over MQTT to a separate verifier without a ROS~2 dependency.
 
 To answer RQ4, five experiments evaluate the selected feature configuration,
 progressing from a controlled topic property to a Navigation~2

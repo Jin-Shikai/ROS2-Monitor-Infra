@@ -1,13 +1,12 @@
 \chapter{Background}\label{chapter:background}
 
-This chapter explains the main concepts used in this thesis. It first
-introduces ROS~2 and its communication mechanisms. It then explains runtime
-monitoring and its basic terminology, describes how ROS~2 applications can be
-observed, and summarizes the main tasks of a monitoring system. Finally, it
-introduces feature models as a way to describe variability, and discusses
-monitoring organisations, deployment terminology, and transport choices.
+This chapter introduces the concepts that the rest of the thesis builds on:
+ROS~2 and its communication mechanisms, runtime monitoring and its
+terminology, the ways in which ROS~2 applications can be observed, feature
+models as a notation for variability, and the organizations, deployment
+terms, and transports of distributed monitoring.
 
-\section{ROS 2 Applications and Communication}
+\section{ROS 2 Applications and Communication}\label{sec:ros2-communication}
 
 \subsection{Nodes and the ROS Graph}
 
@@ -131,8 +130,8 @@ This thesis uses the following terms consistently:
 
   \item[Monitor.] The component that obtains and prepares observations.
 
-  \item[Oracle or checker.] The component that evaluates a property using
-  prepared observations.
+  \item[Checker.] The component that evaluates a property using prepared
+  observations.
 
   \item[Verdict.] A checking result, normally indicating satisfaction,
   violation, or an inconclusive state.
@@ -169,10 +168,8 @@ and a verdict is reported.}
 \subsection{Online and Offline Monitoring}
 
 Online monitoring processes observations during an execution. It can report
-problems quickly and is suitable for timely warnings and supervision. The
-design question is where this monitoring logic should run and which
-observations need to be processed online. Offline monitoring checks recorded
-observations later. It cannot react immediately, but the same data can be
+problems quickly and is suitable for timely warnings and supervision. Offline
+monitoring checks recorded observations later. It cannot react immediately, but the same data can be
 replayed many times and checked with tools that are easier to run outside the
 robot application. The same monitoring infrastructure may support both by
 routing a common record either to a live checker or to persistent storage.
@@ -184,10 +181,10 @@ of the system under monitoring. An active monitor can additionally block,
 replace, or trigger behaviour, for example by filtering a message or starting
 a recovery action. Passive and active behaviour are not mutually exclusive at
 architecture level: the same solution may record all observations and
-intervene only after selected verdicts. An oracle may be used in either mode.
+intervene only after selected verdicts. A checker may be used in either mode.
 The prototype in this thesis implements only passive monitoring.
 
-\subsection{Centralised and Distributed Checking}
+\subsection{Centralized and Distributed Checking}
 
 Collection and checking may run in one process, on one host in separate
 processes, or on different hosts. Keeping the checking state in one place
@@ -197,8 +194,8 @@ monitoring logic closer to the data source or closer to a verifier, but it
 introduces questions about message ordering, clocks, network boundaries, and
 failures~\cite{francalanza2018distributed}.
 Section~\ref{sec:monitoring-organisations} describes the main ways in which
-such monitors can be organised. The split deployment in this thesis separates
-collection from checking, but checking remains logically centralised in a
+such monitors can be organized. The split deployment in this thesis separates
+collection from checking, but checking remains logically centralized in a
 verifier.
 
 \subsection{Property Specification Formalisms}
@@ -215,8 +212,8 @@ and verdict-service plug-ins~\cite{leucker2009brief}.
 \section{Observing ROS 2 Applications}\label{sec:observing-ros2}
 
 A monitor for a ROS~2 application first has to obtain observations. The three
-communication mechanisms from Section~2.1 can each be observed, but not in the
-same way. This section explains the observation mechanism for each of them,
+communication mechanisms from Section~\ref{sec:ros2-communication} can each be
+observed, but not in the same way. This section explains the observation mechanism for each of them,
 the role that types and discovery play for a monitor, and the alternative
 mechanisms that operate below the ROS~2 API.
 
@@ -338,9 +335,8 @@ observation mechanisms exist:
   provides lower-level evidence than typed application messages.
 \end{description}
 
-The prototype selects native ROS~2 interfaces. Approaches based on the other
-categories appear in Chapter~\ref{chapter:related_work}, so the selected scope
-is not mistaken for the whole monitoring domain.
+The prototype uses the native ROS~2 interfaces; approaches based on the other
+categories are reviewed in Chapter~\ref{chapter:related_work}.
 
 \section{Common Monitoring Tasks and Data Forms}
 
@@ -475,46 +471,46 @@ deployment details. Host addresses, ROS names, interface types, class paths,
 file locations, and transport parameters belong in a separate deployment
 specification.
 
-\section{Deployment and Monitoring Organisations}
+\section{Deployment and Monitoring Organizations}
 
 The monitoring tasks described earlier in this chapter do not have to run in
 one place. Observation, checking, and reporting can be placed at the same
 location or spread over several machines. Francalanza et al.\ compare the main
-ways in which monitors for decentralised and distributed systems can be
-organised~\cite{francalanza2018distributed}. This section summarizes these
-monitoring organisations and then fixes the deployment terminology used in the
+ways in which monitors for decentralized and distributed systems can be
+organized~\cite{francalanza2018distributed}. This section summarizes these
+monitoring organizations and then fixes the deployment terminology used in the
 rest of the thesis.
 
-\subsection{Monitoring Organisations}\label{sec:monitoring-organisations}
+\subsection{Monitoring Organizations}\label{sec:monitoring-organisations}
 
 Figures~\ref{fig:org-traditional} to~\ref{fig:org-choreographed} show the four
-monitoring organisations described by Francalanza et
+monitoring organizations described by Francalanza et
 al.~\cite{francalanza2018distributed}. In the figures, circles are system
 processes, hexagons are traces, squares are monitors, and each surrounding
 rectangle is a location, such as a machine or a robot. Dotted arrows show
 processes contributing events to a trace, dash-dotted arrows show monitors
 reading a trace, and solid arrows show interaction between components.
 
-In a \emph{traditional} (centralised) monitoring setup
+In a \emph{traditional} (centralized) monitoring setup
 (Figure~\ref{fig:org-traditional}), all processes run at a single location.
 They produce one local trace, and a single monitor at the same location
 analyses it. Because everything runs under one clock, the trace is a total
-order of the events that actually happened. This is the simplest organisation,
+order of the events that actually happened. This is the simplest organization,
 but the whole monitoring task rests on one monolithic monitor at one
 location~\cite{francalanza2018distributed}.
 
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.58\textwidth]{diagrams/Deployment_Traditional.png}
-\caption{Traditional (centralised) monitoring: the processes at one location
+\caption{Traditional (centralized) monitoring: the processes at one location
 produce a single trace that one monitor analyses (adapted
 from~\cite{francalanza2018distributed}).}
 \label{fig:org-traditional}
 \end{figure}
 
-In a \emph{decentralised} monitoring setup
-(Figure~\ref{fig:org-decentralised}), the events are still governed by a
-single global clock and form one synchronised, totally ordered trace, but the
+In a \emph{decentralized} monitoring setup
+(Figure~\ref{fig:org-decentralized}), the events are still governed by a
+single global clock and form one synchronized, totally ordered trace, but the
 monitoring work is decomposed into several monitors. The monitors can interact
 to combine their partial results, and processes and monitors may be placed at
 different locations that share the global clock. This decomposition reflects
@@ -524,13 +520,13 @@ cooperating monitors check independently~\cite{francalanza2018distributed}.
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.62\textwidth]{diagrams/Deployment_Centralised.png}
-\caption{Decentralised monitoring: several monitors, possibly at different
-locations that share a global clock, process a synchronised trace and can
+\caption{Decentralized monitoring: several monitors, possibly at different
+locations that share a global clock, process a synchronized trace and can
 interact with each other (adapted from~\cite{francalanza2018distributed}).}
-\label{fig:org-decentralised}
+\label{fig:org-decentralized}
 \end{figure}
 
-The remaining two organisations target truly distributed settings, where
+The remaining two organizations target truly distributed settings, where
 processes run at several locations without a global clock. Each location then
 produces its own local trace, and the events of different traces can only be
 partially ordered. In an \emph{orchestrated} monitoring setup
@@ -569,14 +565,14 @@ from~\cite{francalanza2018distributed}).}
 \label{fig:org-choreographed}
 \end{figure}
 
-These organisations frame the deployment choices for a ROS~2 monitoring
+These organizations frame the deployment choices for a ROS~2 monitoring
 infrastructure. A single robot with an on-board monitor is a traditional
 setup. As soon as observations are checked on another machine, or several
 robots are observed together, the infrastructure moves towards an orchestrated
-or choreographed organisation, and the partial ordering, communication, and
+or choreographed organization, and the partial ordering, communication, and
 data exposure trade-offs above apply.
 Section~\ref{sec:deployment-views} relates the deployment forms supported by
-this thesis to these organisations.
+this thesis to these organizations.
 
 \subsection{Deployment Terminology}\label{sec:deployment-terminology}
 
@@ -591,12 +587,12 @@ The thesis uses the following deployment terms:
 
   \item[Integrated deployment.] Collection, processing, checking, and result
   export run in one ROS~2-facing runtime. This corresponds to the traditional
-  organisation above.
+  organization above.
 
   \item[Split deployment.] A ROS~2-facing monitor runtime collects records and a
   separate verifier runtime checks them. They may run on one host or on
   different hosts. With a remote verifier, this corresponds to an orchestrated
-  organisation with one central analysis location.
+  organization with one central analysis location.
 \end{description}
 
 These two deployment forms are representative endpoints, not an exhaustive
@@ -606,7 +602,7 @@ runtimes and different placements, provided that their links are configured.
 \section{Transport}
 
 When monitoring components run in different processes or on different
-machines, as in the orchestrated and choreographed organisations above, they
+machines, as in the orchestrated and choreographed organizations above, they
 need a transport mechanism to exchange data. Many protocols can fill this
 role: the components could communicate through the DDS middleware that ROS~2
 itself uses~\cite{macenski2022ros2,omgdds2015}, through plain TCP or UDP
@@ -634,8 +630,8 @@ MQTT also gives a configurable delivery trade-off through its own QoS levels.
 QoS~0 sends a message at most once and is useful when occasional loss is
 acceptable. QoS~1 retries until the broker acknowledges the message, which can
 duplicate messages and therefore requires identifiers to make duplicates
-recognizable. QoS~2 adds a stronger exactly-once exchange at the expense of a
-more involved protocol exchange. The infrastructure keeps the session and
+recognizable. QoS~2 provides an exactly-once handshake at the cost of additional
+protocol traffic. The infrastructure keeps the session and
 record identifier inside each observation, so the transport does not have to
 carry the semantic identity of an observation. MQTT is an implementation
 choice for the prototype, not a mandatory dependency of the reference

@@ -31,8 +31,8 @@ monitor to join the ROS graph as a normal node. Python also has runtime type
 utilities through \texttt{rosidl\_runtime\_py}. These utilities resolve ROS~2
 message, service, and action classes from their type names, so a configured
 source can be collected without generating source-specific monitoring code.
-Python additionally keeps project-specific converters and verdict services
-simple to add.
+Python also makes project-specific converters and verdict services easy to
+add.
 
 Only the collector layer imports ROS~2 packages. The remaining modules use the
 Python standard library, \texttt{PyYAML} for configuration parsing, and
@@ -69,9 +69,9 @@ documentation.\\
 \end{tabular}
 \end{table}
 
-This separation is important: code under \texttt{monitor/} is reused by every
-case study, while \texttt{custom/} contains the property knowledge that changes
-between applications. Table~\ref{tab:impl-modules} maps the main modules of
+Code under \texttt{monitor/} is reused by every case study, while
+\texttt{custom/} contains the property knowledge that changes between
+applications. Table~\ref{tab:impl-modules} maps the main modules of
 \texttt{monitor/} to the pipeline roles of
 Chapter~\ref{chapter:design}.
 
@@ -357,8 +357,7 @@ the same checking graph for offline analysis.
 \label{sec:impl-config-gen}
 
 A multi-host deployment needs several YAML files that agree on transports,
-topic names, and payload kinds. Writing these files by hand is easy to get
-wrong. The prototype therefore includes a configuration generator that derives
+topic names, and payload kinds. Writing these files by hand is error-prone. The prototype therefore includes a configuration generator that derives
 the runtime YAML files from one deployment specification. The JSON deployment
 specification contains:
 
@@ -468,5 +467,5 @@ property-specific plug-ins into executable runtime configurations. Reusable
 collectors expose topics, service events, and action feedback/status as common
 records. Transformers, dispatchers, file/MQTT transport, and evidence handling
 are reused, while converters and verdict services isolate DSL and property
-logic. The next chapter evaluates both this data path and the saved
-infrastructure work.
+logic. The next chapter evaluates this data path and the implementation work
+the infrastructure saves.

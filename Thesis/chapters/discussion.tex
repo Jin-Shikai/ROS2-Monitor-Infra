@@ -5,9 +5,8 @@ trade-offs, limitations, threats to validity, and future work.
 
 \section{RQ1: Capabilities and Observation Gaps}
 
-\textbf{RQ1: What monitoring capabilities and ROS~2 observation mechanisms
-exist, and which application-level observation gaps remain in the reviewed
-approaches?}
+\textbf{RQ1: What monitoring capabilities exist for ROS~2 applications, and
+which observation gaps remain?}
 
 ROS~2 can be observed through native application interfaces,
 application instrumentation, middleware or network probes, and execution
@@ -17,28 +16,29 @@ callbacks and scheduling; instrumentation can expose domain events that
 communication does not reveal.
 
 The reviewed approaches usually specialize in one part of the monitoring
-problem. Some collect ROS messages for an external oracle, some generate
+problem. Some collect ROS messages for an external checker, some generate
 checkers from requirements, and others observe network traffic or lower-level
 execution events. Topic observation is covered most consistently.
 ROSMonitoring 2.0 adds services with partial ROS~2 support. In the selected
 literature, ROS~2 action feedback and status are not combined with typed topic
-and service-event collection in one configurable infrastructure, and no
-reviewed approach places collection and checking in separate processes while
-keeping the observation and checking components configurable. The resulting
-gap is therefore not ``monitoring in general'', but the reusable
-application-level path from heterogeneous ROS~2 observations to replaceable
-property checkers.
+and service-event collection in one configurable infrastructure. Approaches
+that separate collection from checking either fix the property logic inside
+generated components or tie the split to one external checker protocol;
+whether checking runs with the collector or in a separate runtime is not
+itself a configuration choice in the reviewed work. The resulting gap is
+therefore not ``monitoring in general'', but the reusable application-level
+path from heterogeneous ROS~2 observations to replaceable property checkers.
 
 The prototype addresses that focused gap. E2 collected topic messages, service
 request/response events, and action feedback/status in one session; E3 used the
-same action mechanism with Nav2. A complete action trace remains incomplete
-because goal, cancellation, and result service events require additional
-service collectors.
+same action mechanism with Nav2. Action observation remains partial: the
+goal, cancellation, and result service events require additional service
+collectors.
 
 \section{RQ2: Commonalities and Variabilities}
 
-\textbf{RQ2: What are the commonalities and variabilities of monitoring
-solutions for ROS~2 applications?}
+\textbf{RQ2: What are the commonalities and variabilities among existing
+monitoring architectures for ROS~2 applications?}
 
 The common operational tasks are collection, representation, processing,
 routing, checking, and use or storage of results. The principal variabilities
@@ -50,7 +50,7 @@ are:
   taps, tracing, and DDS tools;
   \item passive and/or active behaviour;
   \item online and/or offline execution;
-  \item integrated, split, centralised, or more distributed placement;
+  \item integrated, split, centralized, or more distributed placement;
   \item property formalism and checker input format;
   \item transport, output, and evidence choices; and
   \item configured, generated, and plug-in-based implementation.
@@ -69,9 +69,8 @@ design points rather than implemented claims.
 
 \section{RQ3: Reference Architecture}
 
-\textbf{RQ3: How can a reference architecture incorporate the selected
-monitoring features while separating reusable infrastructure from
-property-specific checking?}
+\textbf{RQ3: What does a generic reference architecture for ROS~2 monitoring
+look like, and how to incorporate the features identified in RQ2?}
 
 The reference architecture uses a stable common data record between
 ROS-specific observation and property-specific checking. Collectors preserve
@@ -108,10 +107,10 @@ collectors rely on.
 The plug-in story has a limited but precise scope. A plug-in is not an
 automatically generated checker. It is a Python class developed against one of
 two base interfaces and loaded by class path. Together, a converter and a
-verdict service form an adapter for the user's DSL: the converter changes the
-common data record into the input format of that DSL, and the verdict service
-holds or calls the checking engine and changes its result into the common
-verdict format. Because the DSL record crossing this boundary is
+verdict service form an adapter for the user's DSL: the converter transforms
+the common data record into the input format of that DSL, and the verdict
+service holds or calls the checking engine and returns its result in the
+common verdict format. Because the DSL record crossing this boundary is
 JSON-serializable, the two halves of the adapter can run in the same process
 or on different hosts without changing their code. The case-study plug-ins
 show simple uses of this extension point---selecting one value, combining
@@ -120,7 +119,7 @@ expires---and the same interfaces could prepare timestamped signals for a
 temporal-logic engine or events for a project-specific state machine.
 
 The architectural accommodation in Section~\ref{sec:accommodation} further
-checks the role boundaries. ROSMonitoring's external oracle, ROMoSu's broker
+checks the role boundaries. ROSMonitoring's external checker, ROMoSu's broker
 services, digital-twin state and TeSSLa checking, and the broader Rabiser et al.\
 responsibilities all have places in the architecture. Components such as a
 dashboard, digital twin, TeSSLa engine, or feedback controller would still
@@ -229,7 +228,7 @@ network packets, and operating-system traces are not implemented sources.
 The property language is not generated or validated by the infrastructure.
 Stateful global properties are coded in converters and verdict services.
 Automatic property decomposition among monitors is outside scope, and checking
-remains logically centralised.
+remains logically centralized.
 
 \subsection{Ordering, Time, and Delivery}
 

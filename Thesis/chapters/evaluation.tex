@@ -38,7 +38,7 @@ benchmark.
 
 \section{Experiment Design}
 
-Five experiments provide complementary rather than repetitive evidence.
+The five experiments are designed to contribute complementary evidence.
 E1 and E2 use deterministic stimulus nodes so every transition is known in
 advance. E3 replaces these nodes with unmodified Nav2, a widely used ROS~2
 navigation stack~\cite{macenski2020marathon}, in the Gazebo
@@ -356,8 +356,9 @@ Final physical goal positions & 4 / 4 within 0.1 m\\
 \end{tabular}
 \end{table}
 
-E4 shows that source name keeps namespaces separate while a stateful converter
-can correlate observations from both robots.
+E4 shows that the source-name field keeps the namespaced robot streams
+separate, while a stateful converter can correlate observations from both
+robots.
 
 \section{E5: Three Physical Machines}
 
@@ -471,18 +472,14 @@ local broker was measured from record timestamps.}\\
 \end{tabular}
 \end{table}
 
-In E1, the monitor process used about 1\% of one processor core and about
-73~MB of memory, and the mean time from collecting a record to exporting the
-verdict it produced was 0.29~ms. Checking the same records behind the local
-MQTT broker in E2 raised this time to 1.85~ms on average. While observing the
-six E4 sources, the monitor stayed below 5\% of one core and 92~MB. In E5, the
-Raspberry Pi carried the collection of all six sources, the file export, the
-MQTT publication, and the reference verifier within 13\% of one core and
-114~MB, while the macOS verifier used about 1.4\% of one core and 28~MB;
-verdicts followed their triggering records within a few milliseconds across
-the LAN. The monitoring components therefore place limited pressure on the
-observed system for the evaluated sources and properties. These observations
-do not establish scalability beyond two simulated robots.
+Two observations stand out. Moving the speed check behind the local MQTT
+broker raised the mean record-to-verdict time from 0.29~ms in E1 to 1.85~ms in
+E2, so the transport boundary added little delay in absolute terms. In E5,
+the Raspberry Pi carried collection, file export, MQTT publication, and the
+reference verifier together within 13\% of one core, which leaves headroom on
+modest robot-side hardware. The monitoring components therefore place limited
+pressure on the observed system for the evaluated sources and properties;
+these observations do not establish scalability beyond two simulated robots.
 
 \section{Automation and Reused Work}\label{sec:automation-reuse}
 
@@ -631,7 +628,7 @@ to claim feature equivalence with the original systems.
 
 \subsection{ROSMonitoring}
 
-ROSMonitoring's observation-to-oracle path maps directly onto the
+ROSMonitoring's observation-to-checker path maps directly onto the
 architecture, as shown in Table~\ref{tab:map-rosmonitoring}. Its
 distinguishing invasive capabilities---launch-file rewriting and
 verdict-driven message filtering---correspond to the generation step and the
@@ -652,10 +649,10 @@ feedback adapter, which the prototype does not implement.
 YAML topic configuration & Deployment specification and topic collectors &
 Direct\\
 ROS-to-JSON event conversion & Common data record construction & Direct\\
-WebSocket link to the oracle & Cross-runtime link; WebSocket as a transport
-plug-in & Adapter\\
-External oracle checking & Verdict-service plug-in wrapping the oracle &
-Adapter\\
+WebSocket link to the external checker & Cross-runtime link; WebSocket as a
+transport plug-in & Adapter\\
+External checker evaluation & Verdict-service plug-in wrapping the external
+checker & Adapter\\
 Offline trace and later checking & JSONL evidence and file replay source &
 Direct\\
 Monitor insertion by launch rewriting & Configuration generation step &
