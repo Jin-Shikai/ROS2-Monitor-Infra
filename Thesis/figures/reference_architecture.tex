@@ -1,0 +1,46 @@
+\begin{tikzpicture}[
+  font=\scriptsize,
+  component/.style={draw, fill=white, rounded corners=2pt,
+                    align=center, minimum height=9mm, minimum width=23mm},
+  plugin/.style={component, dashed},
+  external/.style={draw, fill=black!8, rounded corners=2pt,
+                   align=center, minimum height=10mm, minimum width=24mm},
+  flow/.style={-{Latex[length=2mm]}, line width=.7pt},
+  option/.style={flow, dashed},
+  stepcircle/.style={circle, fill=black, text=white, font=\bfseries,
+                     inner sep=1.4pt}
+]
+\node[external] (sum) at (0,0) {ROS 2 system\\under monitoring};
+\node[component] (collector) at (3.2,0) {Collectors};
+\node[component] (record) at (6.2,0) {Common\\data record};
+\node[component] (transform) at (9.2,0) {Transformers};
+\node[component] (dispatch) at (12.2,0) {Dispatcher};
+
+\draw[flow] (sum) -- (collector);
+\draw[flow] (collector) -- (record);
+\draw[flow] (record) -- (transform);
+\draw[flow] (transform) -- (dispatch);
+
+\node[component] (source) at (9.2,1.9) {Transport source\\file or MQTT};
+\node[component] (dexport) at (12.2,1.9) {Data exporter\\file or MQTT};
+\draw[flow] (source) -- (transform);
+\draw[flow] (dispatch) -- (dexport);
+
+\node[plugin] (converter) at (12.2,-2.3)
+  {Converter plug-in\\record $\rightarrow$ DSL input};
+\node[plugin] (verdict) at (8.4,-2.3)
+  {Verdict-service plug-in\\property checking};
+\node[component] (vexport) at (4.6,-2.3) {Verdict\\exporters};
+\node[external, dashed] (feedback) at (0,-2.3)
+  {Feedback adapter\\architecture only};
+\draw[flow] (dispatch) -- (converter);
+\draw[flow] (converter) -- (verdict);
+\draw[flow] (verdict) -- (vexport);
+\draw[option] (vexport) -- (feedback);
+\draw[option] (feedback.north) -- (sum.south);
+
+% step numbers above the top-left corner of each component, outside the boxes
+\foreach \n/\x in {collector/1,record/2,transform/3,dispatch/4,
+                   converter/5,verdict/6,vexport/7}
+  \node[stepcircle] at ($(\n.north west)+(3mm,2.4mm)$) {\x};
+\end{tikzpicture}

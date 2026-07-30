@@ -1,30 +1,38 @@
 \chapter{Implementation}\label{chapter:implementation}
 
-This chapter describes the Python prototype that implements the reference
-architecture from Chapter~\ref{chapter:design}. The prototype follows the
-Pipes and Filters pattern: data moves through small processing stages, and
-each stage performs one task before passing the result on~\cite{buschmann1996posa}.
-This structure matches the pipeline roles introduced in
-Figure~\ref{fig:pipeline-components}: collectors create data records,
-transformers process records, dispatchers route them, converters prepare data
-for checking, and verdict services produce verdicts.
+\section{Implementation Overview}
 
-The chapter first gives the technology choices and the code organization. It
-then follows the runtime path of a record from collection to transformation,
-export, checking, and verdict output. The final sections describe YAML
-configuration, the verifier-side runtime, and generated deployment
-configurations.
+The prototype is implemented in Python for ROS~2 Kilted. Before individual
+classes are discussed, Figure~\ref{fig:implementation-chain} shows the complete
+transformation chain with its concrete artifacts. A deployment specification
+and user plug-ins are inputs to configuration generation. The generated YAML
+starts either a \texttt{monitor\_node} runtime, which has ROS~2 access, or a
+\texttt{node\_runner} verifier runtime, which can run without ROS~2.
 
-\section{Technology Choices and Code Organization}
-\label{sec:impl-organization}
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/implementation_chain}}
+  \caption{Implementation view of the chain in
+  Figure~\ref{fig:configuration-workflow}: authored specifications and
+  plug-ins, the generator, the generated runtime configurations, and the two
+  executable entry points.}
+  \label{fig:implementation-chain}
+\end{figure}
 
-The prototype is implemented in Python. ROS~2 provides the Python client
-library \texttt{rclpy}, which allows the monitor to join the ROS graph as a
-normal node. Python also has runtime type utilities through
-\texttt{rosidl\_runtime\_py}. These utilities resolve ROS~2 message, service,
-and action classes from their type names, so a configured source can be
-collected without generating source-specific monitoring code. Python also keeps
-project-specific converters and verdict services simple to add.
+A \emph{runtime} in this chapter means one executable process built from one
+runtime YAML file. It owns its configured sources, processing and checking
+graph, outputs, and lifecycle. A host can run more than one runtime, although
+the generator normally emits one consolidated configuration for each host role.
+
+\section{Technology Choices}
+
+ROS~2 provides the Python client library \texttt{rclpy}, which allows the
+monitor to join the ROS graph as a normal node. Python also has runtime type
+utilities through \texttt{rosidl\_runtime\_py}. These utilities resolve ROS~2
+message, service, and action classes from their type names, so a configured
+source can be collected without generating source-specific monitoring code.
+Python additionally keeps project-specific converters and verdict services
+simple to add.
 
 Only the collector layer imports ROS~2 packages. The remaining modules use the
 Python standard library, \texttt{PyYAML} for configuration parsing, and
@@ -33,15 +41,45 @@ split deployment can run on a plain Python installation. If \texttt{paho-mqtt}
 is unavailable, MQTT components are skipped at construction time while the rest
 of the modules remain importable and testable.
 
-The repository separates infrastructure code from project-specific checking
-logic. The \texttt{monitor/} package contains the reusable monitoring
-infrastructure. The \texttt{custom/} package contains converters and verdict
-services used by the case studies. Table~\ref{tab:impl-modules} maps the main
-modules in \texttt{monitor/} to the pipeline roles from
+\section{Code Organization}
+
+The main directories
+are separated by responsibility, as shown in
+Table~\ref{tab:code-organization}.
+
+\begin{table}[htbp]
+\centering
+\caption{Code organization.}
+\label{tab:code-organization}
+\begin{tabular}{p{.20\textwidth}p{.69\textwidth}}
+\toprule
+\textbf{Path} & \textbf{Responsibility}\\
+\midrule
+\texttt{monitor/} & Reusable data records, collectors, transformers,
+dispatchers, sources, exporters, plug-in loading, runtime construction, and
+configuration generation.\\
+\texttt{custom/} & Example application- and property-specific converter and
+verdict-service plug-ins.\\
+\texttt{demo/} & Deterministic ROS~2 stimulus programs and demonstration
+material.\\
+\texttt{test/} & Unit tests for reusable components and example plug-ins.\\
+\texttt{docs/} & Data-record, configuration, plug-in, and deployment
+documentation.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This separation is important: code under \texttt{monitor/} is reused by every
+case study, while \texttt{custom/} contains the property knowledge that changes
+between applications. Table~\ref{tab:impl-modules} maps the main modules of
+\texttt{monitor/} to the pipeline roles of
 Chapter~\ref{chapter:design}.
 
 \begin{table}[htbp]
 \centering
+\caption{Main modules of the \texttt{monitor/} package and their pipeline
+responsibilities.}
+\label{tab:impl-modules}
 \begin{tabular}{
     >{\raggedright\arraybackslash}p{0.34\textwidth}
     >{\raggedright\arraybackslash}p{0.56\textwidth}
@@ -71,154 +109,160 @@ Converter and verdict-service base classes, verdict records, and verdict
 exporters. \\
 \texttt{dsl\_transport.py} &
 File and MQTT transports for converter output. \\
+\texttt{plugins.py} &
+Loading of user classes by import path. \\
 \texttt{config\_model.py}, \texttt{pipeline.py},
 \texttt{runtime\_builder.py} &
 Typed configuration model and builders for runtime wiring. \\
 \texttt{config\_gen.py} &
-Generator that turns one deployment description into runtime configuration
+Generator that turns one deployment specification into runtime configuration
 files. \\
 \bottomrule
 \end{tabular}
-\caption{Main modules of the \texttt{monitor/} package and their pipeline
-responsibilities.}
-\label{tab:impl-modules}
 \end{table}
 
-\section{The Monitor Process}
-\label{sec:impl-monitor-process}
+\section{Anatomy of a Monitoring Solution}
 
-The monitor process is the ROS~2-facing runtime. It is used in the integrated
-deployment and on the robot side of the split deployment. It is implemented in
-\texttt{monitor\_node.py} as one ROS~2 node.
+Table~\ref{tab:solution-artifacts} distinguishes what a user authors, what the
+generator creates, and what is reused. A one-host integrated solution needs one
+generated YAML file. A split solution normally needs a monitor YAML and a
+verifier YAML; more hosts produce more matching configurations.
 
-At startup, the process loads a YAML file into the typed configuration model.
-It creates a session identifier from the current time and a short random
-component, then builds the configured data exporters and the checking graph.
-The process waits briefly for DDS discovery and reads the visible topic and
-service names from the ROS graph. This discovered type information is used only
-as a fallback. If a source type is already given in the configuration, that
-configured type is used.
+\begin{table}[htbp]
+\centering
+\caption{Artifacts in a concrete monitoring solution.}
+\label{tab:solution-artifacts}
+\begin{tabular}{p{.22\textwidth}p{.29\textwidth}p{.38\textwidth}}
+\toprule
+\textbf{Authored by user} & \textbf{Generated} & \textbf{Reused}\\
+\midrule
+One JSON deployment specification &
+One runtime YAML per generated host role &
+Collectors for topics, services, and actions\\
+Converter and verdict-service classes when built-ins are insufficient &
+Consistent transport inputs/outputs and checking links &
+Common record conversion and JSONL serialization\\
+Property and plug-in settings &
+Runtime output directories and executable commands &
+Transformers, dispatchers, file/MQTT transport, evidence and verdict formats\\
+\bottomrule
+\end{tabular}
+\end{table}
 
-For each configured topic, service, or action, the process creates one
-collector and one transformer pipeline. A source can also define its own
-exporters. In that case, records from that source go to a source-specific
-dispatcher. This is useful when, for example, one high-rate topic should be
-sent to MQTT while other records are written to a file. All records are also
-passed to the checking graph when one is configured.
+The user still decides which observations and properties matter. Automation
+removes the routine wiring around those decisions; it does not infer the
+property or deployment intent.
 
-Each run is marked with two session records. The first record is
-\texttt{session\_start}; it contains the complete parsed configuration, so an
-output file can be interpreted later without the original YAML file. On
-shutdown, collectors are stopped, a \texttt{session\_end} record with summary
-statistics is emitted, and exporters are flushed and closed.
+\section{Runtime Data Flow}
 
-\section{Collecting ROS 2 Observations}
-\label{sec:impl-collectors}
+Figure~\ref{fig:runtime-pipeline} shows the runtime graph before its components
+are explained. A collector or transport source supplies common data records.
+The same dispatcher can additionally send a record to evidence output and to
+further checking chains.
 
-Collectors implement the observation mechanisms described in
-Section~\ref{sec:observing-ros2}. They share a base class that owns the
-per-source sequence counter, the transformer pipeline, and the export callback.
-The concrete collectors differ in the ROS~2 entity they subscribe to.
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/runtime_pipeline}}
+  \caption{Implemented runtime data flow. Dashed components are
+  property-specific plug-ins; solid components are reusable infrastructure.}
+  \label{fig:runtime-pipeline}
+\end{figure}
 
-\paragraph{Topics.} The topic collector resolves the configured message type
-to a Python class at runtime. It then creates a normal ROS~2 subscription with
-a configurable QoS depth. Each received message is converted to a dictionary
-with \texttt{message\_to\_ordereddict}. The same collector code can therefore
-handle any topic type that is available in the runtime environment.
+\subsection{Collectors}
 
-\paragraph{Services.} The service collector subscribes to the event topic of
-the configured service. Its name is formed by appending
-\texttt{/\_service\_event} to the service name. This topic exists when service
-introspection is enabled on the service client or server, as explained in
-Section~\ref{sec:observing-services}. The collector derives the event message
-class from the configured service type and subscribes with a reliable,
-transient-local QoS profile. Each event is converted into a request or response
-record. The event type determines the phase, the request or response payload
-becomes the record data, and the client identifier and sequence number are kept
-in the metadata for request-response correlation.
+The monitor runtime builds one collector for each configured ROS~2 resource:
 
-\paragraph{Actions.} The action collector subscribes to the hidden feedback
-and status topics of the configured action:
-\texttt{<action>/\_action/feedback} and
-\texttt{<action>/\_action/status}. The feedback type is resolved from the
-action type. The status topic uses the standard goal-status array message from
-\texttt{action\_msgs}. The configured phases decide
-whether feedback, status, or both are collected. Goal, result, and cancellation
-exchanges use services inside ROS~2 actions. The prototype leaves those phases
-to service introspection and does not collect them in the action collector.
+\begin{description}
+  \item[Topic collector.] It resolves the message class at startup, creates a
+  normal subscription, recursively converts each message to a dictionary, and
+  creates a topic data record.
 
-Collectors also try to record the source node that produced an observation.
-DDS discovery may still be incomplete when the first message arrives. In that
-case, ROS~2 can report a placeholder publisher name. The collectors do not
-cache such placeholders. They retry the lookup on later callbacks and store the
-node name once a real name is available. Until then, the record simply omits
-the source-node field.
+  \item[Service collector.] It resolves the service event class and subscribes
+  to the hidden service-event topic for the configured service
+  (Section~\ref{sec:observing-services}). The client or server must enable
+  service introspection in \texttt{CONTENTS} mode. Event type distinguishes
+  request from response; the client identifier and sequence number are retained
+  as metadata.
 
-\section{Records and Transformers}
-\label{sec:impl-records}
+  \item[Action collector.] It subscribes to the configured action's hidden
+  feedback and status topics. The configured phases determine which hidden
+  topics are used. Goal, cancellation, and result interactions are
+  services and require separate service-event collectors for a complete trace.
+\end{description}
 
-The common data record described in Table~\ref{tab:data-record-schema} is
-implemented as a Python dataclass. It is the data unit that moves through the
-pipeline. Each record stores the record kind, session identifier, source type,
-source name, message type, timestamp, payload, and optional metadata.
+All three collectors observe event topics that ROS~2 itself exposes; no
+interceptor is placed between application nodes, and the application code is
+not modified.
 
-Records are serialized as JSON Lines (JSONL), with one JSON object per line.
-Empty optional fields are omitted. Deserialization restores the same record
-fields, so records can pass through files or network transports without losing
-their monitoring context. A data record identifier combines the session
-identifier, source type, source name, phase, and per-collector sequence number.
-The identifier is unique within one session and remains readable in logs and
-output files. The following shortened JSONL line shows a topic record after
-field extraction:
+\subsection{Common Records and Serialization}
 
-\begin{small}
-\begin{verbatim}
-{"_type": "data", "session_id": "20260709_142401_5f2c31ab",
- "record_id": "20260709_142401_5f2c31ab:topic:/odom:-:17",
- "source_type": "topic", "source_name": "/odom",
- "msg_type": "nav_msgs/msg/Odometry", "timestamp": 1783002941.312,
- "data": {"twist.twist.linear.x": 0.62},
- "metadata": {"seq": 17, "transformers_applied":
-              ["FieldExtractor", "RateThrottler"]}}
-\end{verbatim}
-\end{small}
+The \texttt{DataRecord} dataclass implements the schema from
+Section~\ref{sec:common-record}. It assigns a session identifier, a per-source
+sequence number, and a record identifier formed from the session, source type,
+source name, phase, and sequence. It stores monitor wall-clock time and, when
+present, the message header timestamp.
 
-Each collector sends its records through a transformer pipeline before they
-are exported or checked. Transformers run in the order given in the
-configuration. A transformer can return a modified record, the same record, or
-no record. Returning no record drops the observation and stops the remaining
-transformers for that observation.
+Serialization uses one JSON object per line. Empty optional fields are omitted.
+Because the payload has already been converted recursively, nested ROS
+messages, arrays, sequences, and primitive values remain valid JSON data. The
+same JSON is used for files and MQTT, so split deployment does not change the
+meaning of the record.
 
-Three transformers are built in:
+\subsection{Transformers and Dispatchers}
 
-\begin{itemize}
-    \item \textbf{FieldExtractor} keeps selected fields addressed with dot
-    notation. For example, it can keep the linear velocity field of an odometry
-    message. It also flattens selected nested fields into flat keys.
+Each collector owns an ordered transformer pipeline. The built-in
+\texttt{FieldExtractor} selects nested fields, \texttt{RateThrottler} limits the
+maximum output frequency, and \texttt{OnChangeFilter} suppresses repeated
+values. A transformer can return no record to stop processing. Names of
+successful transformations are appended to record metadata.
 
-    \item \textbf{RateThrottler} limits the maximum record rate for one source
-    with a monotonic clock. Records above the configured rate are dropped.
-
-    \item \textbf{OnChangeFilter} keeps a record only when at least one watched
-    field changed since the previous record that passed the filter.
-\end{itemize}
-
-The names of the transformers that processed a record are appended to the
-metadata. Downstream components can therefore see which reductions were applied
-before storage, transport, or checking.
-
-\section{Exporters, Sources, and Transports}
-\label{sec:impl-transport}
-
-An exporter is a sink for records. It accepts a record and can later be flushed
-or closed. A dispatcher is an exporter that forwards each record to several
-other exporters. If one exporter fails, the dispatcher reports the failure and
+A dispatcher fans one record out to any number of exporters and checking
+chains. If one exporter fails, the dispatcher reports the failure and
 continues with the remaining exporters. The same dispatcher implementation is
 used for data records, converter output, and verdicts.
 
-The prototype includes file and MQTT data exporters. The file exporter appends
-JSONL records to a per-session file and flushes at a configurable interval. The
-MQTT exporter publishes data records to topics derived from the source:
+\subsection{Checking Graph}
+
+A \emph{checking graph} is the configured directed graph from common records to
+converters, verdict services, and outputs. It is not a ROS graph. A converter
+selects one or several source records and emits a checker-specific DSL record.
+A verdict service evaluates that record and may emit a verdict. Links can also
+chain a derived record into another converter.
+
+The following compact YAML fragment represents one graph:
+
+\begin{lstlisting}[language={},caption={Runtime YAML for a speed property.},
+label={lst:speed-yaml}]
+topics:
+  - name: /cmd_vel
+    type: geometry_msgs/msg/Twist
+
+converters:
+  - id: speed_input
+    type: custom.speed:SpeedConverter
+    inputs: [/cmd_vel]
+
+verdict_services:
+  - id: speed_limit
+    type: custom.threshold:ThresholdVerdict
+    threshold: 0.5
+
+links:
+  - {from: "converter:speed_input", to: "verdict:speed_limit"}
+\end{lstlisting}
+
+The runtime builder validates component identifiers, loads the selected classes,
+constructs dispatchers, and starts scheduled converter work only after wiring
+is complete. Session-start and session-end records are retained as evidence but
+are not passed to property checking.
+
+\section{Exporters, Sources, and Transports}\label{sec:impl-transport}
+
+An exporter is a sink for records. It accepts a record and can later be flushed
+or closed. The prototype includes file and MQTT data exporters. The file
+exporter appends JSONL records to a per-session file and flushes at a
+configurable interval. The MQTT exporter publishes data records to topics
+derived from the source:
 \texttt{<prefix><source\_type>/<source\_name>}. Session records are published
 on a separate \texttt{<prefix>\_session} topic. The connection is established
 asynchronously, reconnects automatically, and uses a bounded outbound queue so
@@ -228,7 +272,7 @@ A source is the verifier-side counterpart of an exporter. It reads records
 from a transport and injects them into a dispatcher. The MQTT source subscribes
 to a topic filter and parses each payload into a data record. The file source
 replays a JSONL file. With the \texttt{follow} option, it keeps reading new
-lines appended to the file. Without \texttt{follow}, it replays the file once,
+lines appended to the file; without it, the source replays the file once,
 optionally with a delay between records.
 
 Converter output can also cross a transport boundary. The same file and MQTT
@@ -237,108 +281,61 @@ standard-output, and MQTT exporters. Because each boundary is represented by
 an exporter on one side and a source on the other, a pipeline stage can run
 in-process or across a transport without changing the stage implementation.
 
-\section{Converters and Verdict Services}
-\label{sec:impl-checking}
+\section{Plug-ins and DSL Adaptation}\label{sec:plugins}
 
-Checking is split into two component types. A converter receives a data record.
-It can return a checker-ready dictionary, a derived data record for another
-converter, or no output. A converter may also run its own timer, which is
-needed for deadline properties. A verdict service evaluates checker-ready data
-and may return a verdict. A verdict contains a timestamp, a property
-identifier, a boolean result, and details.
+A converter plug-in subclasses \texttt{DataConverter} and implements
+\texttt{convert(record)}. It may return no value, a dictionary, or a derived
+record. Stateful converters can correlate sources, retain windows, or schedule
+deadline events. A verdict-service plug-in subclasses
+\texttt{VerdictService} and implements \texttt{evaluate(dsl\_record)}. Its
+result uses the common \texttt{Verdict} structure:
+\texttt{property\_id}, Boolean result, timestamp, details, session identifiers,
+and contributing record identifiers.
 
-The infrastructure attaches correlation data to each verdict. This includes
-the monitor session and the identifiers of the records that led to the
-verdict. A later analysis can therefore connect a verdict to the observations
-behind it. Converters and verdict services do not import ROS~2 packages and do
-not assume a particular property language.
+The plug-in class is selected by an import path such as
+\texttt{custom.speed:SpeedConverter}. The loader imports it, verifies that it
+implements the required base class, and passes configured keyword arguments to
+its constructor. Thus ``supporting a DSL'' has a concrete meaning:
 
-The concrete checking components used in the case studies live in the
-\texttt{custom/} package. They are selected from YAML by import path:
+\begin{enumerate}
+  \item define the DSL-record fields expected by the checker;
+  \item implement a converter that produces those fields and retains input
+  record identifiers;
+  \item implement or wrap a verdict service that evaluates the property; and
+  \item select both classes and their parameters in the deployment
+  specification.
+\end{enumerate}
+
+The concrete plug-ins used in the case studies live in the \texttt{custom/}
+package and illustrate different plug-in patterns:
 
 \begin{itemize}
-    \item \textbf{RuleBasedConverter} maps configured record fields to a flat
-    dictionary for records whose source matches a configured pattern. It is
-    used for threshold-style checks.
+    \item \texttt{CmdVelSpeedConverter} maps a velocity record to the single
+    field checked by a threshold property. It is the smallest stateless
+    converter pattern.
 
-    \item \textbf{ThresholdVerdict} compares one field with a bound. It emits a
-    violation verdict when the violation starts, and a recovery verdict when
-    the value returns inside the bound. It can require the violation to last
-    for a configured duration before reporting it.
+    \item \texttt{ThresholdVerdict} compares one field with a bound. It emits a
+    violation verdict when the violation starts and a recovery verdict when
+    the value returns inside the bound, so only satisfaction changes are
+    reported.
 
-    \item \textbf{ResetPoseEffectConverter} checks a property over two
-    interfaces. After a successful \texttt{/reset\_pose} service response, the
-    odometry should return close to the origin within a deadline. The converter
-    correlates service records with odometry records and uses a timer to report
-    a violation when the deadline expires.
+    \item \texttt{ResetPoseEffectConverter} and its verdict service check a
+    property over two interfaces: after a successful \texttt{/reset\_pose}
+    service response, the odometry must return close to the origin within a
+    deadline. The converter correlates service records with odometry records
+    and uses a timer to report a violation when the deadline expires.
 
-    \item \textbf{RelativeSpeedConverter} joins odometry streams from two
-    robots and emits their relative speed. This demonstrates a property that
-    uses more than one data source.
+    \item \texttt{RelativeSpeedConverter} joins streams from two robots and
+    derives a joint value, demonstrating a stateful converter over more than
+    one data source.
 \end{itemize}
 
-\section{Configuration and Graph Wiring}
-\label{sec:impl-config}
+Converters and verdict services do not import ROS~2 packages and do not assume
+a particular property language. A temporal-logic engine could be wrapped
+behind the same interfaces; the prototype ships the small adapters above
+rather than integrations with every formalism named in the feature model.
 
-One YAML file configures one runtime. The configuration is parsed into typed
-specification objects. Built-in components are selected by short names such as
-\texttt{file} or \texttt{mqtt}. Project-specific components are selected by an
-import path of the form \texttt{module.path:ClassName}. When a class is
-resolved, the builder checks that it implements the expected base class before
-constructing it. Extra keys in a plugin entry are passed to the constructor as
-keyword arguments, so built-in and project-specific components use the same
-configuration style.
-
-The following excerpt observes one odometry topic, extracts the linear speed,
-exports data records, and checks a speed limit:
-
-\begin{small}
-\begin{verbatim}
-topics:
-  - name: /odom
-    type: nav_msgs/msg/Odometry
-    transformers:
-      - {type: FieldExtractor, fields: [twist.twist.linear.x]}
-      - {type: RateThrottler, max_rate_hz: 5.0}
-
-exporters:
-  - {type: file}
-  - {type: mqtt, broker: localhost, topic_prefix: monitor/, qos: 1}
-
-converters:
-  - id: odom_speed
-    type: custom.rule_based:RuleBasedConverter
-    params: {source_match: "^/odom$",
-             field_map: {velocity: twist.twist.linear.x}}
-
-verdict_services:
-  - id: odom_speed_check
-    type: custom.threshold:ThresholdVerdict
-    params: {property_id: odom_speed_limit, field: velocity,
-             op: ">", threshold: 0.5}
-    exporters:
-      - {type: file, path: verdicts_{session_id}.jsonl}
-
-links:
-  - {from: "source:/odom", to: "converter:odom_speed"}
-  - {from: "converter:odom_speed", to: "verdict:odom_speed_check"}
-\end{verbatim}
-\end{small}
-
-The \texttt{links} section defines the checking graph. Nodes are addressed as
-\texttt{source:<name>}, \texttt{converter:<id>}, \texttt{verdict:<id>},
-\texttt{input:<id>}, and \texttt{output:<id>}. Edges connect record streams to
-converters, converters to further converters or verdict services, and
-transport endpoints to graph nodes.
-
-The graph builder turns this description into live objects. It creates each
-component once, wraps converters with source filters when needed, builds
-converter chains in downstream-first order, and rejects cyclic links. The
-monitor process and the verifier runtime use the same graph builder, which
-keeps component placement in the configuration files.
-
-\section{The Verifier Runtime}
-\label{sec:impl-node-runner}
+\section{The Verifier Runtime}\label{sec:impl-node-runner}
 
 The verifier-side entry point is \texttt{node\_runner.py}. It runs the same
 checking graph without a ROS~2 dependency. Its configuration uses
@@ -356,82 +353,63 @@ records to one or more verifier runtimes. Since both deployments exchange the
 same data record format, a recorded JSONL file can later be replayed through
 the same checking graph for offline analysis.
 
-\section{Generating Deployment Configurations}
+\section{Deployment Specification and Configuration Generation}
 \label{sec:impl-config-gen}
 
 A multi-host deployment needs several YAML files that agree on transports,
 topic names, and payload kinds. Writing these files by hand is easy to get
 wrong. The prototype therefore includes a configuration generator that derives
-the runtime YAML files from one deployment description.
+the runtime YAML files from one deployment specification. The JSON deployment
+specification contains:
 
-The deployment description is a JSON document. The \texttt{hosts} section lists
-machines. Each host contains runtimes. A \texttt{ros2} runtime declares the
-observable sources offered by an application. A \texttt{monitor} runtime
-subscribes to selected sources. \texttt{converter} and
-\texttt{verdict\_service} runtimes define checking components and their
-parameters. The \texttt{links} section connects runtimes on different hosts
-and states whether the link carries data records or converter output, and
-whether it uses MQTT or a shared file.
+\begin{description}
+  \item[\texttt{hosts}] named deployment hosts;
+  \item[\texttt{runtimes}] ROS~2 sources, monitor roles, converters, and
+  verdict-service roles placed on each host; and
+  \item[\texttt{links}] source and destination runtimes, payload type
+  (\texttt{records} or \texttt{dsl}), and file or MQTT transport settings.
+\end{description}
 
-The request model is intentionally close to the runtime concepts. A
-\texttt{Host} is a placement boundary. A \texttt{Runtime} is one executable
-role placed on a host. A \texttt{Source} is a topic, service, or action
-declared by a \texttt{ros2} runtime. A \texttt{Link} connects two runtimes and
-contains a \texttt{Transport}. Existing transport kinds are \texttt{mqtt} and
-\texttt{file}. Existing link payloads are \texttt{records}, for data records,
-and \texttt{dsl}, for converter output.
+The specification model is intentionally close to the runtime concepts, as
+shown in Figure~\ref{fig:config-generation-model}. A \texttt{Host} is a
+placement boundary. A \texttt{Runtime} is one executable role placed on a
+host. A \texttt{Source} is a topic, service, or action declared by a
+\texttt{ros2} runtime. A \texttt{Link} connects two runtimes and contains a
+\texttt{Transport}; existing transport kinds are \texttt{mqtt} and
+\texttt{file}.
 
-\begin{figure}[H]
+\begin{figure}[htbp]
     \centering
     \includegraphics[width=\textwidth]{diagrams/CodeGen.png}
-    \caption{Data model used by the configuration generator. A generation
-    request contains hosts and links. Hosts contain runtimes, process
-    observables declare monitorable sources, and links define the transport
-    used between runtimes.}
+    \caption{Data model of the deployment specification. Hosts contain
+    runtimes, \texttt{ros2} runtimes declare monitorable sources, and links
+    define the transport used between runtimes. The root element, labelled
+    \emph{GenerationRequest} in the diagram, is the deployment specification.}
     \label{fig:config-generation-model}
 \end{figure}
 
-The following example places a monitor next to the robot and the checking
-chain on a separate verifier host:
+For each host, the generator chooses a ROS~2-facing monitor configuration or a
+ROS-independent verifier configuration. These start \texttt{monitor\_node} and
+\texttt{node\_runner}, respectively. Same-host
+links become in-process graph links. Cross-host record links create a matching
+data exporter and transport source; cross-host DSL links create matching output
+and input endpoints. Both sides derive the same MQTT topic or shared file path.
 
-\begin{small}
-\begin{verbatim}
-{"hosts": [
-   {"id": "robot", "runtimes": [
-      {"id": "app", "kind": "ros2", "sources": [
-         {"id": "odom", "source_kind": "topic", "name": "/odom",
-          "interface": "nav_msgs/msg/Odometry"}]},
-      {"id": "mon", "kind": "monitor", "subscribe": ["odom"]}]},
-   {"id": "verifier", "runtimes": [
-      {"id": "conv", "kind": "converter",
-       "class_path": "custom.rule_based:RuleBasedConverter",
-       "input_from": ["odom"], "output_to": "speed", ...},
-      {"id": "check", "kind": "verdict_service",
-       "class_path": "custom.threshold:ThresholdVerdict",
-       "input_from": ["speed"], ...}]}],
- "links": [
-   {"from_host": "robot", "to_host": "verifier",
-    "from_runtime": "mon", "to_runtime": "conv",
-    "payload": "records",
-    "transport": {"kind": "mqtt", "broker": "192.168.1.10"}}]}
-\end{verbatim}
-\end{small}
-
-Algorithm~\ref{alg:config-generation} shows the projection used by the
-generator. The algorithm first builds an index of sources, runtimes, host
-placement, and cross-host links. It then emits at most one YAML file per host:
-a monitor configuration for a host with a monitor runtime, or a runner
-configuration for a host that only runs checking components.
+Algorithm~\ref{alg:config-generation} shows the generation procedure. It
+first builds an index of sources, runtimes, host placement, and cross-host
+links. It then emits at most one YAML file per host: a monitor configuration
+for a host with a monitor runtime, or a runner configuration for a host that
+only runs checking components.
 
 \begin{algorithm}[htbp]
-\caption{Project a deployment request into runtime YAML files}
+\caption{Generate runtime YAML configurations from a deployment specification}
 \label{alg:config-generation}
 \begin{algorithmic}[1]
-\Require deployment request $J$
+\Require deployment specification $D$
 \Ensure generated configurations $F$
 \State $F \gets \emptyset$
-\State $I \gets \Call{BuildIndex}{J.\text{hosts}, J.\text{links}}$
-\ForAll{host $H$ in $J.\text{hosts}$}
+\State $I \gets \Call{BuildIndex}{D.\text{hosts}, D.\text{links}}$
+\ForAll{host $H$ in $D.\text{hosts}$}
   \State $K \gets$ the set of runtime kinds on $H$
   \If{\texttt{monitor} is in $K$}
     \State $Y \gets \Call{NewMonitorConfig}{H}$
@@ -471,20 +449,24 @@ configuration for a host that only runs checking components.
 \end{algorithmic}
 \end{algorithm}
 
-The generator projects this description onto one YAML file per host. A host
-with a monitor runtime receives a monitor-process configuration. A host with
-only converters or verdict services receives a runner configuration. A host
-that only runs the observed ROS~2 application does not need a generated file.
+Appendix~\ref{app:deployment-spec} gives a complete, small deployment
+specification and the generated-file interpretation.
 
-Runtimes on the same host are wired in-process by matching their declared
-record identifiers. Cross-host communication requires an explicit link. The
-writer and reader of a link derive their transport namespace from the same
-link identity, so they use matching MQTT topics or shared file paths. Unsupported
-placements are rejected during generation. For example, a converter on a
-monitor host cannot consume a cross-host record stream, because cross-host
-record inputs are handled by the runner runtime.
+\section{Operational Support}
 
-For repeatable deployment, the repository also provides a container image
-based on a ROS~2 base image. The image packages the monitor, the custom
-components, and their dependencies. A Docker Compose service runs the monitor
-on the host network so that DDS discovery can reach the robot nodes.
+Runtime YAML can be checked before startup, and the implementation logs the
+resolved graph. File outputs support offline replay through
+\texttt{FileReplaySource}; MQTT outputs use selectable broker, port, topic, and
+QoS settings. The repository provides a container definition for repeatable
+packaging, but the heterogeneous experiment also runs a standalone verifier in
+a normal Python environment to demonstrate separation from ROS~2.
+
+\section{Chapter Summary}
+
+The implementation turns one deployment specification and optional
+property-specific plug-ins into executable runtime configurations. Reusable
+collectors expose topics, service events, and action feedback/status as common
+records. Transformers, dispatchers, file/MQTT transport, and evidence handling
+are reused, while converters and verdict services isolate DSL and property
+logic. The next chapter evaluates both this data path and the saved
+infrastructure work.

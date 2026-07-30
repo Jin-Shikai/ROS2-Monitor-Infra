@@ -1,1 +1,802 @@
 \chapter{Evaluation}\label{chapter:evaluation}
+
+\section{Evaluation Questions and Criteria}
+
+This chapter evaluates RQ4: \emph{To what extent do the proposed reference
+architecture and its implementation support the monitoring needs of
+representative ROS~2 applications?}
+
+The evaluation criteria are defined first, so that each experiment can be
+related to the evidence it contributes:
+
+\begin{description}
+  \item[C1 --- Observation coverage.] The prototype should collect typed topic
+  messages, service request/response events, and action feedback/status.
+
+  \item[C2 --- Functional correctness and evidence.] Produced verdicts should
+  match expected state changes or independently recorded outcomes and identify
+  contributing records.
+
+  \item[C3 --- Deployment variation.] The same interfaces should work in
+  integrated and split deployments, including a heterogeneous multi-host
+  placement.
+
+  \item[C4 --- Automation and reuse.] A deployment specification should
+  generate matching runtime YAML files, while experiments should reuse
+  observation, representation, processing, transport, and evidence code.
+
+  \item[C5 --- Architectural accommodation.] The reference architecture should
+  be able to host the principal capabilities of ROSMonitoring, ROMoSu,
+  digital-twin runtime verification, and the Rabiser et al.\ reference
+  architecture through configuration and explicit extension points.
+\end{description}
+
+C1--C4 derive from the requirements in Chapter~\ref{chapter:design}; C5
+derives from the research gaps in Chapter~\ref{chapter:related_work}. Resource
+use and latency are reported as supporting observations, not as a performance
+benchmark.
+
+\section{Experiment Design}
+
+Five experiments provide complementary rather than repetitive evidence.
+E1 and E2 use deterministic stimulus nodes so every transition is known in
+advance. E3 replaces these nodes with unmodified Nav2, a widely used ROS~2
+navigation stack~\cite{macenski2020marathon}, in the Gazebo
+simulator~\cite{koenig2004gazebo}. E4 adds two namespaces and a property using both
+robots. E5 keeps the E4 checking graph but distributes the application,
+monitor, and verifier across Ubuntu, Raspberry Pi, and macOS. The term
+\emph{representative} therefore means that the set progresses from controlled
+interface tests to existing navigation software, multi-robot correlation, and
+heterogeneous placement. It does not claim to represent every robot or field
+condition.
+
+\begin{table}[htbp]
+\centering
+\caption{Overview of the evaluation experiments.}
+\label{tab:experiments}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.08\textwidth}
+  >{\raggedright\arraybackslash}p{.25\textwidth}
+  >{\raggedright\arraybackslash}p{.22\textwidth}
+  >{\raggedright\arraybackslash}p{.35\textwidth}}
+\toprule
+\textbf{ID} & \textbf{Application} & \textbf{Deployment} &
+\textbf{Main evidence}\\
+\midrule
+E1 & Commanded-speed stimulus & Integrated & Topic collection and local
+verdict generation.\\
+E2 & Speed, reset service, and Fibonacci action stimuli & Split over local
+MQTT & Topics, services, actions, and local/remote equivalence.\\
+E3 & One TurtleBot3 with Nav2 in Gazebo & Split over local MQTT &
+Unmodified navigation, routes, deadline, and action outcome.\\
+E4 & Two TurtleBot3/Nav2 instances in Gazebo & Split over local MQTT &
+Namespaces and a property using both robots.\\
+E5 & E4 across three computers & DDS plus MQTT on a LAN &
+Heterogeneous physical placement and equivalent verdict streams.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+E1--E4 ran on one Ubuntu 24.04 workstation with ROS~2 Kilted. E3--E5 used
+Gazebo and Nav2; E1 and E2 did not simulate a robot and instead used
+deterministic ROS~2 stimulus processes. Split same-machine experiments used
+the Mosquitto MQTT broker~\cite{light2017mosquitto} on port 1884. E5 used the
+workstation for Gazebo and Nav2, an Ubuntu
+Raspberry Pi for collection and the broker, and a macOS laptop for checking.
+
+\section{User Workflow and Experiment Artifacts}
+
+The same five-step workflow was used in every experiment:
+
+\begin{enumerate}
+  \item identify ROS~2 sources and properties;
+  \item choose integrated or split placement;
+  \item write one JSON deployment specification with sources, plug-in class
+  paths, hosts, and links;
+  \item generate runtime YAML and start the reported commands; and
+  \item compare online verdicts with JSONL records, mission logs, or Gazebo
+  positions.
+\end{enumerate}
+
+Table~\ref{tab:experiment-artifacts} makes the authored/generated/reused boundary
+explicit. Ten runtime YAML files were generated across the five reference
+setups. E5 reused the E4 property logic unchanged; only placement and transport
+settings changed.
+
+\begin{small}
+\setlength{\tabcolsep}{2pt}
+\begin{longtable}{
+  >{\raggedright\arraybackslash}p{.07\textwidth}
+  >{\raggedright\arraybackslash}p{.27\textwidth}
+  >{\raggedright\arraybackslash}p{.16\textwidth}
+  >{\raggedright\arraybackslash}p{.25\textwidth}
+  >{\raggedright\arraybackslash}p{.17\textwidth}}
+\caption{How the framework was used in each experiment.}
+\label{tab:experiment-artifacts}\\
+\toprule
+\textbf{ID} & \textbf{Specified} & \textbf{Generated} &
+\textbf{Property-specific work} & \textbf{Reused infrastructure}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{ID} & \textbf{Specified} & \textbf{Generated} &
+\textbf{Property-specific work} & \textbf{Reused infrastructure}\\
+\midrule
+\endhead
+E1 & Topic, threshold, integrated placement & 1 runtime YAML &
+Speed converter and threshold settings & Topic collector, record, graph,
+verdict output\\
+\midrule
+E2 & Four sources, two properties, MQTT link & 2 runtime YAML files &
+Reset-effect correlation; speed property reused & Service/action collectors,
+MQTT, JSONL, dispatch\\
+\midrule
+E3 & Nav2 sources, speed and navigation properties & 2 runtime YAML files &
+Navigation deadline/status logic & Action collection, reduction, MQTT,
+evidence\\
+\midrule
+E4 & Six namespaced topics and three properties & 2 runtime YAML files &
+Two-source separation conversion & Namespaces, topic collection, transport,
+verdict attribution\\
+\midrule
+E5 & Three hosts with the E4 graph & 3 runtime YAML files &
+No new property logic & All E4 components; generated placement changes\\
+\bottomrule
+\end{longtable}
+\end{small}
+
+\section{E1: Topic Monitoring in an Integrated Deployment}
+
+One workstation ran a stimulus node and the monitor as two ROS~2 processes. The
+collector, converter, and verdict service were integrated in the monitor.
+\texttt{/cmd\_vel} was published at approximately 5~Hz; \texttt{linear.x}
+alternated between 1.85 and 0.2~m/s every three seconds. The property was
+\[
+  \texttt{linear.x} \leq 0.5\ \text{m/s}.
+\]
+A verdict was expected only when satisfaction changed. During 120 seconds,
+593 records contained 40 expected changes. The monitor produced all 40
+verdicts, no extra verdict, and attributed each verdict to the first record on
+the new side of the threshold.
+
+\begin{table}[htbp]
+\centering
+\caption{E1 results.}
+\begin{tabular}{lr}
+\toprule
+Collected \texttt{/cmd\_vel} records & 593\\
+Expected / produced verdicts & 40 / 40\\
+Missed or additional verdicts & 0\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+E1 therefore establishes the complete integrated topic path for C1 and C2: the
+collector, converter, and verdict service preserve the expected sequence of
+property-state changes.
+
+\section{E2: Topics, Services, and Actions}
+
+E2 separates collection from checking while adding service and action
+observations. All components still ran on one physical workstation, but in
+separate processes: three deterministic stimulus processes, one monitor,
+Mosquitto, and one verifier. The monitor collected observations through DDS,
+wrote the records locally, and sent them over the local MQTT broker to the
+verifier. During the 120-second reference run it collected:
+
+\begin{itemize}
+  \item \texttt{/cmd\_vel}, with the E1 speed pattern;
+  \item \texttt{/reset\_pose} request and response events every three seconds;
+  \item \texttt{/odom} at 5~Hz; and
+  \item \texttt{/fibonacci} feedback and status for order-6 goals every five
+  seconds.
+\end{itemize}
+
+Odd reset calls moved the pose near the origin; even calls deliberately
+reported success without moving it. The reset-effect property required distance
+to the origin to become at most 0.05~m within one second of a successful
+response. This explains why a service response and a later topic record appear
+in one verdict.
+
+The speed property ran once inside the monitor and once in the verifier. This
+duplication was intentional: it tested whether serialization and MQTT transport
+preserved the result and record attribution, not whether two different
+properties were needed.
+
+\begin{table}[htbp]
+\centering
+\caption{E2 results.}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.58\textwidth}
+  >{\raggedright\arraybackslash}p{.31\textwidth}}
+\toprule
+\textbf{Check} & \textbf{Result}\\
+\midrule
+Local / remote speed verdicts & 40 / 40 identical\\
+Remote speed verdicts compared with recorded input & 40 / 40 correct\\
+Reset-effect verdicts & 39, alternating as designed\\
+Reset attribution & service response and odometry in every verdict\\
+Fibonacci action evidence & 23 goals, 115 feedback records, 23 succeeded
+statuses\\
+Total common records & 1458\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The 120-second run contained 40 reset calls at the three-second interval; the
+property produced 39 alternating verdicts because the one-second verification
+window of the final call had not closed when the session ended. There was no
+infrastructure failure, and the negative reset verdicts were expected stimuli.
+E2 satisfies the remaining observation part of C1 and shows for C2/C3 that one
+recorded stream retains its meaning across the local MQTT boundary.
+
+\section{E3: One Nav2 Robot}
+
+E3 used an unmodified TurtleBot3 Nav2 application in Gazebo. Gazebo, Nav2, the
+mission process, monitor, broker, and verifier ran as separate processes on one
+workstation. The monitor observed \texttt{/cmd\_vel}, rate-limited fields from
+\texttt{/odom}, and feedback/status from \texttt{/navigate\_to\_pose}. It
+checked a 0.2~m/s speed property and:
+\[
+  \text{goal status = succeeded} \ \land\  \text{duration} \leq 35\ \text{s}.
+\]
+
+The mission deliberately produced three outcomes, shown in
+Figures~\ref{fig:e3-goals} and~\ref{fig:e3-goalc}. Goal A used an open lower
+route. Before B, an obstacle closed that route, forcing the upper route.
+Before C, both openings were closed.
+
+\begin{figure}[htbp]
+  \centering
+  \subfloat[Goal A uses the open lower route and succeeds.]{%
+    \includegraphics[width=.78\textwidth]{diagrams/eval/E3_goalA.png}}\\
+  \subfloat[Goal B follows the upper route.]{%
+    \includegraphics[width=.48\textwidth]{diagrams/eval/E3_goalB_route.png}}\hfill
+  \subfloat[The verifier reports the 35-second violation.]{%
+    \includegraphics[width=.48\textwidth]{diagrams/eval/E3_goalB_verdict.png}}
+  \caption{The first two E3 goals. (a)~Goal A reaches the right side through
+  the lower opening. After the red obstacle closes that opening, (b)~goal B
+  takes the upper route and (c)~remains active beyond the deadline; the
+  additional \texttt{result: false} entry in the verifier terminal is the
+  online verdict for goal B.}
+  \label{fig:e3-goals}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \subfloat[Goal C starts with both openings closed.]{%
+    \includegraphics[width=.48\textwidth]{diagrams/eval/E3_goalC_start.png}}\hfill
+  \subfloat[Nav2 aborts and the verifier reports failure.]{%
+    \includegraphics[width=.48\textwidth]{diagrams/eval/E3_goalC_abort.png}}
+  \caption{Goal C in E3. Both red obstacles remain in the central partition,
+  so the robot remains on the left side. Nav2 ends the action with an aborted
+  status, and the last line in the verifier terminal is the corresponding
+  negative verdict.}
+  \label{fig:e3-goalc}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{E3 navigation results.}
+\label{tab:e3-results}
+\begin{tabular}{llll}
+\toprule
+\textbf{Goal} & \textbf{Nav2 result} & \textbf{Observed route} &
+\textbf{Property verdict}\\
+\midrule
+A & Succeeded in 24.34 s & Lower opening & Positive\\
+B & Succeeded in 69.72 s & Upper opening & Negative: deadline\\
+C & Aborted in 33.10 s & Stayed left & Negative: aborted\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The online B verdict was emitted when the 35-second deadline passed while the
+action was still active. The C verdict followed the observed aborted status.
+These are expected negative application outcomes, not monitor failures. Mission
+and Gazebo logs independently confirmed all three. The run contained 15,833
+records: 2422 velocity, 12,720 action, and 691 rate-limited odometry records.
+All 12 speed transitions and all three navigation verdicts matched the recorded
+inputs and outcomes. E3 therefore supports C2 on an existing application whose
+navigation code was unchanged.
+
+\section{E4: Two Nav2 Robots}
+
+E4 ran two namespaced TurtleBot3/Nav2 instances in Gazebo, deployed as shown
+in Figure~\ref{fig:e4-deployment}. One monitor collected six topics: each
+robot's \texttt{cmd\_vel}, \texttt{amcl\_pose}, and \texttt{odom}. Separate
+speed properties required \(\texttt{linear.x}\leq0.3\)~m/s. A fleet property
+required the distance between the two localized map-frame poses to remain at
+least 1.0~m. Each new pose was paired with the latest pose of the other robot.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/e4_deployment}}
+  \caption{E4 deployment. Gazebo, both namespaced Nav2 stacks, the monitor,
+  the local broker, and the verifier run as separate processes on one
+  workstation.}
+  \label{fig:e4-deployment}
+\end{figure}
+
+The robots crossed and returned, deliberately creating two violation periods;
+Figure~\ref{fig:e4-mission} shows the mission. All four navigation goals
+succeeded. From 3463 records, the robot speed properties produced 12 and 20
+correct transitions. The separation property produced exactly two negative and
+two recovery verdicts, all matched by replay and by the independent Gazebo
+position log. Minimum localized and Gazebo distances were 0.587 and 0.623~m
+respectively. The four final physical positions were 0.050--0.073~m from their
+goals.
+
+\begin{figure}[htbp]
+  \centering
+  \subfloat[Independent \texttt{/robot1} and \texttt{/robot2} RViz views.]{%
+    \includegraphics[width=.9\textwidth]{diagrams/eval/E4_rviz_views.png}}\\
+  \subfloat[First crossing.]{%
+    \includegraphics[width=.48\textwidth]{diagrams/eval/E4_first_crossing.png}}\hfill
+  \subfloat[Return crossing.]{%
+    \includegraphics[width=.48\textwidth]{diagrams/eval/E4_return_crossing.png}}
+  \caption{The E4 two-robot mission. The two RViz windows show that each Nav2
+  stack keeps its own pose, path, and costmap. Gazebo shows the corresponding
+  physical robot positions during the first and second crossings, where the
+  minimum-separation property is violated and later recovers.}
+  \label{fig:e4-mission}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{E4 results.}
+\begin{tabular}{lr}
+\toprule
+Robot 1 / robot 2 speed verdicts & 12 / 12; 20 / 20 correct\\
+Separation transitions & 4 / 4 correct\\
+Online violation periods matched by Gazebo & 2 / 2\\
+Minimum localized / physical distance & 0.587 / 0.623 m\\
+Final physical goal positions & 4 / 4 within 0.1 m\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+E4 shows that source name keeps namespaces separate while a stateful converter
+can correlate observations from both robots.
+
+\section{E5: Three Physical Machines}
+
+E5 retained the E4 mission and properties but changed placement, as shown in
+Figure~\ref{fig:e5-deployment}. The Ubuntu workstation ran Gazebo, two Nav2
+stacks, and the mission. A Raspberry Pi received the six topics over DDS,
+created common records, and hosted Mosquitto. A macOS laptop received MQTT
+records and ran the verifier without ROS~2. A second verifier on the Pi was a
+comparison reference only; it was not a required production component.
+Figure~\ref{fig:e5-setup} shows the physical and simulated sides of this
+setup.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{.95\textwidth}{!}{\input{figures/e5_deployment}}
+  \caption{E5 placement and the purpose of the Pi reference verifier.}
+  \label{fig:e5-deployment}
+\end{figure}
+
+\begin{figure}[htbp]
+  \centering
+  \subfloat[Raspberry Pi connected to the router by Ethernet.]{%
+    \includegraphics[height=.34\textwidth]{diagrams/eval/E5_pi_photo.png}}\hfill
+  \subfloat[Gazebo and the two RViz windows on the workstation.]{%
+    \includegraphics[height=.34\textwidth]{diagrams/eval/E5_workstation.png}}
+  \caption{The physical and simulated sides of the E5 setup. The Pi provides
+  the ROS~2-facing monitor and MQTT broker on the LAN; the workstation
+  displays the two simulated robots and their namespaced Nav2 views.}
+  \label{fig:e5-setup}
+\end{figure}
+
+All four goals succeeded. The Pi collected 3667 records, and both verifiers
+received all 3667. The Mac produced 12 and 18 correct speed transitions and
+four correct separation transitions. Its three verdict streams were identical
+to the Pi reference, including contributing record identifiers. Both online
+violation periods matched Gazebo, as illustrated in
+Figure~\ref{fig:e5-crossing}. Minimum localized and physical separations
+were 0.547 and 0.621~m, and all final positions were within 0.10~m of their
+goals.
+
+\begin{figure}[htbp]
+  \centering
+  \subfloat[Start of the first leg.]{%
+    \includegraphics[width=.62\textwidth]{diagrams/eval/E5_first_leg.png}}\\
+  \subfloat[First minimum-separation violation.]{%
+    \includegraphics[width=.48\textwidth]{diagrams/eval/E5_first_violation.png}}\hfill
+  \subfloat[Separation restored after the first crossing.]{%
+    \includegraphics[width=.48\textwidth]{diagrams/eval/E5_separation_restored.png}}
+  \caption{First E5 crossing. The external display shows Gazebo and both RViz
+  views on the Ubuntu workstation. The foreground Mac runs the remote
+  verifier; the added verdict line when the robots meet reports the negative
+  verdict, and the next line reports the positive verdict once their distance
+  again exceeds 1.0~m.}
+  \label{fig:e5-crossing}
+\end{figure}
+
+\begin{table}[htbp]
+\centering
+\caption{E5 correctness and delivery.}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.59\textwidth}
+  >{\raggedright\arraybackslash}p{.29\textwidth}}
+\toprule
+\textbf{Check} & \textbf{Result}\\
+\midrule
+Mac robot 1 / robot 2 speed verdicts & 12 / 12; 18 / 18 correct\\
+Mac separation transitions & 4 / 4 correct\\
+Pi-reference / Mac verdict streams & all three identical\\
+MQTT delivery to each verifier & 3667 / 3667 records\\
+Online violation periods matched by Gazebo & 2 / 2\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+E5 supports C3: the collector and checker preserved the same result across the
+tested operating systems, processor architectures, DDS boundary, and MQTT
+boundary.
+
+\section{Resource Use and Latency}
+
+Performance analysis is not the focus of this thesis, but the recorded runs
+give an indication of the cost of monitoring.
+Table~\ref{tab:resource-results} summarizes the observations; CPU values are
+percentages of one core, and the measurements describe the reference runs
+only.
+
+\begin{table}[htbp]
+\centering
+\caption{Observed resource use and record-to-verdict latency.}
+\label{tab:resource-results}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.15\textwidth}
+  >{\raggedright\arraybackslash}p{.25\textwidth}
+  >{\raggedright\arraybackslash}p{.20\textwidth}
+  >{\raggedright\arraybackslash}p{.28\textwidth}}
+\toprule
+\textbf{Run/role} & \textbf{CPU} & \textbf{Memory} & \textbf{Mean or observed
+latency}\\
+\midrule
+E1 monitor & about 1\% & about 73 MB & 0.29 ms mean\\
+E2 local MQTT path & not isolated$^{a}$ & not isolated$^{a}$ & 1.85 ms mean\\
+E4 monitor & below 5\% & 92 MB & a few milliseconds locally\\
+E5 Pi collection, broker, reference & within 13\% & 114 MB & a few
+milliseconds over LAN\\
+E5 Mac verifier & about 1.4\% & 28 MB & a few milliseconds over LAN\\
+\bottomrule
+\multicolumn{4}{p{.92\textwidth}}{\footnotesize $^{a}$In E2, the monitor,
+broker, stimuli, and verifier shared the workstation, and per-process
+figures were not recorded separately; the end-to-end latency through the
+local broker was measured from record timestamps.}\\
+\end{tabular}
+\end{table}
+
+In E1, the monitor process used about 1\% of one processor core and about
+73~MB of memory, and the mean time from collecting a record to exporting the
+verdict it produced was 0.29~ms. Checking the same records behind the local
+MQTT broker in E2 raised this time to 1.85~ms on average. While observing the
+six E4 sources, the monitor stayed below 5\% of one core and 92~MB. In E5, the
+Raspberry Pi carried the collection of all six sources, the file export, the
+MQTT publication, and the reference verifier within 13\% of one core and
+114~MB, while the macOS verifier used about 1.4\% of one core and 28~MB;
+verdicts followed their triggering records within a few milliseconds across
+the LAN. The monitoring components therefore place limited pressure on the
+observed system for the evaluated sources and properties. These observations
+do not establish scalability beyond two simulated robots.
+
+\section{Automation and Reused Work}\label{sec:automation-reuse}
+
+To evaluate C4, Table~\ref{tab:work-saved} compares responsibilities. Without
+the framework, each case study would need application-specific plumbing for
+these responsibilities. With the framework, only source/property/deployment
+choices and property-specific plug-ins remain.
+
+\begin{table}[htbp]
+\centering
+\caption{Recurring work avoided by the framework.}
+\label{tab:work-saved}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.24\textwidth}
+  >{\raggedright\arraybackslash}p{.32\textwidth}
+  >{\raggedright\arraybackslash}p{.34\textwidth}}
+\toprule
+\textbf{Responsibility} & \textbf{Without reusable infrastructure} &
+\textbf{With this framework}\\
+\midrule
+ROS~2 observation & Write topic, service-event, and hidden-action subscribers &
+Select source kind, name, type, and phases\\
+Data interchange & Define serializers, source context, identities, and
+correlation & Reuse common record and verdict formats\\
+Reduction/routing & Write field/rate/change logic and fan-out &
+Configure built-in transformers and graph links\\
+Split placement & Implement publisher/subscriber transport and align endpoints &
+Declare one link; generate paired file/MQTT endpoints\\
+Evidence & Design logs and verdict attribution & Reuse JSONL, session, record,
+and input identifiers\\
+Property meaning & Implement application-specific checking & Still authored as
+converter/verdict plug-ins; not automated\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The code sizes in the public repository quantify this boundary. The reusable
+\texttt{monitor/} package contains about 4{,}200 lines of Python in 23 modules
+and was reused unchanged by every experiment. All property-specific plug-in
+code across the case studies amounts to about 260 lines in four modules
+(\texttt{CmdVelSpeedConverter}, \texttt{ThresholdVerdict}, the reset-effect
+pair, and \texttt{RelativeSpeedConverter}). Each experiment therefore
+implemented at most roughly one hundred lines of new property code while
+reusing the collection, serialization, routing, transport, and evidence
+implementation. The ten generated runtime YAML files and the unchanged
+E4-to-E5 property code are further concrete outcomes of this separation: the
+framework automates routine implementation work while leaving domain knowledge
+visible.
+
+\section{Observation Coverage Compared with Related Work}
+\label{sec:coverage-comparison}
+
+The experiments above establish which ROS~2 elements the prototype observes.
+Table~\ref{tab:observable-matrix} places this coverage next to the reviewed
+approaches from Chapter~\ref{chapter:related_work}, using the observable
+elements of the feature model. In the reviewed set, the prototype is the only
+application-level infrastructure that combines typed topic messages, service
+request/response events, and action feedback/status in one configurable
+pipeline; \texttt{ros2\_tracing} reaches lifecycle and kernel information, but
+at the execution level rather than as typed application data.
+
+In Table~\ref{tab:observable-matrix}, \cmark{} marks direct support,
+\pmark{} marks limited or conditional support, and \xmark{} marks elements
+that are not a principal reported capability of the approach.
+
+\begin{table}[htbp]
+\centering
+\caption{Observable-element support of the prototype and the reviewed
+approaches.}
+\label{tab:observable-matrix}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{
+    >{\raggedright\arraybackslash}p{0.19\textwidth}
+    >{\raggedright\arraybackslash}p{0.09\textwidth}
+    >{\centering\arraybackslash}p{0.07\textwidth}
+    >{\centering\arraybackslash}p{0.085\textwidth}
+    >{\centering\arraybackslash}p{0.08\textwidth}
+    >{\centering\arraybackslash}p{0.12\textwidth}
+    >{\centering\arraybackslash}p{0.095\textwidth}
+    >{\centering\arraybackslash}p{0.09\textwidth}}
+\toprule
+\textbf{Approach} &
+\textbf{ROS version} &
+\textbf{Topics} &
+\textbf{Services} &
+\textbf{Actions} &
+\textbf{Parameters} &
+\textbf{Lifecycle states} &
+\textbf{Kernel events} \\
+\midrule
+ROSMonitoring~\cite{ferrando2020rosmonitoring} & ROS~1 &
+\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+ROSMonitoring 2.0~\cite{saadat2024rosmonitoring2} & ROS~1/2 &
+\cmark & \cmark & \xmark & \xmark & \xmark & \xmark \\
+ROMoSu~\cite{stadler2023romosu} & ROS~1 &
+\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+FRET--Ogma--Copilot~\cite{perez2022monitoringros2} & ROS~2 &
+\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+\texttt{ros2\_tracing}~\cite{bedard2022ros2tracing} & ROS~2 &
+\cmark & \pmark & \xmark & \xmark & \cmark & \cmark \\
+RTAMT~\cite{yamaguchi2024rtamt} & ROS~1/2 &
+\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+Digital-twin RV~\cite{betzer2024digitaltwinrv} & ROS~1 &
+\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+\midrule
+This thesis (prototype) & ROS~2 &
+\cmark & \cmark & \pmark & \xmark & \xmark & \xmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The limited mark for actions reflects the boundary stated throughout the
+thesis: the prototype observes action feedback and status topics, while the
+complete goal, cancellation, and result trace requires additional
+service-event collectors. Parameters, lifecycle states, and kernel events are
+unselected variation points of the feature model.
+
+\section{Accommodation of Existing Approaches}\label{sec:accommodation}
+
+C5 asks whether the reference architecture can host the principal capabilities
+of the reviewed approaches. For each of the four selected approaches, this
+section maps its main components onto architecture roles and states how the
+mapping is achieved. Three mapping statuses are used:
+
+\begin{description}
+  \item[Direct.] Achieved by configuring existing prototype components.
+  \item[Adapter.] Achieved by developing a converter, verdict-service,
+  transport, or exporter plug-in behind an existing stable interface.
+  \item[Extension.] Supported by an architectural extension point that the
+  prototype does not implement.
+\end{description}
+
+Figure~\ref{fig:compatibility-map} gives the overview; the tables below give
+the role-level mappings. The purpose is to check responsibility coverage, not
+to claim feature equivalence with the original systems.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/compatibility_map}}
+  \caption{High-level accommodation of four reviewed approaches. The
+  role-level mappings appear in
+  Tables~\ref{tab:map-rosmonitoring}--\ref{tab:map-rabiser}.}
+  \label{fig:compatibility-map}
+\end{figure}
+
+\subsection{ROSMonitoring}
+
+ROSMonitoring's observation-to-oracle path maps directly onto the
+architecture, as shown in Table~\ref{tab:map-rosmonitoring}. Its
+distinguishing invasive capabilities---launch-file rewriting and
+verdict-driven message filtering---correspond to the generation step and the
+feedback adapter, which the prototype does not implement.
+
+\begin{table}[htbp]
+\centering
+\caption{Mapping of ROSMonitoring onto the reference architecture.}
+\label{tab:map-rosmonitoring}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.38\textwidth}
+  >{\raggedright\arraybackslash}p{.34\textwidth}
+  >{\raggedright\arraybackslash}p{.16\textwidth}}
+\toprule
+\textbf{ROSMonitoring element} & \textbf{Architecture role} &
+\textbf{Status}\\
+\midrule
+YAML topic configuration & Deployment specification and topic collectors &
+Direct\\
+ROS-to-JSON event conversion & Common data record construction & Direct\\
+WebSocket link to the oracle & Cross-runtime link; WebSocket as a transport
+plug-in & Adapter\\
+External oracle checking & Verdict-service plug-in wrapping the oracle &
+Adapter\\
+Offline trace and later checking & JSONL evidence and file replay source &
+Direct\\
+Monitor insertion by launch rewriting & Configuration generation step &
+Extension\\
+Verdict-driven message filtering & Feedback adapter & Extension\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{ROMoSu}
+
+ROMoSu's monitoring data path---collection, field selection, broker
+distribution, validation, and persistence---is covered by configuration and
+plug-ins (Table~\ref{tab:map-romosu}). Its management plane, the
+administration interface with runtime reconfiguration, has no full counterpart:
+the architecture treats configuration editing as an external client of the
+deployment specification.
+
+\begin{table}[htbp]
+\centering
+\caption{Mapping of ROMoSu onto the reference architecture.}
+\label{tab:map-romosu}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.38\textwidth}
+  >{\raggedright\arraybackslash}p{.34\textwidth}
+  >{\raggedright\arraybackslash}p{.16\textwidth}}
+\toprule
+\textbf{ROMoSu element} & \textbf{Architecture role} & \textbf{Status}\\
+\midrule
+Reusable monitor and system-under-monitoring configurations & Deployment
+specification and runtime YAML & Direct\\
+ROS connector / adaptation manager & Topic collectors & Direct\\
+Topic-field selection and sampling rates & Field-extraction and rate-limiting
+transformers & Direct\\
+Runtime data broker & Broker-based transport (MQTT) & Direct\\
+Validation and CEP services & Converter and verdict-service plug-ins &
+Adapter\\
+Persistence & Data-record exporters & Direct\\
+Dashboard and administration interface & External clients of exporters and of
+the deployment specification & Extension\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Digital-Twin Runtime Verification}
+
+The digital-twin approach exercises the split deployment in its cloud
+direction (Table~\ref{tab:map-dtrv}). The monitoring path---MQTT transport,
+checker-specific conversion, TeSSLa evaluation, and externalized
+properties---fits the converter/verdict-service pattern. The digital twin's
+own state, models, and simulators exceed a monitoring pipeline and would
+remain an external service; the validation-to-actuation loop corresponds to
+the unimplemented feedback adapter.
+
+\begin{table}[htbp]
+\centering
+\caption{Mapping of digital-twin runtime verification onto the reference
+architecture.}
+\label{tab:map-dtrv}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.38\textwidth}
+  >{\raggedright\arraybackslash}p{.34\textwidth}
+  >{\raggedright\arraybackslash}p{.16\textwidth}}
+\toprule
+\textbf{Digital-twin RV element} & \textbf{Architecture role} &
+\textbf{Status}\\
+\midrule
+Robot state transmitted over MQTT & MQTT exporter and source & Direct\\
+Externalized TeSSLa properties & Property settings of a verdict-service
+plug-in & Adapter\\
+TeSSLa input preparation & Converter plug-in & Adapter\\
+TeSSLa monitor execution & Verdict-service plug-in wrapping the engine &
+Adapter\\
+Monitor placement choices (in twin or as service) & Placement in the
+deployment specification & Direct\\
+Digital-twin state, models, and simulators & External service beside the
+monitoring pipeline & Extension\\
+Validation result influencing actuation & Feedback adapter & Extension\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Rabiser et al.\ Reference Architecture}
+
+The domain-independent reference architecture of Rabiser et al.\ is a
+benchmark of responsibilities rather than a tool
+(Table~\ref{tab:map-rabiser}). Its monitoring-execution area maps directly
+onto the pipeline roles; its setup area maps onto specification and
+generation; parts of its support area (management, visualization) are external
+clients.
+
+\begin{table}[htbp]
+\centering
+\caption{Coverage of the Rabiser et al.\ monitoring responsibilities.}
+\label{tab:map-rabiser}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.38\textwidth}
+  >{\raggedright\arraybackslash}p{.34\textwidth}
+  >{\raggedright\arraybackslash}p{.16\textwidth}}
+\toprule
+\textbf{Rabiser et al.\ responsibility} & \textbf{Architecture role} &
+\textbf{Status}\\
+\midrule
+Monitoring definition (setup) & Deployment specification and property
+settings & Direct\\
+Probes and instrumentation support & Collectors over native ROS~2 interfaces
+& Direct for the selected interfaces; other probe types are extensions\\
+Information collection & Collectors and common data records & Direct\\
+Filtering, aggregation, transformation & Transformer pipeline & Direct\\
+Routing and distribution & Dispatchers and transports & Direct\\
+Checking & Converter and verdict-service plug-ins & Direct or Adapter\\
+Persistency & Data and verdict exporters & Direct\\
+Monitoring support (management, visualization) & External clients of
+exporters & Extension\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Summary}
+
+The monitoring data paths of all four approaches can be expressed with
+configured components and plug-ins of the reference architecture. The
+recurring boundaries are management and visualization planes, digital-twin
+state, invasive instrumentation, and verdict-driven feedback, which map to
+declared extension points rather than to implemented prototype features. This
+satisfies C5 at reference-architecture level while marking exactly where
+implementation work would remain.
+
+\section{Answer to RQ4}
+
+Within the evaluated scope, the answer is positive. C1 is supported by E1--E3,
+which collect topics, service request/response events, and action
+feedback/status; Table~\ref{tab:observable-matrix} shows that no reviewed
+approach combines this application-level coverage. C2 is supported by expected stimulus transitions, independent
+mission and Gazebo logs, replay, and verdict attribution. C3 is supported by
+integrated, split same-host, and three-machine placements. C4 is supported by
+ten generated runtime configurations and reuse of the same observation,
+transport, and evidence code, including unchanged E4 property logic in E5 and
+the measured ratio of about 4{,}200 reused framework lines to about 260
+property-specific lines. C5 is supported by the role-level mappings in
+Section~\ref{sec:accommodation}.
+
+The claim is limited to ROS~2 Kilted, the selected interfaces and plug-ins, one
+local network, up to two simulated robots, and runs lasting a few minutes.

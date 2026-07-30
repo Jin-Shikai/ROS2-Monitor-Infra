@@ -1,43 +1,38 @@
-\section*{Abstract}\label{chapter:abstract}
-\thispagestyle{fancy}
-\begingroup
-\setlength{\parindent}{0pt}
-\setlength{\parskip}{0.45em}
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
 
-Robot Operating System 2 (ROS~2) is a middleware that is widely used to build
-robotic applications. A ROS~2 application often contains many nodes that
-communicate through topics, services, and actions. This makes the application
-flexible, but it can also make its runtime behaviour difficult to understand,
-so the running system has to be monitored. Existing monitoring solutions often
-focus on one communication type, one monitoring method, or one deployment
-setup. Developers therefore need to write extra monitoring code for each new
-application.
+Runtime monitoring can reveal failures and requirement violations that appear
+only after a robot is deployed. ROS~2 exposes typed behaviour through topics,
+services, and actions, but monitoring solutions differ in their observation
+mechanisms, data formats, property checkers, and deployment assumptions.
+Developers therefore repeat routine work for collection, conversion, routing,
+transport, and evidence whenever they build a new monitoring setup.
 
-In this thesis, we present a configurable monitoring infrastructure for ROS~2
-applications. We built it as a reusable foundation for collecting, processing,
-routing, checking, and exporting runtime data from heterogeneous ROS~2
-interfaces. The infrastructure observes topics, service events, and action
-feedback and status, and converts these different observations into a common
-data format. Each data record includes the observed data and useful context,
-such as its source, time, session, and identifier.
+This thesis presents a configurable monitoring infrastructure for ROS~2
+applications. A domain analysis and feature model identify the commonalities and
+variabilities of monitoring solutions. From this model, a reference architecture
+separates ROS~2 observation, common data representation, transformation,
+routing, checker adaptation, property checking, and result export. The
+prototype collects topic messages, service request and response events, and
+action feedback and status into a common JSON-compatible record. Converter and
+verdict-service plug-ins isolate property-specific logic. A deployment
+specification is converted into matching runtime YAML files for integrated or
+split checking through file or MQTT transport.
 
-Users describe the monitoring setup in YAML files. They can
-select data sources, reduce or filter data, choose outputs, and connect
-property-specific checking components. New data converters, verdict services,
-input sources, and output exporters can also be added as separately developed
-components without changing the monitoring core. The deployment configuration are 
-generated automatically from the user's selections.
+Five experiments progress from a controlled topic property to unmodified Nav2,
+two-robot correlation, and a deployment across Ubuntu, Raspberry Pi, and macOS.
+In the reported runs, verdicts matched controlled expectations, recorded
+inputs, mission outcomes, or Gazebo positions. Identical local and remote
+verdict streams show that serialization and MQTT preserved result meaning in
+the evaluated configurations. The generator and reuse analysis show that
+observation, serialization, routing, transport, and evidence handling do not
+have to be rewritten for each property. A role-level architectural mapping
+also shows that the reference architecture can accommodate the principal
+capabilities of four reviewed monitoring approaches through configuration,
+plug-ins, and declared extension points.
 
-The infrastructure runs in two ways. In the integrated setup, data collection
-and checking run together. In the split setup, data is collected near the robot
-and sent to a separate verifier runs on a different machine. The concrete prototype supports file and MQTT
-transport and provides processing steps such as field selection, rate limiting,
-and change filtering.
-
-We evaluated the prototype through case studies covering topic, service, and
-action monitoring, including a Navigation~2 case study, complemented by unit
-tests, Docker Compose deployments, offline replay, and a multi-robot scenario.
-Across these scenarios, the same data format and processing chain connected
-ROS~2 topics, service events, and action progress to reusable checking
-components in both integrated and split deployments.
-\endgroup
+The results support the proposed architecture and implementation within a
+focused scope: passive application-level monitoring, selected ROS~2 interfaces,
+up to two simulated robots, and one local network. The infrastructure provides a
+reusable foundation on which additional observation mechanisms, checking
+formalisms, transports, and operational safeguards can be added.

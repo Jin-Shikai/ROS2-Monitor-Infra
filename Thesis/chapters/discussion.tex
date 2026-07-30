@@ -1,1 +1,315 @@
 \chapter{Discussion}\label{chapter:discussion}
+
+This chapter interprets the results by research question, then discusses
+trade-offs, limitations, threats to validity, and future work.
+
+\section{RQ1: Capabilities and Observation Gaps}
+
+\textbf{RQ1: What monitoring capabilities and ROS~2 observation mechanisms
+exist, and which application-level observation gaps remain in the reviewed
+approaches?}
+
+ROS~2 can be observed through native application interfaces,
+application instrumentation, middleware or network probes, and execution
+tracing. These mechanisms answer different questions. Native interfaces retain
+ROS names and types; network probes avoid normal subscriptions; tracing reveals
+callbacks and scheduling; instrumentation can expose domain events that
+communication does not reveal.
+
+The reviewed approaches usually specialize in one part of the monitoring
+problem. Some collect ROS messages for an external oracle, some generate
+checkers from requirements, and others observe network traffic or lower-level
+execution events. Topic observation is covered most consistently.
+ROSMonitoring 2.0 adds services with partial ROS~2 support. In the selected
+literature, ROS~2 action feedback and status are not combined with typed topic
+and service-event collection in one configurable infrastructure, and no
+reviewed approach places collection and checking in separate processes while
+keeping the observation and checking components configurable. The resulting
+gap is therefore not ``monitoring in general'', but the reusable
+application-level path from heterogeneous ROS~2 observations to replaceable
+property checkers.
+
+The prototype addresses that focused gap. E2 collected topic messages, service
+request/response events, and action feedback/status in one session; E3 used the
+same action mechanism with Nav2. A complete action trace remains incomplete
+because goal, cancellation, and result service events require additional
+service collectors.
+
+\section{RQ2: Commonalities and Variabilities}
+
+\textbf{RQ2: What are the commonalities and variabilities of monitoring
+solutions for ROS~2 applications?}
+
+The common operational tasks are collection, representation, processing,
+routing, checking, and use or storage of results. The principal variabilities
+are:
+
+\begin{itemize}
+  \item observable element and observation level;
+  \item observation mechanism, from monitor nodes to instrumentation, network
+  taps, tracing, and DDS tools;
+  \item passive and/or active behaviour;
+  \item online and/or offline execution;
+  \item integrated, split, centralised, or more distributed placement;
+  \item property formalism and checker input format;
+  \item transport, output, and evidence choices; and
+  \item configured, generated, and plug-in-based implementation.
+\end{itemize}
+
+The feature model separates these dimensions, and this separation is its main
+value. The choice between application-level and lower-level observation is
+independent of the choice between integrated and distributed placement; a
+checker formalism should not determine whether collection is local or remote;
+and an MQTT choice should not determine how a ROS message is observed.
+Keeping the dimensions separate prevents one deployment decision from becoming
+a fixed property of every collector or checker. The model also makes the
+prototype boundary visible: filled features in
+Figure~\ref{fig:feature-model} are evaluated, while optional features remain
+design points rather than implemented claims.
+
+\section{RQ3: Reference Architecture}
+
+\textbf{RQ3: How can a reference architecture incorporate the selected
+monitoring features while separating reusable infrastructure from
+property-specific checking?}
+
+The reference architecture uses a stable common data record between
+ROS-specific observation and property-specific checking. Collectors preserve
+source type, name, phase, message type, time, payload, session, and identity.
+Transformers and dispatchers perform checker-independent reduction and routing.
+A converter plug-in adapts records to one DSL-record shape; a verdict-service
+plug-in evaluates the corresponding property. Verdict exporters retain the
+result and contributing record identifiers.
+
+The common data record is central to this result. Uniform fields let sources,
+transformers, transports, and checking components exchange one
+representation. At the same time, source type, source name, phase, timestamps,
+and metadata retain the distinctions between ROS~2 communication mechanisms.
+The uniform representation therefore simplifies the pipeline boundary while
+preserving the context needed by later checking, and the session and record
+identifiers provide an evidence trail from a verdict back to its contributing
+observations. E1--E5 use this attribution to compare online verdicts with
+recorded inputs.
+
+Several unselected feature variants map onto the retained variation points and
+could be hosted without structural change. Parameter changes and lifecycle
+transitions are published on regular topics (\texttt{/parameter\_events} and
+the lifecycle transition-event topics), so they need only additional collector
+configurations or collector types. A complete action trace requires service
+collectors for the goal, cancellation, and result events of the hidden action
+services. A new transport requires an exporter and a matching source, and a
+new checker a converter and verdict-service pair. Other variants would change
+the assumptions of the design: active intervention needs a feedback path into
+the application, global message ordering and clock guarantees need
+coordination that the record format alone does not provide, and network taps
+or kernel tracing observe data without the typed source identity that the
+collectors rely on.
+
+The plug-in story has a limited but precise scope. A plug-in is not an
+automatically generated checker. It is a Python class developed against one of
+two base interfaces and loaded by class path. Together, a converter and a
+verdict service form an adapter for the user's DSL: the converter changes the
+common data record into the input format of that DSL, and the verdict service
+holds or calls the checking engine and changes its result into the common
+verdict format. Because the DSL record crossing this boundary is
+JSON-serializable, the two halves of the adapter can run in the same process
+or on different hosts without changing their code. The case-study plug-ins
+show simple uses of this extension point---selecting one value, combining
+records from several sources, and emitting a record when a timer
+expires---and the same interfaces could prepare timestamped signals for a
+temporal-logic engine or events for a project-specific state machine.
+
+The architectural accommodation in Section~\ref{sec:accommodation} further
+checks the role boundaries. ROSMonitoring's external oracle, ROMoSu's broker
+services, digital-twin state and TeSSLa checking, and the broader Rabiser et al.\
+responsibilities all have places in the architecture. Components such as a
+dashboard, digital twin, TeSSLa engine, or feedback controller would still
+have to be implemented or connected.
+
+\section{RQ4: Evaluation of the Selected Path}
+
+\textbf{RQ4: To what extent do the proposed reference architecture and its
+implementation support the monitoring needs of representative ROS~2
+applications?}
+
+The five experiments provide increasing evidence, and each contributes a
+distinct part of the answer.
+
+E1 establishes the complete integrated path for a topic property: the
+collector, converter, and verdict service preserve the expected sequence of
+property-state changes. E2 shows that topic messages, service request and
+response events, and action feedback and status can coexist in one session,
+and that a property can correlate a service response with later topic data.
+Its identical local and remote speed verdicts show that serialization and MQTT
+transport preserved the meaning and record attribution of the check in that
+run.
+
+E3 is important because it replaces the small stimulus processes with an
+existing Nav2 application. The monitor observes Nav2 through its published
+interfaces, and the navigation code remains unchanged. The three goals cover a
+succeeded status within the deadline, a goal that remains active beyond the
+deadline, and an aborted status. Agreement between the online verdicts, the
+mission log, and the Gazebo route data shows that the checking chain responded
+to meaningful changes in application behaviour. It also demonstrates the value
+of combining topic messages with action feedback and status: topic data
+describes robot motion, while the action records describe progress and the
+final status.
+
+E4 extends this result from one trace to two robot namespaces. The independent
+speed checks show that source name keeps the robot streams separate. The
+separation check shows that one converter can combine observations from both
+robots---a useful form of multi-robot monitoring, because several robot-local
+streams can feed one property while the collection mechanism remains
+unchanged. The agreement with Gazebo positions gives an additional source of
+evidence for the four separation transitions.
+
+E5 changes placement while retaining the E4 checking graph. DDS carries the
+robot observations from the workstation to the Raspberry Pi, and MQTT carries
+the data records to a ROS-independent verifier on macOS. Both verifier
+processes received every record, and the verdict streams matched. These
+results support the design decision to keep ROS~2 dependencies in the
+collection layer: the remote verifier needs only the record and checking
+interfaces, while ROS~2 type handling stays near the system under monitoring.
+
+Beyond functional correctness, the generated configurations and the
+responsibility and code-size analysis in
+Section~\ref{sec:automation-reuse} show that the infrastructure removes
+repeated observation, serialization, transport, and evidence work. Taken
+together, the experiments support a positive answer to RQ4 for the selected
+interfaces and deployments, not for the whole feature model or
+production-scale fleets.
+
+\section{Design Trade-offs}
+
+The principal trade-offs are:
+
+\begin{itemize}
+  \item \textbf{Early reduction versus complete evidence.} Field extraction,
+  rate limiting, and change filtering reduce storage and network load; E3
+  demonstrates this by reducing odometry before storage and MQTT transport.
+  The same choice makes the reduction configuration part of the checking
+  setup: a rate limit can hide a short-lived state, and field extraction can
+  remove data needed by a later property. Applied transformer names are
+  retained in record metadata, but discarded observations cannot be
+  reconstructed.
+
+  \item \textbf{Integrated versus split placement.} Integrated checking avoids
+  a transport boundary and has lower latency, but shares dependencies and
+  resources with the ROS~2-facing monitor. Split checking isolates the checker
+  and permits a ROS-independent host, but introduces broker, queue, delay, and
+  disconnection concerns. The configuration keeps this choice separate from
+  converter and verdict-service logic, so the same checking graph can be
+  placed according to the available resources and network.
+
+  \item \textbf{Uniform records versus source specificity.} One record
+  interface simplifies processing and transport. Source type, phase, message
+  type, and metadata must nevertheless be preserved so services and actions are
+  not reduced to anonymous JSON.
+
+  \item \textbf{Plug-in flexibility versus integration work.} Stable plug-in
+  interfaces permit different DSLs and checkers. Users must still define,
+  implement, and test the converter/checker contract for each new formalism.
+
+  \item \textbf{Generation versus explicit decisions.} Generating YAML removes
+  inconsistent wiring, but the deployment specification still requires
+  knowledge of the ROS graph, property inputs, hosts, and network.
+\end{itemize}
+
+\section{Limitations}
+
+\subsection{Observation and Checking}
+
+The implementation is passive and application-level. A topic collector sees
+only messages delivered to its subscription and therefore depends on DDS
+discovery and compatible QoS. Service events appear only when introspection is
+enabled. The action collector covers feedback and status, not the complete
+goal/cancel/result trace. Parameters, lifecycle transitions, DDS events,
+network packets, and operating-system traces are not implemented sources.
+
+The property language is not generated or validated by the infrastructure.
+Stateful global properties are coded in converters and verdict services.
+Automatic property decomposition among monitors is outside scope, and checking
+remains logically centralised.
+
+\subsection{Ordering, Time, and Delivery}
+
+A record has monitor wall-clock time, an optional ROS timestamp, and a
+per-source sequence. The infrastructure does not establish a global order
+across publishers or synchronize host clocks. The E4/E5 separation converter
+pairs a new position with the latest received position of the other robot, so
+the result includes sampling and arrival-time differences.
+
+MQTT QoS and record identifiers help with transport, but do not provide
+end-to-end exactly-once semantics. Bounded queues may drop data; reconnecting
+QoS~1 clients may observe duplicates. Persistent buffering, duplicate
+suppression, late-record policies, failover, access control, and encrypted
+deployment were not evaluated.
+
+\subsection{Configuration and Operation}
+
+The generator validates structure and aligns endpoints; it cannot decide
+whether a selected property or field is meaningful. Required ROS interface
+packages must be installed near collection. Runtime graphs are fixed for a run,
+so changes in discovered nodes or host placement require restart or explicit
+reconfiguration.
+
+\section{Threats to Validity}
+
+\subsection{Internal Validity}
+
+The deterministic stimuli, JSONL replay, mission logs, and Gazebo positions
+provide several checks of correctness. Some replay comparisons nevertheless
+use property logic closely related to the online implementation, so a shared
+error could affect both. Independent mission and Gazebo evidence reduce this
+threat for navigation outcomes and separation, but not for every field
+conversion.
+
+Resource results are derived from short reference runs and may be affected by
+background workload, simulation timing, and measurement method. They are used
+only as indicative measurements. The feature model and architecture were
+developed by the thesis author; independent expert validation was not
+performed.
+
+\subsection{External Validity}
+
+The literature selection may have missed related or industrial work, and
+publications expose capabilities at different levels of detail. This directly
+limits RQ1 and RQ2 and is why absent capabilities are described as gaps in the
+\emph{reviewed} work rather than universal absence.
+
+Experiments use ROS~2 Kilted, Fast DDS, Mosquitto, one local network, at most
+two simulated TurtleBot3 robots, and runs lasting a few minutes. Other ROS~2
+distributions, DDS vendors, networks, robot hardware, fleet sizes, and
+long-running operation may produce different discovery, delivery, latency, and
+resource behaviour. The selected cases sample only a small part of the feature
+model.
+
+\section{Future Work}
+
+Future work is consolidated here:
+
+\begin{itemize}
+  \item \textbf{Broader observation:} complete action traces; parameter and
+  lifecycle events; DDS-level events; adapters for \texttt{ros2\_tracing} and
+  network observations.
+
+  \item \textbf{Robust distribution:} persistent queues, duplicate
+  suppression, replay after disconnection, clock synchronization, explicit
+  late-record policies, multiple verifiers, health checks, failover, and
+  security.
+
+  \item \textbf{Easier DSL integration:} plug-in templates, a small conformance
+  test harness, documented DSL-record contracts, and evaluated adapters for
+  temporal-logic or state-machine checkers.
+
+  \item \textbf{More transports and outputs:} supported plug-ins for sockets,
+  HTTP/WebSocket, ROS~2 topics, databases, dashboards, and other brokers.
+
+  \item \textbf{Guided configuration:} a Web interface that discovers the ROS
+  graph, guides source, property, and placement selection, validates the resulting
+  deployment specification, and exposes generated choices.
+
+  \item \textbf{Stronger evaluation:} physical robots, larger fleets,
+  long-duration runs, high-rate sensor data, network and broker failures,
+  scalability measurements, and a user study of configuration effort.
+\end{itemize}

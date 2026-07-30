@@ -1,0 +1,35 @@
+\begin{tikzpicture}[
+  font=\scriptsize,
+  prior/.style={draw, fill=white, rounded corners=2pt,
+                align=center, minimum width=34mm, minimum height=9mm},
+  stage/.style={draw, fill=white, rounded corners=2pt,
+                align=center, minimum width=25mm, minimum height=9mm},
+  container/.style={draw, fill=none, rounded corners=3pt,
+                    inner sep=5mm},
+  flow/.style={-{Latex[length=2mm]}, line width=.7pt},
+  map/.style={-{Latex[length=2mm]}, dashed, line width=.6pt}
+]
+\node[prior] (rosm) at (0,0) {ROSMonitoring};
+\node[prior] (romosu) at (0,-1.0) {ROMoSu};
+\node[prior] (dt) at (0,-2.0) {Digital-twin RV};
+\node[prior] (rabiser) at (0,-3.0) {Rabiser et al.};
+
+\node[stage] (collect) at (5.0,-1.5) {Collect};
+\node[stage] (process) at (7.8,-1.5) {Process/route};
+\node[stage] (check) at (10.6,-1.5) {Check};
+\node[stage] (output) at (13.4,-1.5) {Store/use result};
+\draw[flow] (collect) -- (process);
+\draw[flow] (process) -- (check);
+\draw[flow] (check) -- (output);
+
+\node[container, fit=(collect)(process)(check)(output),
+      label={[font=\scriptsize\bfseries]above:Configurable reference architecture}]
+      (architecture) {};
+
+\foreach \n in {rosm,romosu,dt,rabiser}
+  \draw[map] (\n.east) -- (architecture.west |- \n.east);
+
+\node[below=5mm of architecture, align=center, text width=105mm]
+  {Each approach is accommodated by selecting roles and adding plug-ins
+  where needed.};
+\end{tikzpicture}

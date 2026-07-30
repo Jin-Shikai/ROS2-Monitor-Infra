@@ -1,323 +1,301 @@
-\chapter{Design}\label{chapter:design}
+\chapter{Towards a Reference Architecture for Configurable ROS 2 Monitoring}
+\label{chapter:design}
 
-This chapter explains how we designed the monitoring infrastructure. The
-design starts from the feature model that we developed to answer RQ2. We used
-the model as a map of the design space rather than as an implementation
-checklist: it made clear which parts of ROS~2 monitoring could reasonably fit
-into one thesis prototype and which parts should remain outside the scope.
+\section{From Domain Analysis to a Feature Model}
 
-\section{Feature Model as Design Input}
+The review in Chapter~\ref{chapter:related_work} shows that a monitoring
+solution is not defined by one checker. It combines choices about observable
+elements, observation and checking placement, monitoring mode, operation, and
+implementation. A feature model is needed to keep these choices explicit and
+to prevent one prototype configuration from being presented as the complete
+domain.
 
-Figure~\ref{fig:feature-model} shows the feature model. It
-organizes ROS~2 monitoring along several dimensions: observable elements,
-monitoring architecture, monitoring mode, system configuration, and
-implementation paradigm. When we built this model, the main lesson was that
-``monitoring ROS~2'' is too broad to be treated as one feature. A monitor may
-observe topics, services, actions, parameters, node states, or middleware
-events. It may run centrally or in several places. It may be passive or active.
-It may be implemented as a normal ROS~2 monitor node, as an inserted decorator,
-as a network tap, or through lower-level middleware and tracing tools.
+The domain model in Figure~\ref{fig:feature-model-domain} was derived by
+identifying recurring capabilities in the reviewed literature, merging
+synonymous ones, and recording constraints between branches as cross-tree
+notes. It uses the FODA notation introduced in
+Section~\ref{sec:feature-models} and captures the design space rather than one
+tool. Deployment parameters such as host addresses, ROS names, and class paths
+are not features; they belong to the deployment specification.
 
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=\textwidth]{diagrams/FeatureModel.jpg}
-    \caption{Feature model of the ROS~2 monitoring infrastructure domain,
-    using the notation introduced in Section~\ref{sec:feature-models}.}
-    \label{fig:feature-model}
-\end{figure}
+\begin{sidewaysfigure}[p]
+  \centering
+  \resizebox{!}{16.8cm}{\input{figures/feature_model_domain}}
+  \caption{Domain feature model of ROS~2 monitoring solutions. The notation
+  follows Section~\ref{sec:feature-models}; cross-tree constraints are listed
+  in the legend.}
+  \label{fig:feature-model-domain}
+\end{sidewaysfigure}
 
-The concrete prototype implements one path through this map: application-level
-data that can be collected passively, represented in a common format, and
-configured without rewriting the monitoring core.
-
-\section{Selected Feature Coverage}
-
-Table~\ref{tab:selected-feature-coverage} summarizes how the implemented
-prototype relates to the feature model. The table distinguishes between
-features that are implemented directly, features that are represented by the
-demonstration scenarios, and features that remain outside the current design.
-
-\begin{table}[htbp]
-\centering
-\begin{tabular}{
-    >{\raggedright\arraybackslash}p{0.24\textwidth}
-    >{\raggedright\arraybackslash}p{0.34\textwidth}
-    >{\raggedright\arraybackslash}p{0.32\textwidth}
-}
-\toprule
-\textbf{Feature dimension} &
-\textbf{Selected coverage} &
-\textbf{Not covered in the prototype} \\
-\midrule
-Observable elements &
-Topics, service request and response events, and action feedback and status are
-collected as typed ROS~2 observations. &
-Parameters, node lifecycle states, DDS-level QoS events, network packets, and a
-complete action trace with goal, cancellation, and result events. \\
-\midrule
-Monitoring architecture &
-The infrastructure supports an integrated setup and a split robot/verifier
-setup. Demo scenarios also exercise hybrid, multi-robot, global, choreographed,
-and offline replay organizations. &
-Automatic monitor placement, fault-tolerant distributed verification, global
-message ordering, and clock synchronization guarantees. \\
-\midrule
-Monitoring mode &
-Monitoring is passive: the prototype observes data and produces records and
-verdicts. &
-Active intervention, automatic recovery, message blocking, or changes to robot
-behaviour. \\
-\midrule
-System configuration &
-Single-robot and multi-robot configurations can be expressed with the same YAML
-configuration concepts and record format. &
-Automatic generation of the full monitoring configuration from a system model
-or graphical tool. \\
-\midrule
-Implementation paradigm &
-The prototype is implemented as ROS~2-facing monitor nodes plus optional
-verifier-side processes. &
-Decorator-based interception, network tapping, LTTng tracing, and DDS-specific
-monitor implementations. \\
-\bottomrule
-\end{tabular}
-\caption{Selected prototype coverage with respect to the feature model.}
-\label{tab:selected-feature-coverage}
-\end{table}
-
-This coverage is intentionally narrower than the full feature model. The goal
-is not to cover every possible monitoring technique. The goal is to build and
-validate a reusable path from ROS~2 application observations to checking
-components, while keeping the parts that usually change between applications
-configurable.
-
-\section{Design Requirements}
-\label{sec:design-requirements}
-
-The selected feature coverage led to a few design requirements that shaped the
-prototype. The most important one is the common record format. Topics, service
-events, and action feedback/status should not force later components to deal
-with three unrelated data shapes. The record therefore has to carry not only
-the payload, but also the source, timestamp, session, and identity information
-needed to connect observations with later verdicts.
-
-We also wanted processing to happen early in the pipeline. Raw ROS~2 messages
-can be large or frequent, and in many cases the checker only needs a few fields
-or only needs records when values change. This pushed field extraction,
-throttling, and filtering into the infrastructure before storage or transport.
-
-The remaining requirements are about keeping changeable parts apart. Collection
-needs ROS~2 type and communication knowledge without being tied to one checking
-language. A converter may adapt records for a checker, while a verdict service
-contains the property-specific logic. YAML configuration covers common choices,
-and plugins cover project-specific conversion, checking, input, and output
-behaviour. The same chain should then be usable both when everything runs in
-one ROS~2-facing process and when records cross a transport boundary to a
-separate verifier.
-
-\section{Infrastructure Overview}
-
-The infrastructure is organized as a dataflow pipeline. A collector observes
-one ROS~2 source and creates a common data record. A transformer pipeline can
-reduce or modify the record, for example by selecting fields, limiting the
-rate, or emitting only changed values. Dispatchers then route the record to data
-exporters and to optional checking chains.
-
-Checking is deliberately separated into two steps. A converter prepares a data
-record for one property-specific checker. A verdict service evaluates the
-prepared data and returns a structured verdict. Verdict exporters then deliver
-the result to standard output, a file, MQTT, or another configured destination.
-This separation keeps the ROS~2 collection layer independent from a particular
-verification language or checking algorithm.
-
-Figure~\ref{fig:pipeline-components} shows the main pipeline stages. The same
-chain is used for topic messages, service events, and action feedback or status
-records, so a new source type does not require a new checking architecture.
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=\textwidth]{diagrams/Components.png}
-    \caption{Main stages of the monitoring pipeline. Collectors create common
-    data records, transformers process them, dispatchers route them, converters
-    adapt them for checkers, and verdict exporters publish the checking
-    results.}
-    \label{fig:pipeline-components}
-\end{figure}
-
-\section{Pipeline Roles}
-
-The implementation chapter uses several role names repeatedly. They have the
-following meanings in the design:
+\subsection{Feature Groups}
 
 \begin{description}
-    \item[Collector] A ROS~2-facing component that subscribes to one configured
-    topic, service event stream, or action feedback/status stream and turns
-    each observation into a data record.
+  \item[Observable elements.] Application-level observation means typed data
+  exposed by the ROS~2 graph: topics, service events, and action feedback or
+  status. The domain additionally offers parameters, node and lifecycle
+  states, and middleware QoS events such as missed deadlines, liveliness
+  changes, and incompatible-QoS notifications on the publisher and subscriber
+  sides.
 
-    \item[Transformer pipeline] An ordered set of processing steps that can
-    remove fields, throttle records, or suppress unchanged values before data is
-    stored, transported, or checked.
+  \item[Observation mechanism.] The same element can often be observed in
+  several ways: through a monitor node that uses native ROS~2 interfaces,
+  through instrumentation or decorators inside the application, through a
+  network tap, through execution tracing such as LTTng, or through
+  vendor-specific DDS monitoring tools.
 
-    \item[Dispatcher] A routing component that fans a record out to one or more
-    downstream exporters or checking chains.
+  \item[Monitoring architecture.] Collection and checking may be integrated or
+  split; a transport is required whenever data crosses a runtime boundary,
+  which the model records as a mandatory child of the split feature.
 
-    \item[Data exporter] A sink for data records, such as a JSONL file, standard
-    output, or MQTT topic.
+  \item[Monitoring mode.] Passive and active behaviour form an or group and
+  may coexist. An oracle or checker is applicable in both cases: a passive
+  solution reports its verdict, while an active solution can additionally use
+  it for feedback.
 
-    \item[Source] A verifier-side input adapter that reads data records from a
-    transport or replay file and injects them into the same checking chain.
+  \item[System configuration.] Monitoring may be online, offline, or both; it
+  may observe one or several robots; and it may use one or several hosts.
 
-    \item[Converter] A property-specific adapter that projects a data record
-    into the input shape expected by a checker.
-
-    \item[Verdict service] A checker that evaluates converted data and returns
-    a structured verdict when a property state is observed.
-
-    \item[Verdict exporter] A sink for verdicts, such as standard output, a
-    JSONL file, or an MQTT verdict topic.
+  \item[Implementation paradigm.] A solution can be configured, generated, and
+  extended through plug-ins. These mechanisms are complementary rather than
+  exclusive.
 \end{description}
 
-This naming keeps the infrastructure precise: collectors and sources introduce
-records, transformers change records, dispatchers route records, converters
-adapt records for property logic, and verdict services perform the actual
-checking.
+\subsection{Selected Prototype Configuration}
 
-\section{Common Data Record}
+Figure~\ref{fig:feature-model} shows the configuration selected for the
+prototype as one path through the domain model: passive application-level
+observation through a monitor node, integrated and split placement with file
+or MQTT transport, online checking and replay, and support for multiple
+robots and hosts.
 
-The common data record is the central abstraction of the infrastructure. Every
-captured topic message, service event, and action observation is converted into
-this format before it reaches processing, transport, or checking. Records are
-serialized as JSONL, with one JSON object per line. Empty optional fields are
-omitted from the serialized output to keep files and MQTT payloads compact.
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/feature_model}}
+  \caption{Prototype configuration within the domain feature model.}
+  \label{fig:feature-model}
+\end{figure}
 
-Table~\ref{tab:data-record-schema} summarizes the fields used by the record.
-The field names follow the implementation and the detailed record
-specification in \texttt{docs/datarecord\_spec.md}.
+The prototype does not support parameters, node and lifecycle states, QoS
+events, or the lower-level observation mechanisms. These remain unselected
+variation points; Chapter~\ref{chapter:discussion} discusses them as future
+extensions.
+
+\section{How the Model Is Used}
+
+Figure~\ref{fig:configuration-workflow} separates design selection from
+deployment detail. A user first chooses a feature configuration, then
+provides the additional information that the feature model cannot contain:
+hosts, runtime roles, ROS resources and types, links, transport settings, and
+plug-in class paths. The generator converts this deployment specification into
+one runtime YAML file per executable host role.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/configuration_workflow}}
+  \caption{From design choices and a deployment specification to executable
+  monitoring runtimes.}
+  \label{fig:configuration-workflow}
+\end{figure}
+
+\section{Selected Requirements}
+
+The domain analysis and selected feature configuration yield the following
+requirements:
+
+\begin{description}
+  \item[R1 --- Heterogeneous observation.] Topic messages, service request and
+  response events, and action feedback and status must enter one processing
+  model without erasing their differences.
+
+  \item[R2 --- Common observation format.] Every collected observation must be
+  converted to a common format that preserves source, phase, time, payload,
+  session, and record identity.
+
+  \item[R3 --- Configurable processing and routing.] Field selection, rate
+  limiting, change filtering, outputs, and checking chains must be selected
+  without changing collector code.
+
+  \item[R4 --- Property-formalism independence.] Users must be able to plug in
+  their own conversion to a checker event format and their own property
+  formalism or checking service.
+
+  \item[R5 --- Deployment variation.] The same monitoring responsibilities must
+  support integrated and split deployment, with explicit transport
+  configuration.
+
+  \item[R6 --- Traceable evidence.] A verdict must be able to identify the
+  observation records that contributed to it.
+
+  \item[R7 --- Extensibility.] New sources, transformers, transports,
+  converters, verdict services, and exporters must be addable behind stable
+  interfaces.
+\end{description}
+
+\section{Reference Architecture}\label{sec:reference-architecture}
+
+Figure~\ref{fig:pipeline-components} shows the overall organization of the
+monitoring infrastructure: user-provided specification and plug-ins, the
+ROS~2-facing robot edge node, and the runtime verification pipelines. Its
+monitors, filters, and exporters correspond to the collectors, transformers,
+and data exporters of the role-level view below.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{diagrams/Components.png}
+  \caption{Main stages of the monitoring pipeline. Collectors create common
+  data records, transformers process them, dispatchers route them, converters
+  adapt them for checkers, and verdict exporters publish the checking
+  results.}
+  \label{fig:pipeline-components}
+\end{figure}
+
+Figure~\ref{fig:reference-architecture} details the data path of this
+architecture. The names in the diagram are the same role names used in the
+implementation chapter. Numbering follows one observation from left to right
+and then through checking.
+
+\begin{figure}[htbp]
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/reference_architecture}}
+  \caption{Reference architecture for configurable ROS~2 monitoring. Solid
+  paths are implemented; the dashed feedback path is an architectural
+  extension only.}
+  \label{fig:reference-architecture}
+\end{figure}
+
+\begin{enumerate}
+  \item A \emph{collector} observes one typed ROS~2 source. A
+  \emph{transport source} performs the corresponding role for records arriving
+  from a file or MQTT.
+
+  \item The collector creates a \emph{common data record}. This is the first
+  format shared by all later components.
+
+  \item Zero or more \emph{transformers} select fields, limit rate, flatten
+  structure, or suppress unchanged values.
+
+  \item A \emph{dispatcher} routes a record to one or more data exporters and
+  checking chains. Data exporters retain JSONL evidence or send records over a
+  configured transport.
+
+  \item A \emph{converter plug-in} changes a common data record into the input
+  expected by a checker. A domain-specific language (DSL) is a language tailored
+  to one problem domain, such as temporal properties or event-state patterns.
+  The architecture calls the converter output a DSL record because every
+  property formalism may require a different shape.
+
+  \item A \emph{verdict-service plug-in} evaluates the property through a local
+  implementation or an external checking engine.
+
+  \item A \emph{verdict exporter} writes or publishes the result. The verdict
+  retains the contributing record identifiers.
+\end{enumerate}
+
+A plug-in is a user-developed Python class loaded by its module and class name.
+A converter implements the stable conversion interface; a verdict service
+implements the stable evaluation interface. To add a DSL, a developer defines
+the DSL-record fields, implements these two classes, tests them against sample
+records, and selects their class paths and settings in the deployment
+configuration. ROS~2 collection, transport, and evidence handling are reused.
+
+The architecture also shows an optional feedback adapter. It could translate a
+verdict into a ROS~2 command, service request, or other intervention. The
+prototype neither implements this adapter nor claims active enforcement.
+
+\section{Common Data Record}\label{sec:common-record}
+
+The common data record separates observation from checker representation.
+Table~\ref{tab:data-record-fields} defines its principal fields. The full schema
+and an example appear in Appendix~\ref{app:data-record}.
 
 \begin{table}[htbp]
 \centering
-\begin{tabular}{
-    >{\raggedright\arraybackslash}p{0.22\textwidth}
-    >{\raggedright\arraybackslash}p{0.20\textwidth}
-    >{\raggedright\arraybackslash}p{0.48\textwidth}
-}
+\caption{Principal fields of the common data record.}
+\label{tab:data-record-fields}
+\begin{tabular}{p{.24\textwidth}p{.65\textwidth}}
 \toprule
-\textbf{Field} & \textbf{Presence} & \textbf{Purpose} \\
+\textbf{Field} & \textbf{Meaning}\\
 \midrule
-\texttt{\_type} & All records &
-Identifies the record kind: session start, data, session end, or error. \\
-\midrule
-\texttt{session\_id} & All records &
-Groups all records produced during one monitoring run. \\
-\midrule
-\texttt{record\_id} & Data records &
-Gives one captured observation a stable identity for correlation with later
-verdicts. \\
-\midrule
-\texttt{source\_type} & Data records &
-States whether the observation came from a topic, service, or action. \\
-\midrule
-\texttt{source\_name} & Data records &
-Stores the logical ROS~2 name, such as \texttt{/cmd\_vel},
-\texttt{/set\_bool}, or \texttt{/navigate\_to\_pose}. \\
-\midrule
-\texttt{source\_node} & When known &
-Records the publisher or server node name found during collection. \\
-\midrule
-\texttt{msg\_type} & Data records &
-Preserves the ROS~2 type identifier needed by downstream converters. \\
-\midrule
-\texttt{phase} & Services/actions &
-Distinguishes request, response, feedback, status, goal, or result phases. \\
-\midrule
-\texttt{timestamp} & All records &
-Stores the monitor-side wall-clock time when the record was created. \\
-\midrule
-\texttt{ros\_timestamp} & When available &
-Preserves the timestamp carried by the original ROS~2 message or event. \\
-\midrule
-\texttt{data} & All records &
-Contains the monitoring configuration, captured payload, session statistics,
-or error details, depending on \texttt{\_type}. \\
-\midrule
-\texttt{metadata} & Data records &
-Stores infrastructure context such as sequence number, QoS profile, applied
-transformers, service event type, client identifier, and service sequence
-number. \\
+\texttt{session\_id}, \texttt{record\_id} & Execution identity and stable
+observation identity.\\
+\texttt{source\_type}, \texttt{source\_name} & Topic, service, or action and
+its ROS~2 name.\\
+\texttt{source\_node}, \texttt{msg\_type} & Discovered producer/server and
+ROS~2 interface type.\\
+\texttt{phase} & Empty for a normal topic; request/response or feedback/status
+for heterogeneous interactions.\\
+\texttt{timestamp}, \texttt{ros\_timestamp} & Monitor receive time and an
+optional timestamp from the ROS message.\\
+\texttt{data} & Recursively converted observation payload.\\
+\texttt{metadata} & Sequence number, QoS information, and applied
+transformers.\\
 \bottomrule
 \end{tabular}
-\caption{Schema of the common data record used throughout the infrastructure.}
-\label{tab:data-record-schema}
 \end{table}
 
-The record format is deliberately uniform across ROS~2 communication methods.
-Topics have no phase because each message is a complete unit. Service events
-are unwrapped into request and response records, with the service event metadata
-kept for correlation. Actions use feedback and status records directly, while
-goal and result phases can be represented when service introspection for those
-action services is available. The same \texttt{session\_id},
-\texttt{record\_id}, \texttt{source\_type}, and \texttt{source\_name} fields
-therefore identify observations regardless of whether they originated from a
-topic, service, or action.
+ROS~2 messages can contain primitive values, nested messages, arrays,
+sequences, and time values. The collector recursively converts them to a
+JSON-compatible tree: Boolean, numeric, and string fields become JSON scalars;
+nested messages become objects; arrays and sequences become arrays; and ROS
+time uses \texttt{sec} and \texttt{nanosec} fields. The surrounding record
+stores type and source identity, so nesting is preserved without requiring a
+checker to import the original ROS~2 class. Arbitrary Python objects are not
+part of the interchange contract.
 
-\section{Deployment Topologies}
-\label{sec:deployment-topologies}
+For example, a \texttt{geometry\_msgs/msg/Twist} message is represented as
+nested \texttt{linear} and \texttt{angular} objects. A speed converter may
+retain only \texttt{linear.x}, while the original JSONL record can still be
+kept as evidence. Service-event metadata also carries the client identifier and
+sequence number needed to pair requests and responses.
 
-The same pipeline can run in two main deployment forms. They are the concrete
-instances, in this infrastructure, of the general monitoring organisations
-introduced in Section~\ref{sec:monitoring-organisations}.
+\section{Observation Sequence}
 
-In the integrated deployment, collection, processing, checking, and output run
-in one ROS~2-facing process. This form is useful for local development and for
-properties that can be checked close to the observed application. It
-corresponds to the traditional organisation in
-Figure~\ref{fig:org-traditional}: the application and the complete monitoring
-pipeline share one location and one clock, so the records form a totally
-ordered trace that a single monitor process analyses.
-
-\begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.72\textwidth]{diagrams/UML deployment integrated.png}
-    \caption{Integrated deployment topology. Collection, processing, checking,
-    and verdict export are placed in the same ROS~2-facing monitor runtime.}
-    \label{fig:deployment-integrated}
-\end{figure}
-
-In the split deployment, a robot-side monitor collects and processes
-observations and sends data records to a verifier-side process. The verifier
-uses a source adapter to read those records and then executes the same
-converter, verdict service, and verdict exporter chain that is used in the
-integrated deployment. The prototype implements file replay and MQTT for these
-flows, but transport remains an exporter/source choice rather than part of the
-checking logic.
-
-The split deployment is closest to the orchestrated organisation in
-Figure~\ref{fig:org-orchestrated}: the trace is produced at the observed
-location, while the analysis runs on a remote verifier, so the orchestration
-trade-offs from Section~\ref{sec:monitoring-organisations}, communication
-overhead and data exposure on the network, apply to it. Because the robot-side
-transformer pipeline can already filter and reduce the records before they are
-transmitted, the split deployment also borrows the main advantage of the
-choreographed organisation: part of the monitoring work stays at the location
-where the trace is produced, which lowers the amount of data that crosses the
-network.
+Figure~\ref{fig:observation-sequence} explains the normal sequence before
+deployment choices are introduced. A typed observation becomes a common record,
+the verifier emits a verdict, and records and verdicts can be stored as
+evidence. In an integrated deployment the monitor and verifier lifelines are
+inside one executable runtime; in a split deployment the common record crosses
+a configured transport.
 
 \begin{figure}[htbp]
-    \centering
-    \includegraphics[width=0.72\textwidth]{diagrams/UML deployment separated.png}
-    \caption{Split deployment topology. The robot-side monitor publishes data
-    records through a transport boundary, while a verifier-side process runs
-    the checking chain and exports verdicts.}
-    \label{fig:deployment-split}
+  \centering
+  \resizebox{.96\textwidth}{!}{\input{figures/observation_sequence}}
+  \caption{Sequence for one observation and its resulting evidence.}
+  \label{fig:observation-sequence}
 \end{figure}
 
-Figure~\ref{fig:pipeline-sequence} shows the runtime order of the main
-pipeline interactions. The sequence is the same in both deployment forms until
-a data exporter or source crosses the transport boundary.
+\section{Representative Deployment Views}\label{sec:deployment-views}
+
+Figure~\ref{fig:deployment-views} shows the two deployment forms defined in
+Section~\ref{sec:deployment-terminology}. In the notation of the figure, outer
+boxes are hosts and inner boxes are executable runtimes; arrows carry common
+data records. A \emph{ROS~2-facing runtime} is a process with ROS~2 libraries
+and graph access; it is not necessarily running on the robot itself. In terms
+of the monitoring organisations of
+Section~\ref{sec:monitoring-organisations}, the integrated form realizes the
+traditional organisation, and the split form realizes an orchestrated
+organisation with one central verifier.
 
 \begin{figure}[htbp]
-    \centering
-    \includegraphics[width=\textwidth]{diagrams/SequenceDiagram.png}
-    \caption{Runtime sequence from collection to verdict export.}
-    \label{fig:pipeline-sequence}
+  \centering
+  \resizebox{\textwidth}{!}{\input{figures/deployment_views}}
+  \caption{Integrated and split deployments. These are representative
+  configurations, not the only placements allowed by the architecture.}
+  \label{fig:deployment-views}
 \end{figure}
+
+The integrated form minimizes transport boundaries. The split form isolates
+the checker from ROS~2 dependencies and permits a different host or operating
+system. More configurations can be formed by adding monitor runtimes, verifier
+runtimes, and explicit links in the deployment specification. Such a
+configuration still requires network addresses, credentials, topics or file
+paths, and component placement; the feature model alone cannot supply them.
+
+\section{Chapter Summary}
+
+The feature model distinguishes domain choices from deployment parameters. The
+reference architecture realizes the selected path as a sequence of collectors,
+common records, transformers, dispatchers, converter plug-ins, verdict-service
+plug-ins, and exporters. It supports integrated and split placements while
+keeping active feedback outside the current prototype. The next chapter
+explains how this design is implemented and generated.

@@ -1,0 +1,33 @@
+\begin{tikzpicture}[
+  font=\scriptsize,
+  device/.style={draw, fill=none, rounded corners=2pt,
+                 inner sep=5mm},
+  runtime/.style={draw, fill=white, rounded corners=2pt,
+                  align=center, minimum height=10mm, minimum width=34mm},
+  broker/.style={draw, fill=white, rounded corners=2pt,
+                 align=center, minimum height=10mm, minimum width=25mm},
+  flow/.style={-{Latex[length=2mm]}, line width=.7pt}
+]
+\node[runtime] (sum1) {ROS 2 system};
+\node[runtime, right=8mm of sum1] (all) {Monitor runtime\\collect, process, check};
+\node[runtime, right=8mm of all] (evidence1) {Evidence output};
+\node[device, fit=(sum1)(all)(evidence1),
+      label={[font=\scriptsize\bfseries]above:Integrated deployment on one host}] (host1) {};
+\draw[flow] (sum1) -- (all);
+\draw[flow] (all) -- (evidence1);
+
+\node[runtime, below=24mm of sum1] (sum2) {ROS 2 system};
+\node[runtime, right=8mm of sum2] (monitor2) {Monitor runtime\\collect and process};
+\node[broker, right=16mm of monitor2] (mqtt) {MQTT or file};
+\node[runtime, right=16mm of mqtt] (verifier2) {Verifier runtime\\convert and check};
+\node[device, fit=(sum2)(monitor2),
+      label={[font=\scriptsize\bfseries]above:ROS-facing host}] (host2a) {};
+\node[device, fit=(verifier2),
+      label={[font=\scriptsize\bfseries]above:Verifier host}] (host2b) {};
+\draw[flow] (sum2) -- (monitor2);
+\draw[flow] (monitor2) -- node[above]{records} (mqtt);
+\draw[flow] (mqtt) -- node[above]{records} (verifier2);
+\node[anchor=west, font=\scriptsize\bfseries] at
+  ($(host2a.south west)+(0,-5mm)$)
+  {Split deployment; the two hosts may also be the same physical machine.};
+\end{tikzpicture}

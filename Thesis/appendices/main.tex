@@ -1,1 +1,173 @@
-\chapter{Appendix}
+\chapter{Schemas and Reproducibility}
+
+\section{Common Data Record}\label{app:data-record}
+
+The serialized interchange object contains the following fields. Optional empty
+fields may be omitted.
+
+\begin{longtable}{p{.24\textwidth}p{.18\textwidth}p{.47\textwidth}}
+\caption{Common data-record schema.}\\
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Meaning}\\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Field} & \textbf{Type} & \textbf{Meaning}\\
+\midrule
+\endhead
+\texttt{\_type} & string & \texttt{data}, \texttt{session\_start},
+\texttt{session\_end}, or \texttt{error}.\\
+\texttt{session\_id} & string & Identifier shared by one runtime session.\\
+\texttt{record\_id} & string & Stable observation identifier within the
+session.\\
+\texttt{source\_type} & string & \texttt{topic}, \texttt{service}, or
+\texttt{action}.\\
+\texttt{source\_name} & string & Fully qualified ROS~2 resource name.\\
+\texttt{source\_node} & string array & Discovered publisher or server node
+names, when available.\\
+\texttt{msg\_type} & string & ROS~2 interface type.\\
+\texttt{phase} & string/null & Service \texttt{request}/\texttt{response} or
+action \texttt{feedback}/\texttt{status}; absent for normal topics.\\
+\texttt{timestamp} & number & Collector wall-clock receive time in seconds.\\
+\texttt{ros\_timestamp} & object/null & Optional \texttt{sec}/\texttt{nanosec}
+timestamp from the observation.\\
+\texttt{data} & object & Recursively JSON-compatible payload.\\
+\texttt{metadata} & object & Per-source sequence and processing context.\\
+\bottomrule
+\end{longtable}
+
+The following is a complete topic-record example:
+
+\begin{lstlisting}[language={},caption={Example common data record.}]
+{
+  "_type": "data",
+  "session_id": "20260727_101530_a1b2c3d4",
+  "record_id":
+    "20260727_101530_a1b2c3d4:topic:/cmd_vel:-:18",
+  "source_type": "topic",
+  "source_name": "/cmd_vel",
+  "source_node": ["/controller_server"],
+  "msg_type": "geometry_msgs/msg/Twist",
+  "timestamp": 1785147330.274,
+  "data": {
+    "linear": {"x": 0.22, "y": 0.0, "z": 0.0},
+    "angular": {"x": 0.0, "y": 0.0, "z": 0.14}
+  },
+  "metadata": {
+    "seq": 18,
+    "transformers_applied": ["FieldExtractor"]
+  }
+}
+\end{lstlisting}
+
+\section{Deployment Specification Example}\label{app:deployment-spec}
+
+This complete example places ROS~2 collection on \texttt{robot} and speed
+checking on \texttt{verifier}. The generator creates
+\texttt{robot.yaml} for \texttt{monitor\_node} and
+\texttt{verifier.yaml} for \texttt{node\_runner}, with matching MQTT endpoints.
+
+\begin{lstlisting}[language={},caption={Two-host deployment specification.}]
+{
+  "hosts": [
+    {
+      "id": "robot",
+      "runtimes": [
+        {
+          "id": "ros2_robot",
+          "kind": "ros2",
+          "sources": [
+            {
+              "id": "cmd",
+              "source_kind": "topic",
+              "name": "/cmd_vel",
+              "interface": "geometry_msgs/msg/Twist"
+            }
+          ]
+        },
+        {
+          "id": "monitor",
+          "kind": "monitor",
+          "subscribe": ["cmd"]
+        }
+      ]
+    },
+    {
+      "id": "verifier",
+      "runtimes": [
+        {
+          "id": "speed_converter",
+          "kind": "converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter",
+          "input_from": ["cmd"],
+          "output_to": "speed_dsl"
+        },
+        {
+          "id": "speed_property",
+          "kind": "verdict_service",
+          "class_path": "custom.threshold:ThresholdVerdict",
+          "input_from": ["speed_dsl"],
+          "output_to": [
+            {"kind": "stdout"},
+            {"kind": "file",
+             "path": "verdicts_{session_id}.jsonl"}
+          ],
+          "property_id": "cmd_speed_limit",
+          "field": "speed",
+          "op": "<=",
+          "threshold": 0.5
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "id": "robot_records",
+      "from_host": "robot",
+      "to_host": "verifier",
+      "from_runtime": "monitor",
+      "to_runtime": "speed_converter",
+      "payload": "records",
+      "transport": {
+        "kind": "mqtt",
+        "broker": "192.0.2.10",
+        "port": 1883,
+        "qos": 1,
+        "topic_prefix": "monitor/"
+      }
+    }
+  ]
+}
+\end{lstlisting}
+
+\section{Plug-in Contracts}
+
+A converter subclasses \texttt{DataConverter} and implements:
+
+\begin{lstlisting}[language=Python]
+def convert(self, record: DataRecord) -> Any | None:
+    ...
+\end{lstlisting}
+
+A verdict service subclasses \texttt{VerdictService} and implements:
+
+\begin{lstlisting}[language=Python]
+def evaluate(self, dsl_record: Any) -> Verdict | None:
+    ...
+\end{lstlisting}
+
+The converter must preserve the input record identifier in its DSL record when
+the resulting verdict needs attribution. The verdict service returns the common
+\texttt{Verdict} object; output destinations are configured separately.
+
+\section{Repository}\label{app:repository}
+
+The implementation, tests, documentation, and case-study material are available
+at:
+
+\begin{center}
+\url{https://github.com/Jin-Shikai/ROS2-Monitor-Infra}
+\end{center}
+
+The repository documentation describes the common record, runtime YAML,
+deployment generation, custom plug-ins, and reproducible execution commands.

@@ -2,227 +2,228 @@
 
 \section{Context and Motivation}
 
-Robots often work in changing environments. Their behaviour depends on
-software, hardware, sensor data, communication, and the physical world. Some
-events can only be seen while the robot is running. For this reason, testing a
-robot before deployment is important, but it is not always enough. Developers
-also need to observe the robot during operation.
+Robots operate in changing environments. Their behaviour depends on software,
+hardware, sensors, communication, and the physical world. They also increasingly
+use artificial-intelligence components for perception and decision making.
+Uncertain sensor input, model confidence, and conditions that differ from
+training data can therefore influence a robot after deployment. Testing remains
+essential, but it cannot cover every environment and interaction that a robot
+may encounter. Developers also need to observe the robot during operation.
 
-Many modern robots are built with the Robot Operating System~2 (ROS~2). Despite its name, 
-it is not an operating system in the traditional sense, 
-but run on top of a general-purpose operating system such as Linux.
-It provides a set of software libraries and tools for assembling and building functional components of a robotic system, 
-and built-in packages for components working
-together to create different robot applications~\cite{macenski2022ros2}. 
-
-A ROS~2 application is composed of
+Many modern robots are built with the Robot Operating System~2 (ROS~2).
+Despite its name, ROS~2 is not an operating system in the traditional sense;
+it runs on top of a general-purpose operating system such as Linux. It
+provides software libraries and tools for assembling the functional components
+of a robotic system, and reusable packages that work together in different
+robot applications~\cite{macenski2022ros2}. A ROS~2 application is composed of
 \emph{nodes}: programs with a focused task, such as reading a sensor or
 planning a route. Nodes communicate through typed interfaces. \emph{Topics}
 are mainly used for continuous data streams, \emph{services} for
-request-response interactions, and \emph{actions} for long-running tasks that
+request--response interactions, and \emph{actions} for long-running tasks that
 provide feedback while they run~\cite{macenski2022ros2,ros2interfaces}.
 Chapter~\ref{chapter:background} explains these mechanisms in detail.
 
 A common way to observe a system during operation is \emph{runtime
-monitoring}. Runtime monitoring collects information from a running system.
-The collected information can be used to find errors, understand runtime
+monitoring}. Runtime monitoring collects information from a running system;
+the collected information can be used to find errors, understand runtime
 behaviour, or check whether the system follows expected
-rules~\cite{rabiser2019domain,leucker2009brief}. The component that performs
-this task is called a \emph{monitor}: it observes the running system, records
-what it sees as observations, and can analyse these observations, for example
-by checking them against an expected property and reporting a verdict. Unlike
-model checking, runtime monitoring does not study every possible system state.
-It studies the behaviour that actually happens during an execution. When the
-emphasis is on checking the observed behaviour against a specification, the
-technique is also called runtime verification~\cite{leucker2009brief}.
+properties~\cite{rabiser2019domain,leucker2009brief}. A monitor may report,
+for example, that commanded velocity exceeded a limit, a service call did not
+have the expected effect, or an action missed a deadline. Unlike model
+checking, runtime monitoring does not explore every possible execution path;
+it analyses behaviour that is observed in actual
+executions~\cite{leucker2009brief}.
 
 Runtime monitoring is particularly relevant for ROS~2 applications. The
 modular node structure makes it easier to reuse and replace software parts,
 but it also spreads the behaviour of the robot across many nodes and
 interfaces. Important information may come from several topics, services, or
-actions. It can therefore be difficult to understand what the full system is
-doing by looking at any single component.
+actions, so it can be difficult to understand what the full system is doing by
+looking at any single component. At the same time, ROS~2 offers several useful
+observation points: a monitor can subscribe to a topic, read service
+introspection events, or observe the hidden topics used by actions, and lower
+layers expose network and execution traces~\cite{macenski2022ros2}. The
+challenge is to turn these observation mechanisms into a reusable and
+configurable monitoring infrastructure. The next section states this problem
+more precisely.
 
-ROS~2 already provides several ways to observe a system. For example, a
-monitor can subscribe to a topic, read service introspection events, or
-observe the hidden topics used by actions. Lower-level tools can also trace
-ROS~2 execution. The difficult part is turning these possibilities into a
-reusable monitoring setup: developers still need to decide what to observe,
-how much data to keep, where to send the data, and how to check it. These
-decisions are often implemented again for every application. This thesis
-presents a configurable monitoring infrastructure that turns these separate
-observation possibilities into a reusable monitoring foundation for ROS~2
-applications.
+\section{Problem Statement}\label{sec:problem}
 
-\section{Problem Statement}
+A monitoring solution must make several connected choices. The developer has
+to decide \emph{what} to observe: which topics, services, and actions carry
+the relevant behaviour. They have to decide \emph{how} to observe it: through
+extra subscriptions, service introspection, lower-level tracing, or
+instrumented application code. They have to decide how much data to keep:
+complete messages support offline replay, while a few fields from a high-rate
+stream may be all that a check needs. They have to decide how the properties
+of interest are specified and checked: as simple thresholds, state machines,
+temporal-logic formulas, or project-specific checking services. Finally, they
+have to decide \emph{where} the monitoring components are deployed: together
+with the application, close to the robot, or on a separate machine that
+receives the observations over a network.
 
-ROS~2 applications need runtime monitoring. A robotic application interacts
-with an environment that testing cannot fully cover: failures caused by
-timing, sensor noise, hardware behaviour, or unexpected environment states
-often appear only while the system is running. In addition, because a ROS~2
-application is distributed over many nodes, no single component has a complete
-view of the system behaviour. Runtime monitoring is therefore needed to detect
-errors, to understand what the system is doing, and to check whether the
-running system still satisfies its requirements.
-
-Setting up monitoring for a concrete application, however, involves many
-configuration options and scenarios. The developer has to decide \emph{what}
-to observe: which topics, services, and actions carry the relevant behaviour.
-They have to decide \emph{how} to observe it: through extra subscriptions,
-service introspection, lower-level tracing, or instrumented application code.
-They have to decide how much data to keep: complete messages support offline
-replay, while a few fields from a high-rate stream may be all that a check
-needs. They have to decide how the properties of interest are specified and
-checked: as simple thresholds, state machines, temporal-logic formulas, or
-project-specific checking services. Finally, they have to decide \emph{where} the
-monitor is deployed: together with the application, close to the robot, or on
-a separate machine that receives the observations over a network.
-
-All of these choices have advantages and disadvantages, and they interact with
-each other. For example, observing everything makes checking flexible but can
-overload storage and transport, while a remote verifier eases the load on the
-robot but adds a network boundary. Because the choices interact, an ad-hoc
-combination assembled for one application rarely carries over to the next one.
-There is a need for a systematic way to specify a monitoring solution: a
-description of the available options and a means to select among them.
+These choices have advantages and disadvantages, and they interact with each
+other. Observing everything makes checking flexible but can overload storage
+and transport; a remote verifier eases the load on the robot but adds a
+network boundary. The choices also change between applications and
+deployments: a local developer test may keep collection and checking in one
+process, while a fielded robot may keep ROS~2-facing collection near the robot
+and send records to a separate verifier. Because the choices interact, an
+ad-hoc combination assembled for one application rarely carries over to the
+next one. There is a need for a systematic way to specify a monitoring
+solution: a description of the available options and a means to select among
+them.
 
 The second problem is that implementing a chosen monitoring solution is time
-consuming. Much of the required code, such as subscribing to interfaces,
+consuming. Existing approaches address important parts of this problem, but
+they use different observation levels, data formats, property languages, and
+deployment assumptions. Much of the required code---subscribing to interfaces,
 decoding typed messages, attaching timestamps and context, serializing data,
-and transporting it to checkers and files, is essentially the same in every
-project, yet it is written again for each application. This repeated
-implementation effort should be reduced by automation and by reusable,
-configurable infrastructure support.
+and transporting it to checkers and files---is essentially the same in every
+project, yet it is written again for each application. This boilerplate
+obscures the application-specific decisions and makes monitoring setups harder
+to reproduce. The repeated implementation effort should be reduced by
+automation and by reusable, configurable infrastructure support.
 
 These two problems, the systematic specification of a monitoring solution and
-the reusable implementation of it, are the subject of this thesis. The thesis
-is not concerned with how properties are specified or how they are checked.
-Existing specification languages and checking tools can be attached to the
-infrastructure through defined interfaces; the infrastructure delivers the
-observations they need.
+its reusable implementation, are the subject of this thesis. Property
+specification and property checking are themselves important research
+problems: temporal logics, state machines, grammars, and rule languages
+provide different solutions, and the runtime-verification literature surveys
+this design space~\cite{leucker2009brief,francalanza2018distributed}. This
+thesis does not propose a new property language or checking algorithm.
+Instead, it focuses on the infrastructure that supplies observations to a
+selected checker. A checker-specific converter and verdict service are treated
+as extension points.
 
-\section{Research Objective and Questions}
+The problem addressed by this thesis is therefore:
 
-The objective of this thesis is to design, implement, and evaluate a
-configurable monitoring infrastructure for ROS~2 applications. The
-infrastructure should collect different ROS~2 observations in a common way. It
-should also allow users to select the observation, processing, checking,
-output, and deployment setup through configuration rather than through new
-monitoring code.
+\begin{quote}
+How can heterogeneous ROS~2 observations be collected, represented, processed,
+routed, and delivered to property checkers through a reusable infrastructure
+whose deployment and checker-specific parts remain configurable?
+\end{quote}
 
-The following research questions guide the work:
+\section{Objective and Research Questions}
+
+The objective is to design, implement, and evaluate a configurable monitoring
+infrastructure for ROS~2 applications. The infrastructure should cover typed
+topic messages, service events, and action feedback and status; preserve enough
+context to relate a verdict to its observations; and support both integrated
+and split placement of collection and checking.
+
+The objective is refined into four research questions:
 
 \begin{description}
-    \item[RQ1] What monitoring capabilities currently exist for ROS~2, and
-    which observation gaps remain?
+  \item[RQ1.] What monitoring capabilities and ROS~2 observation mechanisms
+  exist, and which application-level observation gaps remain in the reviewed
+  approaches?
 
-    \item[RQ2] What are the main commonalities and variabilities among
-    existing monitoring architectures for ROS~2 applications?
+  \item[RQ2.] What are the commonalities and variabilities of monitoring
+  solutions for ROS~2 applications?
 
-    \item[RQ3] What does a generic reference architecture for ROS~2
-    monitoring look like, and can it incorporate the features identified in
-    RQ2?
+  \item[RQ3.] How can a reference architecture incorporate the selected
+  monitoring features while separating reusable infrastructure from
+  property-specific checking?
 
-    \item[RQ4] To what extent does the implemented infrastructure support the
-    monitoring needs of realistic ROS~2 applications?
+  \item[RQ4.] To what extent do the proposed reference architecture and its
+  implementation support the monitoring needs of representative ROS~2
+  applications?
 \end{description}
 
-\section{Approach}
+\section{Scope}
+
+The prototype follows a deliberately focused path through the monitoring design
+space. It observes the application-level data that ROS~2 exposes through
+topics, service introspection, and hidden action feedback and status topics.
+It supports passive online monitoring and recorded-data replay. Checking may run
+inside the ROS~2-facing monitor or in a separate runtime reached through a file
+or MQTT transport.
+
+The following concerns are outside the implemented scope: a new property
+formalism, automatic synthesis of checking algorithms, active intervention in
+the system under monitoring, global ordering across hosts, fault-tolerant
+distributed verification, network-packet inspection, and operating-system
+tracing. The reference architecture keeps explicit extension points for several
+of these concerns; Chapter~\ref{chapter:discussion} discusses which extension
+points remain open.
+
+\section{Approach and Contributions}
 
 Each research question is answered as follows.
 
-To answer RQ1, we review existing research and tools for monitoring ROS and
-ROS~2 applications. We group the approaches by the level at which they observe
-the system: ROS graph instrumentation, network-level observation, and
-lower-level tracing. The review identifies which ROS~2 elements each approach
-can observe and which observation gaps remain
-(Chapters~\ref{chapter:background} and~\ref{chapter:related_work}).
+To answer RQ1, existing research and tools for monitoring ROS and ROS~2
+applications are reviewed using consistent criteria. The approaches are
+grouped by the level at which they observe the system: the ROS~2 application
+interfaces, network-level observation, and lower-level tracing. The review
+identifies which ROS~2 elements each approach can observe and which
+observation gaps remain (Chapters~\ref{chapter:background}
+and~\ref{chapter:related_work}).
 
-To answer RQ2, we perform a domain analysis of the reviewed monitoring
-approaches. We identify the tasks they share, such as collecting, processing,
+To answer RQ2, a domain analysis of the reviewed monitoring approaches is
+performed. It identifies the tasks they share, such as collecting, processing,
 routing, checking, and reporting, and the points where they differ, such as
 the observable elements, the monitoring architecture, the monitoring mode, the
-system configuration, and the implementation technique. We capture these
-commonalities and variabilities in a feature model
-(Chapter~\ref{chapter:design}).
+system configuration, and the implementation paradigm. These commonalities and
+variabilities are captured in a feature model (Chapter~\ref{chapter:design}).
 
-To answer RQ3, we design a reference architecture for ROS~2 monitoring and
-implement it in a Python prototype (Chapters~\ref{chapter:design}
+To answer RQ3, a reference architecture is derived from the feature model and
+implemented as a Python prototype (Chapters~\ref{chapter:design}
 and~\ref{chapter:implementation}). The architecture is a configurable
-pipeline. A collector observes a configured topic, service event stream, or
-action feedback and status stream and stores each observation in a common data
-record that carries the payload together with source information, timestamps,
-a session identifier, and a record identifier. Optional transformers reduce or
-reshape records, dispatchers route them to outputs and checking components,
-converters prepare them for property-specific verdict services, and exporters
-deliver data and verdicts to files, standard output, or MQTT. The same
-pipeline supports an integrated deployment, in which all steps run in one
-ROS~2-facing process, and a split deployment, in which a robot-side monitor
-sends records over MQTT to a separate verifier without a ROS~2 dependency. We
-then check the architecture against the feature model from RQ2 to determine
-which of the identified features it can incorporate.
+pipeline: collectors observe configured topics, service event streams, or
+action feedback and status streams and store each observation in a common data
+record; transformers reduce or reshape records; dispatchers route them to
+outputs and checking components; converters prepare them for property-specific
+verdict services; and exporters deliver data and verdicts to files, standard
+output, or MQTT. The same pipeline supports an integrated deployment, in which
+all steps run in one ROS~2-facing process, and a split deployment, in which a
+robot-side monitor sends records over MQTT to a separate verifier without a
+ROS~2 dependency.
 
-To answer RQ4, we evaluate the prototype through case studies that cover the
-three ROS~2 communication mechanisms and both deployment forms, including a
-Navigation~2 (Nav2) case study; Nav2 is chosen because it combines topics,
-services, and actions in a realistic robotic application. The case studies are
-complemented by unit tests, Docker Compose deployment examples, offline
-replay, and a multi-robot scenario (Chapter~\ref{chapter:evaluation}).
+To answer RQ4, five experiments evaluate the selected feature configuration,
+progressing from a controlled topic property to a Navigation~2
+(Nav2)~\cite{macenski2020marathon} case
+study, a two-robot correlation property, and a deployment across three
+computers. Nav2 is chosen because it combines topics, services, and actions in
+an existing, widely used robotic application. The evaluation also checks
+whether the reference architecture can accommodate the principal capabilities
+of reviewed monitoring approaches (Chapter~\ref{chapter:evaluation}).
 
-\section{Contributions}
-
-The contributions of this thesis are:
+The contributions are:
 
 \begin{enumerate}
-    \item An overview of existing ROS~2 monitoring approaches, the observation
-    mechanisms they use, and the gaps that remain (RQ1).
-
-    \item A feature model that captures the commonalities and variabilities of
-    ROS~2 monitoring solutions (RQ2).
-
-    \item A reference architecture for ROS~2 monitoring that separates
-    observation, processing, transport, checking, feedback, and evidence
-    handling. The architecture maps the general monitoring tasks identified in
-    the software-monitoring literature~\cite{rabiser2019domain} to ROS~2
-    systems and makes the placement of monitoring functions explicit (RQ3).
-
-    \item A monitoring model that can express several
-    patterns found in existing work: ROS-facing collection with an external
-    oracle as in ROSMonitoring~\cite{ferrando2020rosmonitoring}, configurable
-    monitoring services as in ROMoSu~\cite{stadler2023romosu}, and remote
-    verification loops such as digital-twin runtime
-    verification~\cite{betzer2024digitaltwinrv}. The same architecture also
-    supports combinations that are not covered by these systems alone,
-    such as passive ROS~2 topic, service, and action observation feeding either
-    local or remote checking components (RQ3).
-
-    \item An evaluation of the infrastructure through three case studies
-    (RQ4). A speed-limit case study demonstrates topic monitoring: velocity
-    messages are collected, reduced to the relevant fields, and checked
-    against a threshold in both the integrated and the split deployment. A
-    service reset case study demonstrates service monitoring: reset requests
-    and responses are captured through service introspection and checked for
-    their effect on the robot state. A Navigation~2 case study demonstrates
-    action monitoring in a realistic application: navigation goals are
-    followed through action feedback and status, together with the topics that
-    Nav2 uses during navigation.
+  \item a domain analysis and feature model for ROS~2 monitoring
+  solutions;
+  \item a reference architecture that separates observation, common data
+  representation, processing, routing, checker adaptation, checking, and
+  result use;
+  \item a prototype that collects topic messages, service request and response
+  events, and action feedback and status into one common record format;
+  \item plug-in interfaces for checker-specific converters and verdict
+  services, with integrated and split deployment;
+  \item a deployment-specification generator that creates matching runtime YAML
+  files and reduces low-level, routine monitoring boilerplate; and
+  \item an evaluation using controlled stimuli and Nav2 case studies, including
+  evidence that the architecture can accommodate the main capabilities of four
+  reviewed monitoring approaches.
 \end{enumerate}
 
 The main contribution is the reusable monitoring architecture and the
-infrastructure that realizes it. The thesis provides the architectural layer between ROS~2
-communication and property-specific checking. This layer can host deployment
-styles used in existing monitoring frameworks and extend them with uniform
-ROS~2 observations, split robot/verifier deployment, replay, and evidence
-handling.
+infrastructure that realizes it. The thesis provides the architectural layer
+between ROS~2 communication and property-specific checking. This layer can
+host deployment styles used in existing monitoring frameworks and extend them
+with uniform ROS~2 observations, split robot/verifier deployment, replay, and
+evidence handling.
 
-\section{Thesis Outline}
+\section{Thesis Structure}
 
-Chapter~\ref{chapter:background} explains the main ROS~2 and monitoring
-concepts. Chapter~\ref{chapter:related_work} reviews related monitoring and
-verification approaches. Chapter~\ref{chapter:design} presents the feature
-model and the reference architecture derived from it.
-Chapter~\ref{chapter:implementation} describes the prototype.
-Chapter~\ref{chapter:evaluation} presents the evaluation through the case
-studies. Chapter~\ref{chapter:discussion} discusses the results and
-limitations. Chapter~\ref{chapter:conclusions} concludes the thesis and
-describes future work.
+Chapter~\ref{chapter:background} introduces ROS~2 communication, monitoring
+concepts, observation mechanisms, feature models, and deployment terminology.
+Chapter~\ref{chapter:related_work} reviews the selected approaches and derives
+the research gaps. Chapter~\ref{chapter:design} presents the feature model and
+reference architecture. Chapter~\ref{chapter:implementation} explains the
+prototype and configuration workflow. Chapter~\ref{chapter:evaluation}
+evaluates the implementation and the architectural accommodation of related
+work. Chapter~\ref{chapter:discussion} discusses the research questions,
+trade-offs, limitations, threats to validity, and future work.
+Chapter~\ref{chapter:conclusions} gives concise final answers and conclusions.

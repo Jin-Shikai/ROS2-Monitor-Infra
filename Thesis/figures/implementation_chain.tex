@@ -1,0 +1,41 @@
+% Implementation view of the generation chain, with concrete artifact names.
+\begin{tikzpicture}[
+  font=\scriptsize,
+  authored/.style={draw, dashed, fill=white, rounded corners=2pt,
+                align=center, minimum width=36mm, minimum height=11mm},
+  tool/.style={draw, fill=white, rounded corners=2pt,
+                  align=center, minimum width=32mm, minimum height=12mm},
+  artifact/.style={draw, fill=black!8, rounded corners=2pt,
+                 align=center, minimum width=30mm, minimum height=10mm},
+  proc/.style={draw, fill=white, rounded corners=2pt,
+                  align=center, minimum width=36mm, minimum height=11mm},
+  flow/.style={-{Latex[length=2mm]}, line width=.7pt}
+]
+\node[authored] (spec) {Deployment specification\\\texttt{deployment.json}};
+\node[authored, below=6mm of spec] (plugins)
+  {Plug-in classes in \texttt{custom/}\\e.g.\ \texttt{custom.speed:}\\\texttt{CmdVelSpeedConverter}};
+\node[tool, right=13mm of spec, yshift=-9mm] (generator)
+  {Configuration generator\\\texttt{config\_gen.py}};
+\node[artifact, right=13mm of generator, yshift=10mm] (yaml1)
+  {\texttt{robot.yaml}};
+\node[artifact, right=13mm of generator, yshift=-10mm] (yaml2)
+  {\texttt{verifier.yaml}};
+\node[proc, right=12mm of yaml1] (monitor)
+  {Monitor runtime\\\texttt{monitor\_node.py}\\(ROS~2-facing)};
+\node[proc, right=12mm of yaml2] (runner)
+  {Verifier runtime\\\texttt{node\_runner.py}\\(no ROS~2 dependency)};
+
+\draw[flow] (spec.east) -- (generator);
+\draw[flow] (generator) -- (yaml1);
+\draw[flow] (generator) -- (yaml2);
+\draw[flow] (yaml1) -- (monitor);
+\draw[flow] (yaml2) -- (runner);
+\draw[flow, dashed] (plugins.south) |- ++(0,-4mm) -|
+  node[below, pos=0.25] {loaded by class path at start-up} (runner.south);
+
+\node[below=13mm of plugins.south west, anchor=west, xshift=-2mm,
+      font=\scriptsize, align=left]
+  {Dashed boxes: authored by the user\quad
+   Gray boxes: generated files\quad
+   Solid boxes: reusable framework code};
+\end{tikzpicture}

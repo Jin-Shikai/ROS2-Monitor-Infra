@@ -1,0 +1,162 @@
+% Full domain feature model (landscape). Left-to-right tree.
+\begin{tikzpicture}[
+  yscale=0.75,
+  font=\scriptsize,
+  feature/.style={draw, fill=white, rounded corners=2pt,
+                  align=center, minimum height=4.4mm, inner xsep=4pt},
+  root/.style={feature, font=\small\bfseries},
+  group/.style={feature, font=\scriptsize\bfseries, minimum width=30mm},
+  leaf/.style={feature, minimum width=27mm},
+  subleaf/.style={feature, minimum width=26mm},
+  line/.style={draw, line width=.6pt},
+  mandatory/.style={circle, draw, fill=black, inner sep=1.4pt},
+  optional/.style={circle, draw, fill=white, inner sep=1.4pt}
+]
+
+\node[root] (root) at (-1.2,-12.4) {ROS 2\\monitoring\\solution};
+
+% ---------------- group nodes ----------------
+\node[group] (elements) at (4.2,-4.1)  {Observable\\elements};
+\node[group] (mech)     at (4.2,-11.6) {Observation\\mechanism};
+\node[group] (arch)     at (4.2,-15.3) {Monitoring\\architecture};
+\node[group] (mode)     at (4.2,-17.9) {Monitoring\\mode};
+\node[group] (sysconf)  at (4.2,-20.9) {System\\configuration};
+\node[group] (paradigm) at (4.2,-24.3) {Implementation\\paradigm};
+
+% trunk: root -> vertical bus -> group boxes (no line crosses a box)
+\coordinate (bus) at (1.6,-12.4);
+\draw[line] (root.east) -- (bus);
+\draw[line] (1.6,-4.1) -- (1.6,-24.3);
+\foreach \n in {elements,mech,arch,mode,sysconf,paradigm}
+  \draw[line] (1.6,0 |- \n.west) -- (\n.west);
+\foreach \n in {elements,mech,arch,mode,sysconf,paradigm}
+  \node[mandatory] at ($(\n.west)+(-1.5pt,0)$) {};
+
+% ---------------- observable elements ----------------
+\node[leaf] (topics)   at (9.0,-0.0)  {Topics};
+\node[leaf] (services) at (9.0,-0.85) {Services};
+\node[leaf] (actions)  at (9.0,-1.7)  {Actions};
+\node[leaf] (params)   at (9.0,-2.55) {Parameters};
+\node[leaf] (nodest)   at (9.0,-3.4)  {Node/lifecycle states};
+\node[leaf] (qos)      at (9.0,-5.7)  {QoS events};
+\foreach \n in {topics,services,actions,params,nodest,qos}
+  \draw[line] (elements.east) -- (\n.west);
+% or-group arc (one or more observable elements)
+\fill[black]
+  ($(elements.east)!5mm!(topics.west)$) -- (elements.east) --
+  ($(elements.east)!5mm!(qos.west)$) to[bend right=25] cycle;
+
+\node[subleaf] (pubev) at (12.8,-4.25) {Publisher events};
+\node[subleaf] (subev) at (12.8,-7.15) {Subscriber events};
+\draw[line] (qos.east) -- (pubev.west);
+\draw[line] (qos.east) -- (subev.west);
+\fill[black]
+  ($(qos.east)!4.5mm!(pubev.west)$) -- (qos.east) --
+  ($(qos.east)!4.5mm!(subev.west)$) to[bend right=35] cycle;
+
+\node[subleaf] (pub1) at (16.9,-3.10) {Offered deadline missed};
+\node[subleaf] (pub2) at (16.9,-3.85) {Liveliness lost};
+\node[subleaf] (pub3) at (16.9,-4.60) {Offered incompatible QoS};
+\node[subleaf] (pub4) at (16.9,-5.35) {Subscriber (dis)connected};
+\foreach \n in {pub1,pub2,pub3,pub4}{
+  \draw[line] (pubev.east) -- (\n.west);
+  \node[optional] at ($(\n.west)+(-1.5pt,0)$) {};
+}
+\node[subleaf] (sub1) at (16.9,-6.30) {Requested deadline missed};
+\node[subleaf] (sub2) at (16.9,-7.05) {Liveliness changed};
+\node[subleaf] (sub3) at (16.9,-7.80) {Requested incompatible QoS};
+\node[subleaf] (sub4) at (16.9,-8.55) {Publisher (dis)connected};
+\foreach \n in {sub1,sub2,sub3,sub4}{
+  \draw[line] (subev.east) -- (\n.west);
+  \node[optional] at ($(\n.west)+(-1.5pt,0)$) {};
+}
+
+% ---------------- observation mechanism ----------------
+\node[leaf] (monnode) at (9.0,-9.7)   {Monitor node\\(native interfaces)};
+\node[leaf] (instr)   at (9.0,-10.7)  {Instrumentation /\\decorator};
+\node[leaf] (nettap)  at (9.0,-11.7)  {Network tap};
+\node[leaf] (tracing) at (9.0,-12.6)  {Tracing (LTTng)};
+\node[leaf] (ddsmon)  at (9.0,-13.7)  {DDS monitor tools};
+\foreach \n in {monnode,instr,nettap,tracing,ddsmon}
+  \draw[line] (mech.east) -- (\n.west);
+\fill[black]
+  ($(mech.east)!5mm!(monnode.west)$) -- (mech.east) --
+  ($(mech.east)!5mm!(ddsmon.west)$) to[bend right=30] cycle;
+
+\node[subleaf] (dds1) at (12.8,-12.9) {eProsima Fast DDS Monitor};
+\node[subleaf] (dds2) at (12.8,-13.7) {RTI Connext Monitor};
+\node[subleaf] (dds3) at (12.8,-14.5) {OpenDDS Monitor};
+\foreach \n in {dds1,dds2,dds3}
+  \draw[line] (ddsmon.east) -- (\n.west);
+% alternative group (empty arc): one concrete tool
+\draw[fill=white]
+  ($(ddsmon.east)!4.5mm!(dds1.west)$) -- (ddsmon.east) --
+  ($(ddsmon.east)!4.5mm!(dds3.west)$) to[bend right=35] cycle;
+\draw
+  ($(ddsmon.east)!4.5mm!(dds1.west)$) to[bend left=35]
+  ($(ddsmon.east)!4.5mm!(dds3.west)$);
+
+% ---------------- architecture ----------------
+\node[leaf] (integrated) at (9.0,-14.9) {Integrated};
+\node[leaf] (split)      at (9.0,-15.8) {Split};
+\foreach \n in {integrated,split}
+  \draw[line] (arch.east) -- (\n.west);
+\fill[black]
+  ($(arch.east)!5mm!(integrated.west)$) -- (arch.east) --
+  ($(arch.east)!5mm!(split.west)$) to[bend right=40] cycle;
+\node[subleaf] (transport) at (12.8,-15.8) {Transport};
+\draw[line] (split.east) -- (transport.west);
+\node[mandatory] at ($(transport.west)+(-1.5pt,0)$) {};
+
+% ---------------- monitoring mode ----------------
+\node[leaf] (passive) at (9.0,-17.0) {Passive};
+\node[leaf] (active)  at (9.0,-17.9) {Active};
+\node[leaf] (oracle)  at (9.0,-18.8) {Oracle / checker};
+\foreach \n in {passive,active}
+  \draw[line] (mode.east) -- (\n.west);
+\draw[line] (mode.east) -- (oracle.west);
+\fill[black]
+  ($(mode.east)!5mm!(passive.west)$) -- (mode.east) --
+  ($(mode.east)!5mm!(active.west)$) to[bend right=40] cycle;
+\node[optional] at ($(oracle.west)+(-1.5pt,0)$) {};
+
+% ---------------- system configuration ----------------
+\node[leaf] (online)   at (9.0,-20.0) {Online};
+\node[leaf] (offline)  at (9.0,-20.9) {Offline / replay};
+\node[leaf] (multirob) at (9.0,-21.8) {Multi-robot};
+\node[leaf] (multihost)at (9.0,-22.7) {Multi-host};
+\foreach \n in {online,offline}
+  \draw[line] (sysconf.east) -- (\n.west);
+\foreach \n in {multirob,multihost}{
+  \draw[line] (sysconf.east) -- (\n.west);
+  \node[optional] at ($(\n.west)+(-1.5pt,0)$) {};
+}
+\fill[black]
+  ($(sysconf.east)!5mm!(online.west)$) -- (sysconf.east) --
+  ($(sysconf.east)!5mm!(offline.west)$) to[bend right=40] cycle;
+
+% ---------------- implementation paradigm ----------------
+\node[leaf] (configured) at (9.0,-23.5) {Configured};
+\node[leaf] (generated)  at (9.0,-24.4) {Generated};
+\node[leaf] (plugins)    at (9.0,-25.3) {Plug-in based};
+\foreach \n in {configured,generated,plugins}
+  \draw[line] (paradigm.east) -- (\n.west);
+\fill[black]
+  ($(paradigm.east)!5mm!(configured.west)$) -- (paradigm.east) --
+  ($(paradigm.east)!5mm!(plugins.west)$) to[bend right=30] cycle;
+
+% ---------------- legend ----------------
+\node[align=left, anchor=north west, font=\scriptsize] at (13.2,-17.6) {%
+  \textbf{Notation}\\[1pt]
+  \tikz\node[mandatory]{}; mandatory feature\quad
+  \tikz\node[optional]{}; optional feature\\[1pt]
+  filled arc: or group (one or more)\\
+  empty arc: alternative group (exactly one)\\[3pt]
+  \textbf{Cross-tree constraints}\\[1pt]
+  Split $\Rightarrow$ Transport is required.\\
+  Active $\Rightarrow$ a feedback path into the system\\
+  \hspace*{2mm}under monitoring is required.\\
+  Oracle/checker applies to passive and active mode.\\
+  QoS events and DDS monitor tools presuppose\\
+  \hspace*{2mm}middleware-level observation.};
+\end{tikzpicture}

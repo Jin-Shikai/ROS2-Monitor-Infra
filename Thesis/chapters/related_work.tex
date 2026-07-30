@@ -1,439 +1,302 @@
 \chapter{Related Work}\label{chapter:related_work}
 
-There are many ways to monitor a robotic system. Some tools observe ROS
-messages, some generate checking code from requirements, and others trace the
-operating system or network. These approaches solve different parts of the
-monitoring problem. This chapter reviews the work that is most relevant to this
-thesis and explains how the infrastructure developed here differs.
+\section{Review Criteria}
 
-\section{How the Approaches Are Compared}
+Monitoring papers use the same terms for different goals, so each selected
+approach is described using the following questions:
 
-The word ``monitoring'' has a broad meaning. For example, a tracing tool may
-explain why a callback was slow, while a runtime-verification tool may report
-that a safety rule was broken. Both tools observe the running system, but their
-goals are different.
+\begin{enumerate}
+  \item What is its goal and what observation level does it use?
+  \item Which ROS interfaces or other sources are observed?
+  \item How are properties represented and checked?
+  \item Is checking online, offline, or both?
+  \item Where do collection and checking run?
+  \item Which parts are configurable, extensible, or generated?
+\end{enumerate}
 
-The comparison follows the questions that kept recurring during the domain
-analysis: which part of the system is observed, which ROS interfaces are
-covered, how properties are checked, what can be configured or extended, where
-collection and checking run, and what the approach is mainly trying to achieve.
+The reviewed approaches observe a robot system at different depths of the
+software stack. Throughout this chapter, three observation levels are
+distinguished; Table~\ref{tab:observation-levels} defines each level and the
+kind of information that is visible there.
 
-These questions follow the general monitoring tasks identified by Rabiser et
-al., such as collection, processing, checking, routing, and using the
-results~\cite{rabiser2019domain}.
+\begin{table}[htbp]
+\centering
+\caption{The three observation levels used to classify related work.}
+\label{tab:observation-levels}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.20\textwidth}
+  >{\raggedright\arraybackslash}p{.33\textwidth}
+  >{\raggedright\arraybackslash}p{.36\textwidth}}
+\toprule
+\textbf{Observation level} & \textbf{What is observed} &
+\textbf{Visible information}\\
+\midrule
+Application level & The typed data that nodes exchange through ROS~2
+interfaces. & Topic messages, service requests and responses, action feedback
+and status, with ROS names and types preserved.\\
+\addlinespace
+Middleware and network level & The DDS middleware and the network traffic
+below the ROS~2 API. & Discovery and endpoint events, DDS operations, packets,
+and traffic flows; ROS meaning must be reconstructed.\\
+\addlinespace
+Execution and system level & Program execution inside the ROS~2 stack and the
+operating system. & Callback execution, scheduling, tracepoints, and
+operating-system events; timing rather than message content.\\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\section{ROSMonitoring}
+\section{ROSMonitoring and ROSMonitoring 2.0}
 
-ROSMonitoring is a runtime-verification framework for
-ROS~\cite{ferrando2020rosmonitoring}. It adds monitor nodes between selected
-publishers and subscribers. A YAML file describes the topics that should be
-monitored. The monitor changes ROS messages into events and sends them to an
-external \emph{oracle}. The oracle checks the events against a property.
+ROSMonitoring is a topic-oriented runtime-verification framework for
+ROS~1~\cite{ferrando2020rosmonitoring}. A YAML description selects the topics.
+A generator creates monitor nodes and launch/remapping changes so selected
+messages pass through a monitor. The monitor converts ROS messages to JSON
+events. In online mode it sends events over WebSocket to an external oracle; in
+offline mode it records a trace. An online filtering mode can block or
+republish messages according to the oracle result. The property formalism is
+therefore supplied by the external oracle rather than fixed by the ROS-facing
+monitor.
 
-The useful idea for this thesis is the boundary between ROS message handling and
-the external oracle. ROSMonitoring shows that the checker does not have to live
-inside the ROS-facing code. In this thesis, that boundary is combined with
-passive subscriptions and service introspection, so records can be routed
-through separate processing, transport, checking, and output stages without
-placing a proxy in the normal application communication path.
-
-ROSMonitoring 2.0 adds support for services and studies message
-ordering~\cite{saadat2024rosmonitoring2}. Some service support is available
-for ROS~2. Full ROS~2 support and action monitoring are left as future work.
-Ordering is an important topic because messages may not arrive at the monitor
-in the same order in which they were published.
-
-For this thesis, ROSMonitoring 2.0 is mainly a reminder that services and
-ordering become visible as soon as monitoring moves beyond plain topic streams.
-The prototype keeps ordering support modest and concentrates on a uniform
-record and pipeline for heterogeneous ROS~2 observations.
+ROSMonitoring 2.0 extends this approach to services and to explicitly ordered
+topic observations~\cite{saadat2024rosmonitoring2}. Its Runtime Monitoring
+Language supports event-pattern properties, including past-time Metric Temporal
+Logic. The reported ROS~2 support is partial, and ROS~2 action monitoring is
+not covered.
 
 \section{ROMoSu}
 
-Stadler et al.\ describe several practical problems when adding monitoring to a
-ROS application. Developers need to understand the system, select useful data,
-choose collection rates, add checks, and present the
-results~\cite{stadler2022towards}.
+ROMoSu is a configurable platform for runtime monitoring of ROS-based
+applications~\cite{stadler2022towards,stadler2023romosu}. It separates a
+monitoring-configuration phase from data collection. Reusable system-under-
+monitoring types and monitor configurations describe topic fields, sampling,
+validation, storage, and presentation. At runtime, a ROS connector and
+adaptation manager collect data, and a runtime-data broker connects validation,
+persistency, dashboards, and external constraint services.
 
-ROMoSu provides a flexible framework for these
-tasks~\cite{stadler2023romosu}. Users can create reusable monitoring
-configurations, select topics and message fields, choose collection rates, and
-connect external services. ROMoSu also includes a user interface, a dashboard,
-and configuration storage.
+The reported implementation focuses on ROS~1 topic data. Properties may be
+checked by connected validation or complex-event-processing services. The
+platform provides an administration interface and dashboard. Its main
+variability lies in reusable configurations, selected data fields and rates,
+and external services; code generation is not its central mechanism.
 
-ROMoSu is the closest work in spirit because it treats monitoring as something
-that should be configured, not hand-written from scratch each time. Its scope is
-broader on the user-facing side: it includes a dashboard, storage, and a larger
-platform around the monitoring process. The prototype here concentrates on the
-internal infrastructure stages - collectors, transformers, converters, verdict
-services, sources, and exporters - and gives direct attention to ROS~2 services,
-actions, and split robot/verifier deployment.
+\section{Requirements-to-Monitor Generation for ROS 2}
 
-\section{Generated Monitors for ROS 2}
+Perez et al.\ present a requirements-to-monitor toolchain for
+ROS~2~\cite{perez2022monitoringros2}. FRET, the Formal Requirements Elicitation
+Tool, lets a user write structured FRETISH requirements. Ogma is a generator
+that translates these requirements and the selected ROS~2 inputs into monitor
+artifacts. Copilot in this work is a stream-based runtime-verification language
+and framework, not an AI programming assistant. Ogma generates Copilot code,
+which is compiled to C99 and packaged as a ROS~2 node.
 
-Perez et al.\ present a process for generating ROS~2 runtime monitors from
-requirements~\cite{perez2022monitoringros2}. The user writes structured
-requirements in FRET. These requirements are translated to temporal logic and
-then to Copilot monitor code through Ogma. The final monitor is compiled to C99
-and placed in a generated ROS~2 package.
-
-This is a requirements-to-monitor pipeline. The prototype starts one step
-earlier in the data path: it collects ROS~2 observations and prepares them for
-whatever checker is selected later. A generated FRET--Ogma--Copilot monitor
-could fit behind the verdict-service interface. The plugin examples implemented
-for this thesis are simpler custom converter and verdict-service classes.
+The approach observes selected topic values at the application level and checks
+generated temporal properties online. Its principal automation is the
+translation from structured requirements to executable monitor code and ROS~2
+packaging. Deployment variation beyond the generated package is not the main
+focus reported in the paper.
 
 \section{RTAMT}
 
-RTAMT is a library for monitoring Signal Temporal Logic (STL)
-properties~\cite{yamaguchi2024rtamt}. It supports online and offline checking
-and can work with ROS~2. RTAMT can return a robustness value, which shows how
-strongly a signal satisfies or violates a property.
+RTAMT is a library for online and offline robustness monitoring of Signal
+Temporal Logic (STL) and related specifications~\cite{yamaguchi2024rtamt}. A
+property is evaluated over timestamped signals, producing a Boolean or
+quantitative robustness result; the quantitative result shows how strongly a
+signal satisfies or violates the property. The library supports discrete-time
+and dense-time interpretations and provides Python and C++ evaluation
+back-ends. Adapters can supply signals from cyber-physical and robotic
+applications, including ROS.
 
-RTAMT helped clarify the role of converters in our design. STL monitoring needs
-timestamped signals, while another checker may want a different record shape.
-For that reason, the prototype keeps conversion separate from the verdict
-service. The thesis demonstrates that boundary with threshold-style and custom
-property plugins; an RTAMT-specific plugin remains future work.
+RTAMT is primarily a checking engine. Configuration concerns the property, its
+parser, and the evaluation interface. Source collection, routing, storage, and
+multi-host deployment are supplied by the surrounding application rather than
+by a complete monitoring platform, and the library does not prescribe where
+its host process runs.
 
-\section{Tracing and Performance Monitoring}
+\section{ros2\_tracing}
 
-\texttt{ros2\_tracing} provides low-overhead tracing for
-ROS~2~\cite{bedard2022ros2tracing}. It uses LTTng and tracepoints in the
-ROS~2 core. Developers can study callback execution, message flow, latency,
-and operating system events.
+\texttt{ros2\_tracing} is a low-overhead tracing framework for
+ROS~2~\cite{bedard2022ros2tracing}. LTTng (Linux Trace Toolkit: next
+generation) records tracepoints, which are predefined event probes in ROS~2,
+the middleware layer, and user code. The resulting traces reveal callback
+execution, message flow, latency, and scheduling.
 
-\texttt{ros2\_tracing} sits below the level used in this thesis. It is the
-right tool when the question is about callback execution, message flow, or
-middleware timing. The prototype stays with typed application data. In
-practice, the two levels are complementary: a property verdict can point to a
-suspicious run, and a trace can help explain the execution details behind it.
+This is execution- and middleware-level observation rather than a typed
+application-property pipeline. It supports live trace collection and offline
+analysis. Tracepoint selection and analysis are configurable; the reported
+framework does not prescribe one property formalism or verdict service.
 
-\section{Network-Level Monitoring and Security}
+\section{Network and Security Monitoring}
 
-ROS-FM observes ROS network traffic using eBPF and
-XDP~\cite{rivera2020rosfm}. It can collect network information, apply security
-rules, and support distributed visualization. Because it works below the ROS
-application layer, it can observe communication without adding a normal ROS
-subscriber for every topic.
+ROS-FM performs fast monitoring at the network level using extended Berkeley
+Packet Filter (eBPF) and eXpress Data Path (XDP) mechanisms
+~\cite{rivera2020rosfm}. It observes traffic without adding a normal ROS
+subscriber for every topic, applies security-oriented processing, and supports
+distributed visualization. The trade-off is that typed application meaning has
+to be recovered from lower-level traffic.
 
-This kind of monitor sees traffic without adding a ROS subscriber. The
-difficult part is reconstructing application meaning from packets. The design
-in this thesis stays at the application level, where ROS~2 messages already
-carry the type information that converters and checkers need.
-
-ROSIDS23 and ROSPaCe provide datasets for ROS intrusion-detection
-research~\cite{degirmenci2023rosids23,puccetti2024rospace}. ROSPaCe combines
-operating-system, network, and ROS~2 service data. These datasets show that
-security monitoring may need information from several system layers. Their main
-goal is security detection. In this chapter they mainly mark the boundary
-between security datasets and the more general monitoring infrastructure
-developed here.
+ROSIDS23 and ROSPaCe are datasets for intrusion-detection research rather than
+general monitoring infrastructures~\cite{degirmenci2023rosids23,puccetti2024rospace}.
+They combine network and, in the case of ROSPaCe, ROS~2 and operating-system
+evidence. They show that security properties may require several observation
+levels, but do not define a reusable property-checking deployment workflow.
 
 \section{Containerized and Distributed Verification}
 
-Aldegheri et al.\ present a containerized verification environment for
-ROS~\cite{aldegheri2021containerized}. Generated monitors run as ROS nodes in
-Docker containers. The work also studies where monitors should run between
-edge and cloud systems.
+Aldegheri et al.\ generate ROS-compliant monitors and package them in Docker
+containers~\cite{aldegheri2021containerized}. The approach studies monitor
+placement between edge and cloud resources, so the same verification component
+can be moved without rebuilding it. Checking runs online against the observed
+ROS communication. Configuration in the reported work concerns container
+placement and the monitored interfaces; the property logic is fixed inside the
+generated monitors. Its main contribution is portable verification deployment
+rather than broad ROS interface collection.
 
-This work connects to the split deployment in this thesis because it treats
-placement as part of the monitoring design. The prototype here leaves placement
-as an explicit configuration choice: it provides integrated and split examples
-and keeps the transport interface replaceable.
-
-Distributed runtime verification is a wider research field. It studies how
-monitoring can work when the monitored system and monitors are spread across
-different machines~\cite{francalanza2018distributed}. Important problems
-include clock differences, message delays, failures, and the division of a
-property between local monitors.
-
-The split mode in this thesis is deliberately simpler than distributed runtime
-verification. Collection and checking can run on different machines, but
-checking is still logically centralized at the verifier.
+Distributed runtime verification more generally studies systems in which
+observations and checking are spread across components and
+hosts~\cite{francalanza2018distributed}. It includes property decomposition,
+partial observations, clock and ordering assumptions, communication cost, and
+failures. Separating a collector from a central verifier is one deployment
+form, but it is not equivalent to decentralising the property itself.
 
 \section{Digital-Twin Runtime Verification}
 
-Betzer et al.\ use a digital twin for runtime verification of an autonomous
-mobile robot under uncertainty~\cite{betzer2024digitaltwinrv}. Their monitors
-are synthesized from TeSSLa specifications and run with a cloud-located digital
-twin. The digital twin estimates the robot state, checks safety and performance
-properties, and can intervene when a property is about to be violated.
+Betzer et al.\ place runtime verification within a cloud-located digital twin
+for an autonomous mobile robot under uncertainty
+~\cite{betzer2024digitaltwinrv}. Robot state is transmitted through MQTT. The
+digital twin maintains and extends this state, and monitors generated from
+TeSSLa (Temporal Stream-based Specification Language) properties perform
+runtime validation. The design considers monitor placement inside the twin or
+in separate services and includes a path by which checking can influence
+actuation. Collection, digital-twin state, TeSSLa checking, and feedback are
+therefore distinct architectural responsibilities.
 
-The interesting contrast is that the digital twin gives the checker a richer
-world model. The prototype in this thesis stays closer to the ROS~2
-communication layer and builds the path from typed ROS~2 observations to
-checking components.
+\section{Field-Based Testing}
 
-\section{Field-Based Testing Guidance}
+Caldas et al.\ combine runtime verification with field-based testing for
+ROS-based robots~\cite{caldas2024runtime}. Their guidance covers data
+collection, isolation, monitoring reactions, and use of operational evidence.
+It emphasizes that simulation cannot reproduce every field condition and that
+monitoring artifacts must support a wider testing process. The work is process
+guidance rather than one fixed observation and checking pipeline.
 
-Caldas et al.\ provide guidance for runtime verification and field-based
-testing of ROS systems~\cite{caldas2024runtime}. They explain that real-world
-conditions cannot always be fully reproduced in simulation. Robotic software
-should therefore support data collection, isolation, monitoring reactions, and
-the use of field evidence.
+\section{A Domain Model of Software Monitoring}
 
-This paper helped frame the practical side of the record format. If field data
-is later used as evidence, the record needs enough context to connect an
-observation to a source, a session, and a verdict. The prototype supports that
-kind of evidence trail through JSONL and MQTT outputs. The wider field-testing
-process, automatic recovery, and test generation remain outside its scope.
+Rabiser et al.\ analyse the software-monitoring domain beyond
+robotics~\cite{rabiser2019domain}. Their study of resource and requirements
+monitoring approaches produces a domain model and a reference architecture
+with three areas: monitoring setup, monitoring execution, and monitoring
+support. Recurring responsibilities include monitoring definition,
+instrumentation and probes, information collection, filtering and
+aggregation, routing, checking, and persistency. The authors validate the
+reference architecture by showing that existing monitoring solutions can be
+expressed as instantiations of it.
 
-\section{Summary Comparison}
+The work is domain-independent rather than ROS-specific: it does not fix an
+observation mechanism, property formalism, or deployment. Its variability lies
+in the domain model itself, whose variation points describe where concrete
+monitoring solutions differ. This thesis uses the identified tasks to organize
+Chapter~\ref{chapter:background} and, in Chapter~\ref{chapter:evaluation},
+checks whether the proposed ROS~2 reference architecture covers the same
+responsibilities.
 
-Table~\ref{tab:related-work-comparison} gives a short comparison of the main
-approaches.
+\section{Focused Summary}
 
-\begin{small}
-\setlength{\tabcolsep}{4pt}
-\begin{longtable}{
-    >{\raggedright\arraybackslash}p{0.18\textwidth}
-    >{\raggedright\arraybackslash}p{0.24\textwidth}
-    >{\raggedright\arraybackslash}p{0.24\textwidth}
-    >{\raggedright\arraybackslash}p{0.24\textwidth}}
-\caption{Comparison of selected related work.}
-\label{tab:related-work-comparison}\\
-\toprule
-\textbf{Approach} &
-\textbf{Main focus} &
-\textbf{Checking and deployment} &
-\textbf{What we take from it} \\
-\midrule
-\endfirsthead
-
-\caption[]{Comparison of selected related work (continued).}\\
-\toprule
-\textbf{Approach} &
-\textbf{Main focus} &
-\textbf{Checking and deployment} &
-\textbf{What we take from it} \\
-\midrule
-\endhead
-
-ROSMonitoring / 2.0 &
-Intercepting ROS messages and services &
-External oracle; online and offline checking &
-Useful oracle boundary; this prototype keeps observation passive and includes
-action progress. \\
-\midrule
-
-ROMoSu &
-Flexible and reusable ROS monitoring configurations &
-External services, user interface, and dashboard &
-Strong example of configurable monitoring; this work narrows in on the
-plugin-based pipeline underneath such a platform. \\
-\midrule
-
-FRET--Ogma--Copilot &
-Generating monitors from structured requirements &
-Generated real-time checking code &
-Good candidate for a future verdict-service backend; not part of the current
-prototype. \\
-\midrule
-
-RTAMT &
-Checking timestamped signals against STL properties &
-Online and offline STL monitoring &
-Motivates the converter boundary because STL checkers expect signal-shaped
-input. \\
-\midrule
-
-\texttt{ros2\_tracing} &
-Low-level ROS~2 and operating-system tracing &
-Trace analysis instead of property verdicts &
-Occupies a lower layer than the typed application records used here. \\
-\midrule
-
-Digital-twin RV &
-Digital twin for robot monitoring under uncertainty &
-TeSSLa monitors with a digital-twin feedback loop &
-Shows how remote checking can use a richer state model; this thesis keeps the
-state source in ROS~2 records. \\
-\midrule
-
-ROS-FM &
-Efficient network and security monitoring &
-Network metrics, security rules, and visualization &
-Useful contrast with application-level monitoring because packet data must be
-given ROS meaning again. \\
-\midrule
-
-Containerized verification &
-Portable generated monitors and monitor placement &
-Docker and edge-to-cloud deployment &
-Informs the deployment view; the prototype leaves placement and transport as
-explicit configuration choices. \\
-\midrule
-
-This thesis &
-Configurable collection of typed ROS~2 observations &
-Pluggable checking in integrated or split deployments &
-Connects topics, service events, and action progress to reusable processing,
-transport, checking, and output stages. \\
-\bottomrule
-\end{longtable}
-\end{small}
-
-\section{Capability Matrix}
-
-The qualitative comparison above is complemented by two capability matrices.
-The symbols have the following meaning: \cmark{} means direct support,
-\pmark{} means limited support or support through a specific condition, and
-\xmark{} means that the capability is not a main feature of the approach. In
-the observable-element matrix, ``Life.'' refers to node lifecycle or node-state
-information, and ``Kernel'' refers to low-level operating-system or tracing
-events.
+Table~\ref{tab:related-work-focused} summarizes the reviewed approaches with
+the same criteria. A dash means that the publication does not make that
+capability a principal part of the approach; it does not imply that the
+capability is impossible.
 
 \begin{small}
 \setlength{\tabcolsep}{3pt}
 \begin{longtable}{
-    >{\raggedright\arraybackslash}p{0.22\textwidth}
-    >{\raggedright\arraybackslash}p{0.12\textwidth}
-    >{\centering\arraybackslash}p{0.08\textwidth}
-    >{\centering\arraybackslash}p{0.08\textwidth}
-    >{\centering\arraybackslash}p{0.08\textwidth}
-    >{\centering\arraybackslash}p{0.08\textwidth}
-    >{\centering\arraybackslash}p{0.08\textwidth}
-    >{\centering\arraybackslash}p{0.10\textwidth}}
-\caption{Observable-element support in related work.}
-\label{tab:related-work-observable-matrix}\\
+  >{\raggedright\arraybackslash}p{.16\textwidth}
+  >{\raggedright\arraybackslash}p{.18\textwidth}
+  >{\raggedright\arraybackslash}p{.21\textwidth}
+  >{\raggedright\arraybackslash}p{.18\textwidth}
+  >{\raggedright\arraybackslash}p{.18\textwidth}}
+\caption{Focused comparison of selected monitoring approaches.}
+\label{tab:related-work-focused}\\
 \toprule
-\textbf{Approach} &
-\textbf{ROS version} &
-\textbf{Topics} &
-\textbf{Srv.} &
-\textbf{Act.} &
-\textbf{Par.} &
-\textbf{Life.} &
-\textbf{Kernel} \\
+\textbf{Approach} & \textbf{Observation} & \textbf{Property and checking} &
+\textbf{Execution and placement} & \textbf{Configuration and automation}\\
 \midrule
 \endfirsthead
-
-\caption[]{Observable-element support in related work (continued).}\\
 \toprule
-\textbf{Approach} &
-\textbf{ROS version} &
-\textbf{Topics} &
-\textbf{Srv.} &
-\textbf{Act.} &
-\textbf{Par.} &
-\textbf{Life.} &
-\textbf{Kernel} \\
+\textbf{Approach} & \textbf{Observation} & \textbf{Property and checking} &
+\textbf{Execution and placement} & \textbf{Configuration and automation}\\
 \midrule
 \endhead
-
-ROSMonitoring &
-ROS~1 &
-\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+ROSMonitoring / 2.0 & Topics; 2.0 adds services and ordering &
+External oracle; 2.0 also provides RML/past-time MTL &
+Online or offline; inserted monitor nodes &
+YAML selects sources; generator creates monitor/launch artifacts\\
 \midrule
-ROSMonitoring 2.0 &
-ROS~1/2 &
-\cmark & \cmark & \xmark & \xmark & \xmark & \xmark \\
+ROMoSu & Selected ROS~1 topic fields &
+Validation and external services, including CEP &
+Broker-connected platform services &
+Reusable system and monitor configurations; UI\\
 \midrule
-ROMoSu &
-ROS~1 &
-\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+FRET--Ogma--Copilot & Selected ROS~2 topic values &
+Generated stream/temporal monitors &
+Compiled monitor in a generated ROS~2 package &
+Generation from structured requirements\\
 \midrule
-Generated ROS~2 monitors &
-ROS~2 &
-\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+RTAMT & Timestamped signals supplied by an adapter &
+STL robustness and Boolean checking &
+Online or offline library &
+Property and parser/API configuration\\
 \midrule
-\texttt{ros2\_tracing} &
-ROS~2 &
-\cmark & \pmark & \xmark & \xmark & \cmark & \cmark \\
+\texttt{ros2\_tracing} & ROS~2, middleware, and system tracepoints &
+Trace analysis; no fixed property language &
+Low-overhead collection and offline analysis &
+Tracepoint and analysis configuration\\
 \midrule
-RTAMT &
-ROS~1/2 &
-\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+ROS-FM & Network traffic &
+Security rules and traffic analysis &
+Distributed probe and visualization setup &
+Probe and rule configuration\\
 \midrule
-Digital-twin RV &
-ROS~1 &
-\cmark & \xmark & \xmark & \xmark & \xmark & \xmark \\
+Digital-twin RV & MQTT robot state and digital-twin state &
+Generated TeSSLa monitors &
+Cloud twin/service with optional feedback &
+External properties and monitor-placement choices\\
 \midrule
-This thesis &
-ROS~2 &
-\cmark & \cmark & \pmark & \xmark & \xmark & \xmark \\
+Rabiser et al. & Domain-independent probes and resources &
+Requirements and resource checking &
+Reference architecture with setup, execution, and support &
+Domain model and variation points\\
 \bottomrule
 \end{longtable}
 \end{small}
 
-\begin{small}
-\setlength{\tabcolsep}{4pt}
-\begin{longtable}{
-    >{\raggedright\arraybackslash}p{0.25\textwidth}
-    >{\raggedright\arraybackslash}p{0.35\textwidth}
-    >{\centering\arraybackslash}p{0.12\textwidth}
-    >{\centering\arraybackslash}p{0.12\textwidth}}
-\caption{Checking formalism and execution mode in related work.}
-\label{tab:related-work-checking-matrix}\\
-\toprule
-\textbf{Approach} &
-\textbf{Formalism or checking mechanism} &
-\textbf{Online} &
-\textbf{Offline} \\
-\midrule
-\endfirsthead
+\section{Research Gaps}\label{sec:research-gap}
 
-\caption[]{Checking formalism and execution mode in related work (continued).}\\
-\toprule
-\textbf{Approach} &
-\textbf{Formalism or checking mechanism} &
-\textbf{Online} &
-\textbf{Offline} \\
-\midrule
-\endhead
+The review shows complementary strengths rather than one missing checking
+language. The gaps relevant to this thesis are:
 
-ROSMonitoring &
-External oracle, for example Reelay &
-\cmark & \xmark \\
-\midrule
-ROSMonitoring 2.0 &
-Runtime Monitoring Language and past-time MTL &
-\cmark & \cmark \\
-\midrule
-ROMoSu &
-External services and Esper CEP &
-\cmark & \xmark \\
-\midrule
-Generated ROS~2 monitors &
-FRETISH requirements and generated Copilot monitors &
-\cmark & \xmark \\
-\midrule
-\texttt{ros2\_tracing} &
-Trace collection and analysis, not a property language &
-\cmark & \cmark \\
-\midrule
-RTAMT &
-Signal Temporal Logic and robustness monitoring &
-\cmark & \cmark \\
-\midrule
-Digital-twin RV &
-TeSSLa specifications with a digital twin &
-\cmark & \xmark \\
-\midrule
-This thesis &
-Configurable converter and verdict-service plugins &
-\cmark & \cmark \\
-\bottomrule
-\end{longtable}
-\end{small}
+\begin{itemize}
+  \item Typed ROS~2 topic observation is common, but the reviewed approaches do
+  not jointly cover topic messages, service request/response events, and action
+  feedback/status through one representation.
 
-\section{Research Gap}
+  \item Observation, processing, routing, checking, and deployment are often
+  coupled to one platform or toolchain. Replacing a checker or changing its
+  placement can therefore require new integration code.
 
-After reviewing these approaches, the missing piece is not another
-property language. The gap is the infrastructure between ROS~2 communication
-and property-specific checking: a way to collect several kinds of ROS~2
-observations, keep their context, process them uniformly, and then hand them to
-different checkers.
+  \item Configurability is usually concentrated in one area, such as selecting
+  topics, writing properties, or placing generated monitors. Few approaches
+  expose source, processing, checker, transport, output, and placement choices
+  through one coherent model.
 
-The combination pursued here is passive collection from topics, service events, and
-action feedback/status; one common record format with source, time, session,
-and identity information; configurable data reduction before storage or
-transport; and separate routing, checking, and output stages. Plugins then make
-the property-specific parts replaceable, while the same checking chain can be
-used in integrated and split deployments.
+  \item Automation is available for particular transformations, especially
+  requirements-to-monitor generation, but routine observation and multi-runtime
+  wiring still recur across solutions.
 
-The contribution of this thesis is this combination as one reusable
-infrastructure. Its novelty lies in the uniform record format and pipeline that
-connect topics, service events, and action progress to the same configurable
-checking chain in both integrated and split deployments.
+  \item Evidence needs a stable identity and context if an online verdict is to
+  be traced back to heterogeneous observations or replayed later.
+\end{itemize}
+
+These gaps motivate a reference architecture for the infrastructure between
+ROS~2 observations and property-specific checkers. The proposed design is
+presented only after this neutral review, in the next chapter.

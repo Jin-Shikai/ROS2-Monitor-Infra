@@ -1,0 +1,27 @@
+% E4 deployment: two namespaced Nav2 robots, one monitor, broker, verifier.
+\begin{tikzpicture}[
+  font=\scriptsize,
+  host/.style={draw, rounded corners=3pt, inner sep=5pt},
+  proc/.style={draw, fill=white, rounded corners=2pt,
+               align=center, minimum width=33mm, minimum height=11mm},
+  aux/.style={draw, fill=black!8, rounded corners=2pt,
+              align=center, minimum width=33mm, minimum height=10mm},
+  flow/.style={-{Latex[length=2mm]}, line width=.7pt},
+  lab/.style={font=\scriptsize, midway}
+]
+\node[proc] (sim) {Gazebo + two namespaced\\Nav2 stacks (\texttt{/robot1},
+  \texttt{/robot2})\\+ mission process};
+\node[proc, right=15mm of sim] (mon)
+  {Monitor runtime\\six topic collectors\\+ JSONL evidence};
+\node[aux, right=15mm of mon] (broker) {Mosquitto broker\\(port 1884)};
+\node[proc, right=15mm of broker] (verifier)
+  {Verifier runtime\\three properties};
+\draw[flow] (sim) -- node[lab, above] {DDS topics} (mon);
+\draw[flow] (mon) -- node[lab, above] {MQTT records} (broker);
+\draw[flow] (broker) -- node[lab, above] {MQTT records} (verifier);
+\begin{scope}[on background layer]
+\node[host, fit=(sim)(mon)(broker)(verifier),
+      label={[font=\scriptsize\bfseries]above:{Ubuntu workstation (one host,
+      separate processes)}}] {};
+\end{scope}
+\end{tikzpicture}
