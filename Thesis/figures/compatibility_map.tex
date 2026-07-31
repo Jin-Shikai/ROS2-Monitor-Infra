@@ -1,35 +1,54 @@
+% Summary grid of the accommodation mappings (Tables map-rosmonitoring..map-rabiser).
 \begin{tikzpicture}[
   font=\scriptsize,
-  prior/.style={draw, fill=white, rounded corners=2pt,
-                align=center, minimum width=34mm, minimum height=9mm},
-  stage/.style={draw, fill=white, rounded corners=2pt,
-                align=center, minimum width=25mm, minimum height=9mm},
-  container/.style={draw, fill=none, rounded corners=3pt,
-                    inner sep=5mm},
-  flow/.style={-{Latex[length=2mm]}, line width=.7pt},
-  map/.style={-{Latex[length=2mm]}, dashed, line width=.6pt}
+  rowlab/.style={align=left, text width=24mm, font=\scriptsize\bfseries,
+                 anchor=north west, inner sep=2pt},
+  headcell/.style={draw, align=center, text width=42mm, inner sep=4pt,
+                   font=\scriptsize\bfseries, anchor=north},
+  cell/.style={draw, align=left, text width=42mm, inner sep=5pt,
+               anchor=north, fill=white},
+  plugcell/.style={cell, fill=plugincream!50},
+  extcell/.style={cell, dashed}
 ]
-\node[prior] (rosm) at (0,0) {ROSMonitoring};
-\node[prior] (romosu) at (0,-1.0) {ROMoSu};
-\node[prior] (dt) at (0,-2.0) {Digital-twin RV};
-\node[prior] (rabiser) at (0,-3.0) {Rabiser et al.};
+\def\cA{4.6}
+\def\cB{9.6}
+\def\cC{14.6}
 
-\node[stage] (collect) at (5.0,-1.5) {Collect};
-\node[stage] (process) at (7.8,-1.5) {Process/route};
-\node[stage] (check) at (10.6,-1.5) {Check};
-\node[stage] (output) at (13.4,-1.5) {Store/use result};
-\draw[flow] (collect) -- (process);
-\draw[flow] (process) -- (check);
-\draw[flow] (check) -- (output);
+\node[headcell, fill=mutedgray] at (\cA,0) {Hosted by configuration};
+\node[headcell, fill=plugincream] at (\cB,0) {Hosted via plug-in};
+\node[headcell] at (\cC,0) {Not implemented};
 
-\node[container, fit=(collect)(process)(check)(output),
-      label={[font=\scriptsize\bfseries]above:Configurable reference architecture}]
-      (architecture) {};
+% ---- ROSMonitoring ----
+\node[rowlab] at (-0.4,-1.15) {ROSMonitoring};
+\node[cell] at (\cA,-1.1) {Topic observation; JSON data records; offline
+  trace and replay};
+\node[plugcell] at (\cB,-1.1) {WebSocket transport; wrapping of the external
+  checker};
+\node[extcell] at (\cC,-1.1) {Launch-file rewriting; verdict-driven message
+  filtering};
 
-\foreach \n in {rosm,romosu,dt,rabiser}
-  \draw[map] (\n.east) -- (architecture.west |- \n.east);
+% ---- ROMoSu ----
+\node[rowlab] at (-0.4,-2.75) {ROMoSu};
+\node[cell] at (\cA,-2.7) {Monitor configurations; topic collection; field
+  and rate selection; broker transport; persistence};
+\node[plugcell] at (\cB,-2.7) {Validation and complex-event-processing
+  services};
+\node[extcell] at (\cC,-2.7) {Dashboard and administration interface};
 
-\node[below=5mm of architecture, align=center, text width=105mm]
-  {Each approach is accommodated by selecting roles and adding plug-ins
-  where needed.};
+% ---- Digital-twin RV ----
+\node[rowlab] at (-0.4,-4.55) {Digital-twin RV};
+\node[cell] at (\cA,-4.5) {MQTT state transport; monitor placement choices};
+\node[plugcell] at (\cB,-4.5) {TeSSLa input conversion and checking;
+  externalized properties};
+\node[extcell] at (\cC,-4.5) {Digital-twin state, models, and simulators;
+  actuation feedback};
+
+% ---- Rabiser et al. ----
+\node[rowlab] at (-0.4,-6.35) {Rabiser et al.};
+\node[cell] at (\cA,-6.3) {Monitoring definition; collection; filtering and
+  aggregation; routing; persistency};
+\node[plugcell] at (\cB,-6.3) {Checking engines};
+\node[extcell] at (\cC,-6.3) {Management and visualization support;
+  non-native probe types};
+
 \end{tikzpicture}

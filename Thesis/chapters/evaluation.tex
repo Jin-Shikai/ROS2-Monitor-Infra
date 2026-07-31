@@ -10,22 +10,22 @@ The evaluation criteria are defined first, so that each experiment can be
 related to the evidence it contributes:
 
 \begin{description}
-  \item[C1 --- Observation coverage.] The prototype should collect typed topic
+  \item[C1: Observation coverage.] The prototype should collect typed topic
   messages, service request/response events, and action feedback/status.
 
-  \item[C2 --- Functional correctness and evidence.] Produced verdicts should
+  \item[C2: Functional correctness and evidence.] Produced verdicts should
   match expected state changes or independently recorded outcomes and identify
   contributing records.
 
-  \item[C3 --- Deployment variation.] The same interfaces should work in
+  \item[C3: Deployment variation.] The same interfaces should work in
   integrated and split deployments, including a heterogeneous multi-host
   placement.
 
-  \item[C4 --- Automation and reuse.] A deployment specification should
+  \item[C4: Automation and reuse.] A deployment specification should
   generate matching runtime YAML files, while experiments should reuse
   observation, representation, processing, transport, and evidence code.
 
-  \item[C5 --- Architectural accommodation.] The reference architecture should
+  \item[C5: Architectural accommodation.] The reference architecture should
   be able to host the principal capabilities of ROSMonitoring, ROMoSu,
   digital-twin runtime verification, and the Rabiser et al.\ reference
   architecture through configuration and explicit extension points.
@@ -33,8 +33,7 @@ related to the evidence it contributes:
 
 C1--C4 derive from the requirements in Chapter~\ref{chapter:design}; C5
 derives from the research gaps in Chapter~\ref{chapter:related_work}. Resource
-use and latency are reported as supporting observations, not as a performance
-benchmark.
+use and latency are reported as supporting observations.
 
 \section{Experiment Design}
 
@@ -455,7 +454,7 @@ only.
   >{\raggedright\arraybackslash}p{.20\textwidth}
   >{\raggedright\arraybackslash}p{.28\textwidth}}
 \toprule
-\textbf{Run/role} & \textbf{CPU} & \textbf{Memory} & \textbf{Mean or observed
+\textbf{Runtime} & \textbf{CPU} & \textbf{Memory} & \textbf{Mean or observed
 latency}\\
 \midrule
 E1 monitor & about 1\% & about 73 MB & 0.29 ms mean\\
@@ -602,37 +601,52 @@ unselected variation points of the feature model.
 
 C5 asks whether the reference architecture can host the principal capabilities
 of the reviewed approaches. For each of the four selected approaches, this
-section maps its main components onto architecture roles and states how the
-mapping is achieved. Three mapping statuses are used:
-
-\begin{description}
-  \item[Direct.] Achieved by configuring existing prototype components.
-  \item[Adapter.] Achieved by developing a converter, verdict-service,
-  transport, or exporter plug-in behind an existing stable interface.
-  \item[Extension.] Supported by an architectural extension point that the
-  prototype does not implement.
-\end{description}
+section maps its main components onto architecture runtimes and states how the
+mapping is achieved. The \emph{Support} column of each mapping table uses
+three values: \emph{Yes} (supported by configuring existing prototype
+components), \emph{via plug-in} (supported by a user-written plug-in behind a
+stable interface), and \emph{No} (not implemented; the architecture reserves
+an extension point for the capability).
 
 Figure~\ref{fig:compatibility-map} gives the overview; the tables below give
-the role-level mappings. The purpose is to check responsibility coverage, not
-to claim feature equivalence with the original systems.
+the runtime mappings, and each subsection also shows the mapping visually on
+the architecture overview, with the published architecture of the respective
+approach reproduced in the upper part of the figure. The purpose is to check
+responsibility coverage, not to claim feature equivalence with the original
+systems.
 
 \begin{figure}[htbp]
   \centering
   \resizebox{\textwidth}{!}{\input{figures/compatibility_map}}
-  \caption{High-level accommodation of four reviewed approaches. The
-  role-level mappings appear in
-  Tables~\ref{tab:map-rosmonitoring}--\ref{tab:map-rabiser}.}
+  \caption{Summary of the accommodation of the four reviewed approaches:
+  capabilities hosted by configuring existing components, capabilities that
+  require a plug-in behind a stable interface, and capabilities that the
+  prototype does not implement.
+  Tables~\ref{tab:map-rosmonitoring}--\ref{tab:map-rabiser} give the
+  detailed mappings.}
   \label{fig:compatibility-map}
 \end{figure}
 
 \subsection{ROSMonitoring}
 
 ROSMonitoring's observation-to-checker path maps directly onto the
-architecture, as shown in Table~\ref{tab:map-rosmonitoring}. Its
-distinguishing invasive capabilities---launch-file rewriting and
-verdict-driven message filtering---correspond to the generation step and the
+architecture, as shown in Table~\ref{tab:map-rosmonitoring} and visualized in
+Figure~\ref{fig:map-rosmonitoring-visual}. Its
+distinguishing invasive capabilities (launch-file rewriting and
+verdict-driven message filtering) correspond to the generation step and the
 feedback adapter, which the prototype does not implement.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{diagrams/map_rosmonitoring.png}
+  \caption{Mapping of ROSMonitoring onto the architecture overview. The upper
+  part reproduces the high-level overview of ROSMonitoring
+  from~\cite{ferrando2020rosmonitoring}; each arrow points to the
+  architecture element that can host the corresponding capability. The
+  support level of each correspondence is listed in
+  Table~\ref{tab:map-rosmonitoring}.}
+  \label{fig:map-rosmonitoring-visual}
+\end{figure}
 
 \begin{table}[htbp]
 \centering
@@ -643,33 +657,46 @@ feedback adapter, which the prototype does not implement.
   >{\raggedright\arraybackslash}p{.34\textwidth}
   >{\raggedright\arraybackslash}p{.16\textwidth}}
 \toprule
-\textbf{ROSMonitoring element} & \textbf{Architecture role} &
-\textbf{Status}\\
+\textbf{ROSMonitoring element} & \textbf{Architecture runtime} &
+\textbf{Support}\\
 \midrule
 YAML topic configuration & Deployment specification and topic collectors &
-Direct\\
-ROS-to-JSON event conversion & Common data record construction & Direct\\
+Yes\\
+ROS-to-JSON event conversion & Common data record construction & Yes\\
 WebSocket link to the external checker & Cross-runtime link; WebSocket as a
-transport plug-in & Adapter\\
+transport plug-in & Via plug-in\\
 External checker evaluation & Verdict-service plug-in wrapping the external
-checker & Adapter\\
+checker & Via plug-in\\
 Offline trace and later checking & JSONL evidence and file replay source &
-Direct\\
+Yes\\
 Monitor insertion by launch rewriting & Configuration generation step &
-Extension\\
-Verdict-driven message filtering & Feedback adapter & Extension\\
+No\\
+Verdict-driven message filtering & Feedback adapter & No\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \subsection{ROMoSu}
 
-ROMoSu's monitoring data path---collection, field selection, broker
-distribution, validation, and persistence---is covered by configuration and
-plug-ins (Table~\ref{tab:map-romosu}). Its management plane, the
+ROMoSu's monitoring data path (collection, field selection, broker
+distribution, validation, and persistence) is covered by configuration and
+plug-ins (Table~\ref{tab:map-romosu} and
+Figure~\ref{fig:map-romosu-visual}). Its management plane, the
 administration interface with runtime reconfiguration, has no full counterpart:
 the architecture treats configuration editing as an external client of the
-deployment specification.
+deployment specification. This boundary is visible in the figure: the arrows
+start from ROMoSu's data-path components, while its Admin UI and configuration
+database have no target in the overview.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{diagrams/map_romosu.png}
+  \caption{Mapping of ROMoSu onto the architecture overview. The upper part
+  reproduces the ROMoSu architecture from~\cite{stadler2023romosu}; the
+  arrows mark the data-path correspondences listed in
+  Table~\ref{tab:map-romosu}.}
+  \label{fig:map-romosu-visual}
+\end{figure}
 
 \begin{table}[htbp]
 \centering
@@ -680,19 +707,19 @@ deployment specification.
   >{\raggedright\arraybackslash}p{.34\textwidth}
   >{\raggedright\arraybackslash}p{.16\textwidth}}
 \toprule
-\textbf{ROMoSu element} & \textbf{Architecture role} & \textbf{Status}\\
+\textbf{ROMoSu element} & \textbf{Architecture runtime} & \textbf{Support}\\
 \midrule
 Reusable monitor and system-under-monitoring configurations & Deployment
-specification and runtime YAML & Direct\\
-ROS connector / adaptation manager & Topic collectors & Direct\\
+specification and runtime YAML & Yes\\
+ROS connector / adaptation manager & Topic collectors & Yes\\
 Topic-field selection and sampling rates & Field-extraction and rate-limiting
-transformers & Direct\\
-Runtime data broker & Broker-based transport (MQTT) & Direct\\
+transformers & Yes\\
+Runtime data broker & Broker-based transport (MQTT) & Yes\\
 Validation and CEP services & Converter and verdict-service plug-ins &
-Adapter\\
-Persistence & Data-record exporters & Direct\\
+Via plug-in\\
+Persistence & Data-record exporters & Yes\\
 Dashboard and administration interface & External clients of exporters and of
-the deployment specification & Extension\\
+the deployment specification & No\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -700,12 +727,26 @@ the deployment specification & Extension\\
 \subsection{Digital-Twin Runtime Verification}
 
 The digital-twin approach exercises the split deployment in its cloud
-direction (Table~\ref{tab:map-dtrv}). The monitoring path---MQTT transport,
+direction (Table~\ref{tab:map-dtrv} and Figure~\ref{fig:map-dtrv-visual}).
+The monitoring path (MQTT transport,
 checker-specific conversion, TeSSLa evaluation, and externalized
-properties---fits the converter/verdict-service pattern. The digital twin's
+properties) fits the converter/verdict-service pattern. The digital twin's
 own state, models, and simulators exceed a monitoring pipeline and would
 remain an external service; the validation-to-actuation loop corresponds to
 the unimplemented feedback adapter.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{diagrams/map_dtrv.png}
+  \caption{Mapping of digital-twin runtime verification onto the
+  architecture overview. The upper part reproduces the digital-twin
+  architecture and its monitor-integration options
+  from~\cite{betzer2024digitaltwinrv}; the arrows mark the monitoring-path
+  correspondences listed in Table~\ref{tab:map-dtrv}. The twin's own state,
+  models, and simulators have no arrow because they remain an external
+  service.}
+  \label{fig:map-dtrv-visual}
+\end{figure}
 
 \begin{table}[htbp]
 \centering
@@ -717,20 +758,20 @@ architecture.}
   >{\raggedright\arraybackslash}p{.34\textwidth}
   >{\raggedright\arraybackslash}p{.16\textwidth}}
 \toprule
-\textbf{Digital-twin RV element} & \textbf{Architecture role} &
-\textbf{Status}\\
+\textbf{Digital-twin RV element} & \textbf{Architecture runtime} &
+\textbf{Support}\\
 \midrule
-Robot state transmitted over MQTT & MQTT exporter and source & Direct\\
+Robot state transmitted over MQTT & MQTT exporter and source & Yes\\
 Externalized TeSSLa properties & Property settings of a verdict-service
-plug-in & Adapter\\
-TeSSLa input preparation & Converter plug-in & Adapter\\
+plug-in & Via plug-in\\
+TeSSLa input preparation & Converter plug-in & Via plug-in\\
 TeSSLa monitor execution & Verdict-service plug-in wrapping the engine &
-Adapter\\
+Via plug-in\\
 Monitor placement choices (in twin or as service) & Placement in the
-deployment specification & Direct\\
+deployment specification & Yes\\
 Digital-twin state, models, and simulators & External service beside the
-monitoring pipeline & Extension\\
-Validation result influencing actuation & Feedback adapter & Extension\\
+monitoring pipeline & No\\
+Validation result influencing actuation & Feedback adapter & No\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -739,10 +780,24 @@ Validation result influencing actuation & Feedback adapter & Extension\\
 
 The domain-independent reference architecture of Rabiser et al.\ is a
 benchmark of responsibilities rather than a tool
-(Table~\ref{tab:map-rabiser}). Its monitoring-execution area maps directly
-onto the pipeline roles; its setup area maps onto specification and
+(Table~\ref{tab:map-rabiser} and Figure~\ref{fig:map-rabiser-visual}). Its
+monitoring-execution area maps directly
+onto the pipeline; its setup area maps onto specification and
 generation; parts of its support area (management, visualization) are external
-clients.
+clients. Unlike the three concrete tools above, this mapping checks
+domain-level responsibility coverage rather than the reconstruction of one
+system.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{diagrams/map_rabiser.png}
+  \caption{Mapping of the domain-independent monitoring reference
+  architecture onto the architecture overview. The upper part reproduces the
+  reference architecture of Rabiser et al.~\cite{rabiser2019domain}; the
+  arrows mark the responsibility correspondences listed in
+  Table~\ref{tab:map-rabiser}.}
+  \label{fig:map-rabiser-visual}
+\end{figure}
 
 \begin{table}[htbp]
 \centering
@@ -753,21 +808,24 @@ clients.
   >{\raggedright\arraybackslash}p{.34\textwidth}
   >{\raggedright\arraybackslash}p{.16\textwidth}}
 \toprule
-\textbf{Rabiser et al.\ responsibility} & \textbf{Architecture role} &
-\textbf{Status}\\
+\textbf{Rabiser et al.\ responsibility} & \textbf{Architecture runtime} &
+\textbf{Support}\\
 \midrule
 Monitoring definition (setup) & Deployment specification and property
-settings & Direct\\
+settings & Yes\\
 Probes and instrumentation support & Collectors over native ROS~2 interfaces
-& Direct for the selected interfaces; other probe types are extensions\\
-Information collection & Collectors and common data records & Direct\\
-Filtering, aggregation, transformation & Transformer pipeline & Direct\\
-Routing and distribution & Dispatchers and transports & Direct\\
-Checking & Converter and verdict-service plug-ins & Direct or Adapter\\
-Persistency & Data and verdict exporters & Direct\\
+& Yes$^{a}$\\
+Information collection & Collectors and common data records & Yes\\
+Filtering, aggregation, transformation & Transformer pipeline & Yes\\
+Routing and distribution & Dispatchers and transports & Yes\\
+Checking & Converter and verdict-service plug-ins & Yes or via plug-in\\
+Persistency & Data and verdict exporters & Yes\\
 Monitoring support (management, visualization) & External clients of
-exporters & Extension\\
+exporters & No\\
 \bottomrule
+\multicolumn{3}{p{.9\textwidth}}{\footnotesize $^{a}$For the native ROS~2
+interfaces selected in this thesis; instrumentation, network, and tracing
+probes are not implemented.}\\
 \end{tabular}
 \end{table}
 
@@ -776,10 +834,10 @@ exporters & Extension\\
 The monitoring data paths of all four approaches can be expressed with
 configured components and plug-ins of the reference architecture. The
 recurring boundaries are management and visualization planes, digital-twin
-state, invasive instrumentation, and verdict-driven feedback, which map to
-declared extension points rather than to implemented prototype features. This
-satisfies C5 at reference-architecture level while marking exactly where
-implementation work would remain.
+state, invasive instrumentation, and verdict-driven feedback; these are not
+implemented in the prototype, although the architecture reserves extension
+points for them. This satisfies C5 at reference-architecture level while
+marking where implementation work would remain.
 
 \section{Answer to RQ4}
 
@@ -792,7 +850,7 @@ integrated, split same-host, and three-machine placements. C4 is supported by
 ten generated runtime configurations and reuse of the same observation,
 transport, and evidence code, including unchanged E4 property logic in E5 and
 the measured ratio of about 4{,}200 reused framework lines to about 260
-property-specific lines. C5 is supported by the role-level mappings in
+property-specific lines. C5 is supported by the runtime mappings in
 Section~\ref{sec:accommodation}.
 
 The claim is limited to ROS~2 Kilted, the selected interfaces and plug-ins, one

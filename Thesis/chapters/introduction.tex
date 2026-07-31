@@ -78,10 +78,10 @@ them.
 The second problem is that implementing a chosen monitoring solution is time
 consuming. Existing approaches address important parts of this problem, but
 they use different observation levels, data formats, property languages, and
-deployment assumptions. Much of the required code---subscribing to interfaces,
-decoding typed messages, attaching timestamps and context, serializing data,
-and transporting it to checkers and files---is essentially the same in every
-project, yet it is written again for each application. This boilerplate
+deployment assumptions. Subscribing to interfaces, decoding typed messages,
+attaching timestamps and context, serializing data, and transporting the
+results to checkers and files require much the same code in every project,
+yet this code is written again for each application. This boilerplate
 obscures the application-specific decisions and makes monitoring setups harder
 to reproduce. Reducing this repeated effort calls for automation and for
 reusable, configurable infrastructure.

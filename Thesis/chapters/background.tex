@@ -214,7 +214,7 @@ and verdict-service plug-ins~\cite{leucker2009brief}.
 A monitor for a ROS~2 application first has to obtain observations. The three
 communication mechanisms from Section~\ref{sec:ros2-communication} can each be
 observed, but not in the same way. This section explains the observation mechanism for each of them,
-the role that types and discovery play for a monitor, and the alternative
+the runtime that types and discovery play for a monitor, and the alternative
 mechanisms that operate below the ROS~2 API.
 
 \subsection{Observing Topics}
@@ -604,7 +604,7 @@ runtimes and different placements, provided that their links are configured.
 When monitoring components run in different processes or on different
 machines, as in the orchestrated and choreographed organizations above, they
 need a transport mechanism to exchange data. Many protocols can fill this
-role: the components could communicate through the DDS middleware that ROS~2
+runtime: the components could communicate through the DDS middleware that ROS~2
 itself uses~\cite{macenski2022ros2,omgdds2015}, through plain TCP or UDP
 sockets~\cite{rfc9293,rfc768}, through web protocols such as HTTP or
 WebSocket~\cite{rfc9110,rfc6455}, or through message brokers using protocols

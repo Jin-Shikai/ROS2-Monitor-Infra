@@ -8,6 +8,146 @@
 - PDF 中另有 106 个 Popup 对象，它们只是便签批注的弹窗外壳；另有 281 个 Link 对象。二者均不是额外 review，因此未重复计入。
 - “PDF 页”指 PDF 文件的物理页码。对于便签批注，PDF 并不保存“所选文字”；本文会如实标注“无文本选区”，并给出批注锚点所在的原文句、段、标题或图表，便于定位。
 
+## v3 修改状态总览（2026-07-30 核对）
+
+以 v3 定稿（`Shikai-Jul30-IK_revised_v3.pdf`，由当前 LaTeX 源码编译）逐条核对 106 条 review 的结果：
+
+- **已解决：101 条**
+- **部分解决（需小幅补充）：4 条**（39、57、58、70）
+- **建议人工复核：1 条**（67）
+
+（2026-07-30 追加：79 已由重绘的 TikZ 数据模型图解决，根元素更名为
+DeploymentSpecification；84/96 的四张架构映射图已作为正式插图加入 6.11 节，
+图注注明原图出处。）
+
+总体结论：**v3 已实质性回应教授的绝大多数意见**。教授反复强调的四个核心问题——端到端用户工作流（85）、plugin/DSL/converter 故事（50、51、99）、data record 载荷表示（56、57）、现有方法能否被参考架构容纳（84、96）——均已有专门章节和图表落实。剩余项集中在两张 PNG 图（`Components.png`、`CodeGen.png`）的图内文字与正文术语不一致，以及少量可选的补充说明。
+
+### 逐条状态表
+
+| 编号 | 状态 | 核对说明 |
+|---|---|---|
+| 1 | ✅ | 引言已加入 AI 组件带来的不确定性（感知/决策、置信度、训练分布差异） |
+| 2 | ✅ | 已改为 "does not explore every possible execution path" |
+| 3 | ✅ | 已改为 "The challenge is to turn ..." |
+| 4 | ✅ | 该段内容已移入 Problem Statement，引言以过渡句收尾 |
+| 5 | ✅ | 已声明属性规约/检查超出范围，并引用 RV 综述（Leucker、Francalanza） |
+| 6 | ✅ | RQ4 使用 "the proposed reference architecture and its implementation" |
+| 7 | ✅ | 贡献列表第 5 条明确"减少低层样板代码"；6.9 节给出量化证据 |
+| 8 | ✅ | 正向反馈，无需修改 |
+| 9 | ✅ | 各图注标明 "Author's illustration based on ..."/"adapted from ..."；四张原论文截图映射 PNG 已弃用，改为自绘对比图与映射表 |
+| 10 | ✅ | ComMA 段落已删除，全文不再出现 |
+| 11 | ✅ | 核心术语统一为 Property；rule 仅作为一种表示形式出现 |
+| 12 | ✅ | 同上，术语表明确 Property 与表示形式的层级 |
+| 13 | ✅ | 统一使用 system under monitoring |
+| 14 | ✅ | 新增 Property Specification Formalisms 小节（时序逻辑/规则/语法/状态机/流语言） |
+| 15 | ✅ | 新增 Alternative Observation Mechanisms（插桩/网络/tracing 三类） |
+| 16 | ✅ | 相关信息已整合进 2.3，不再重复出现 |
+| 17 | ✅ | 明确 raw observation → common data record → checker-specific event 三层数据形态 |
+| 18 | ✅ | 已加"第 4 章将使用该记法"的前向引用 |
+| 19 | ✅ | 符号改为文字说明（圆=进程、六边形=trace、方=monitor、外框=location），不再出现未定义字母 |
+| 20 | ✅ | DDS/TCP/UDP/HTTP/WebSocket/AMQP/Kafka/MQTT 均有规范或论文引用 |
+| 21 | ✅ | MQTT 段说明其用于 split 原型、非架构强制依赖 |
+| 22 | ✅ | 第 3 章改为中性综述，比较全部移至第 6 章 |
+| 23 | ✅ | ROSMonitoring 首句即 "topic-oriented runtime-verification framework for ROS 1" |
+| 24 | ✅ | changes → converts |
+| 25 | ✅ | ROSMonitoring 2.0 段落已重写为事实—局限结构 |
+| 26 | ✅ | 统一六个 review 问题 + 汇总比较表 |
+| 27 | ✅ | FRET 全称展开并定义用途 |
+| 28 | ✅ | Copilot/Ogma 已解释；明确非 AI 编程助手 |
+| 29 | ✅ | LTTng 全称 + tracepoints 定义 |
+| 30 | ✅ | Table 3.1 定义三个观察层级及可见信息 |
+| 31 | ✅ | TeSSLa 全称展开（Temporal Stream-based Specification Language） |
+| 32 | ✅ | 缩写审计完成（eBPF/XDP/STL 等首次出现均展开），各小节结构统一 |
+| 33 | ✅ | 比较表重做：observation / property & checking / execution & placement / configuration & automation |
+| 34 | ✅ | 观察元素表使用全称表头（Topics/Services/Actions/Parameters/Lifecycle states/Kernel events） |
+| 35 | ✅ | 与本论文的对比移至第 6 章（coverage comparison + accommodation） |
+| 36 | ✅ | Research Gaps 节只谈缺口，不谈贡献 |
+| 37 | ✅ | gap 以列表呈现，覆盖配置灵活性、自动化、可替换性等维度 |
+| 38 | ✅ | 章标题改为 "Towards a Reference Architecture for Configurable ROS 2 Monitoring" |
+| 39 | 🔶 | 已改横向整页（sidewaysfigure）且域模型与原型配置拆为两图；**最终 PDF 100% 缩放下的最小字号仍需人工确认** |
+| 40 | ✅ | 已补模型动机与获取方法（文献抽取、合并同义、建立跨树约束） |
+| 41 | ✅ | 明确 oracle 在 passive/active 两种模式下均适用 |
+| 42 | ✅ | passive/active 改为 or-group，可共存 |
+| 43 | ✅ | application-level 已定义（ROS 2 图暴露的类型化数据），并有层级表支撑 |
+| 44 | ✅ | 新增 "How the Model Is Used" + 配置工作流图 + Prototype 范围说明 |
+| 45 | ✅ | parameters 明确列为未选择/未实现的变体 |
+| 46 | ✅ | 明确 feature 选择之外还需 hosts/links/transport 等部署信息 |
+| 47 | ✅ | common data record 首次出现即定义，细节前向引用 4.5 与附录 |
+| 48 | ✅ | R4（自定义转换与属性形式）与 R7（可扩展性）已写为需求 |
+| 49 | ✅ | 参考架构按图中编号逐步解释 |
+| 50 | ✅ | DSL 已定义；converter 必要性（每个 checker 需要自己的输入格式）已说明 |
+| 51 | ✅ | plugin 定义、接口、加载方式在设计章 + 实现章 + 附录契约三处覆盖 |
+| 52 | ✅ | feedback 在架构图（虚线）、正文、限制三处一致标注"架构考虑、原型未实现" |
+| 53 | ✅ | 改为架构与实现共用同一组角色名 |
+| 54 | ✅ | 参考架构图已用 TikZ 重绘，Collectors/Transformers/Dispatcher/Converter/Verdict service 与正文一一对应 |
+| 55 | ✅ | schema 与完整示例移入附录，仓库 URL 在附录给出 |
+| 56 | ✅ | 附录给出带类型的字段 schema 表 |
+| 57 | 🔶 | 已说明 primitive/嵌套消息/数组/时间的递归 JSON 转换规则；**NaN/Inf、byte 数据、bounded types 等边界情况未明说**，如需可补一句 |
+| 58 | 🔶 | 附录给出完整 topic record 示例；**service/action 记录示例未并列展示**（正文有字段说明，可选补充） |
+| 59 | ✅ | 指代已消除，integrated/split 首次出现即各有定义 |
+| 60 | ✅ | 第 2 章部署术语即定义 integrated/split 并映射到监控组织形式 |
+| 61 | ✅ | ROS 2-facing 在设计章定义；引言首次出现加了内联注释 |
+| 62 | ✅ | host/runtime/process 术语明确（runtime = 一个 YAML 构建的可执行进程） |
+| 63 | ✅ | 部署视图改为自定义记法并在正文声明（外框=host、内框=runtime），不再声称严格 UML |
+| 64 | ✅ | 明确两种部署是"代表性端点，非完整目录"，架构允许更多放置 |
+| 65 | ✅ | 所有图均正文先引用后解释 |
+| 66 | ✅ | split 部署图有对应解释段落 |
+| 67 | ⏳ | 相关图已全部用 TikZ 重绘、箭头语义在图注说明；**建议终稿前把所有图的箭头/符号再过一遍**（源码层面无法确认视觉效果） |
+| 68 | ✅ | Observation Sequence 已移到 Deployment Views 之前 |
+| 69 | ✅ | 第 4 章新增 Chapter Summary |
+| 70 | 🔶 | 已有 Code Organization 小节与目录职责表；**仓库 URL 仅在附录出现**，建议该节顺带给出 |
+| 71 | ✅ | 实现章开篇即给 implementation chain 总览图（规约→生成→运行时） |
+| 72 | ✅ | runtime pipeline 图先行，正文按图解释 |
+| 73 | ✅ | 原 5.7 重写为 Checking Graph 小节：先定义、再 YAML 示例、后构建过程 |
+| 74 | ✅ | runtime 在实现章开头与第 2 章术语表均有定义 |
+| 75 | ✅ | checking graph 已定义（并明确"不是 ROS graph"） |
+| 76 | ✅ | Verifier Runtime 小节重写：是什么、输入哪来、可承载什么角色 |
+| 77 | ✅ | 新增 Anatomy of a Monitoring Solution：authored/generated/reused 三栏表 |
+| 78 | ✅ | 正文按 Figure（hosts→runtimes→sources→links）层级讲解 |
+| 79 | ✅ | 数据模型图已用 TikZ 重绘（`figures/config_generation_model.tex`），根元素更名为 DeploymentSpecification，其余细节与原图一致；正文、算法、图三处术语已统一 |
+| 80 | ✅ | 已用精确部署用语（robot-side host 等） |
+| 81 | ✅ | projection 弃用，改为 generation procedure |
+| 82 | ✅ | 算法标题改为 "Generate runtime YAML configurations from a deployment specification" |
+| 83 | ✅ | 弃用 realistic，明确定义 representative 并限定其含义 |
+| 84 | ✅ | 6.11 Accommodation：四个方法逐一映射表 + Direct/Adapter/Extension 三级判定，未映射部分如实标注；四张视觉映射图已插入对应小节，图注引用原论文 |
+| 85 | ✅ | 6.3 给出五步用户工作流；设计章有对应概念流程图 |
+| 86 | ✅ | 明确 E3–E5 用 Gazebo，E1/E2 用确定性刺激进程 |
+| 87 | ✅ | Table（specified/generated/property-specific/reused）覆盖全部五个实验 |
+| 88 | ✅ | 各实验明确预期/实际验证结果，并说明"无基础设施故障、负面 verdict 为设计刺激" |
+| 89 | ✅ | service introspection 机制图（2.3.2）+ collectors 小节说明 services/actions 捕获路径 |
+| 90 | ✅ | 已说明重复运行 speed 属性是为验证序列化与 MQTT 传输保真 |
+| 91 | ✅ | Pi reference verifier 定义为仅作对照、非生产组件 |
+| 92 | ✅ | E5 部署图已重绘，图内文字直接说明 reference verifier 的用途 |
+| 93 | ✅ | 资源/延迟结果已表格化（v3 进一步删除了正文对表格数字的重复） |
+| 94 | ✅ | 6.9：职责对比表 + 约 4200 行复用框架代码 vs 约 260 行属性代码 |
+| 95 | ✅ | C1–C5 评价标准在第 6 章开头定义并溯源到需求与 gap |
+| 96 | ✅ | 幻灯片映射分析已转为正式的 accommodation 小节与映射表 |
+| 97 | ✅ | Discussion 按 RQ1–RQ4 组织 |
+| 98 | ✅ | trade-offs 分类列点（reduction vs evidence、integrated vs split 等五类） |
+| 99 | ✅ | plugin 故事完整：定义→接口→注册→四个案例插件→附录契约→Discussion 界定其范围 |
+| 100 | ✅ | Threats 按 internal/external 分类 |
+| 101 | ✅ | 遗漏相关工作已列为 external validity 威胁，且 gap 表述限定为"reviewed work" |
+| 102 | ✅ | Future work 按六个主题列点 |
+| 103 | ✅ | Conclusion 每个 RQ 只给简短最终答案，不重复论证 |
+| 104 | ✅ | RQ 原文在 Discussion 与 Conclusion 逐字重述 |
+| 105 | ✅ | Future work 只保留在 Discussion（"consolidated here"），Conclusion 不再重复 |
+| 106 | ✅ | 附录给出 GitHub 仓库链接及内容说明 |
+
+### v3 额外发现并修复的问题（教授未提出）
+
+- Design 章总览图的图注描述的是另一张图的内容（collectors/transformers），与 `Components.png` 实际所示（Monitors/Filters/Exporters + Feedback Runtime）不符——图注与正文已重写，并明确标注图中含原型未实现的架构元素。
+- Discussion RQ1 中"没有任何被综述方法将采集与检查分进程且保持可配置"的论断与第 3 章自述矛盾（ROSMonitoring 外部 oracle、Aldegheri 可迁移容器），已收窄为可辩护的表述。
+- 全文 -ise/-ize 拼写混用已统一为 Oxford 风格（behaviour + -ize）；另修复若干术语漂移（deployment configuration→specification 等）与一处断行连字符错误。
+
+### 仍建议在提交前处理（详见 `Shikai-Jul30-IK_major_issues_v3.md`）
+
+1. 重绘 `Components.png`，使图内标签与正文角色名一致（54 的余留；`CodeGen.png` 已于 7-30 重绘解决）。
+2. E4 与 E5 同一任务的 robot-2 speed 判定次数不同（20 vs 18），建议加一句说明系不同运行的正常波动。
+3. 封面日期 "June 2026" 与答辩时间是否一致；`\secondCommitteeMember` 为空。
+4. 终稿 100% 缩放检查 feature model 与横排大图的最小字号（39、67）。
+
+---
+
 ## 逐条整理
 
 ### 1（PDF 页 6）

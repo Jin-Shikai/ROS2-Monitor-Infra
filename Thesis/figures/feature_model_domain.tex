@@ -111,7 +111,7 @@
 % ---------------- monitoring mode ----------------
 \node[leaf] (passive) at (9.0,-17.0) {Passive};
 \node[leaf] (active)  at (9.0,-17.9) {Active};
-\node[leaf] (oracle)  at (9.0,-18.8) {Oracle / checker};
+\node[leaf] (oracle)  at (9.0,-18.8) {Checker};
 \foreach \n in {passive,active}
   \draw[line] (mode.east) -- (\n.west);
 \draw[line] (mode.east) -- (oracle.west);
@@ -156,7 +156,7 @@
   Split $\Rightarrow$ Transport is required.\\
   Active $\Rightarrow$ a feedback path into the system\\
   \hspace*{2mm}under monitoring is required.\\
-  Oracle/checker applies to passive and active mode.\\
+  Checker applies to passive and active mode.\\
   QoS events and DDS monitor tools presuppose\\
   \hspace*{2mm}middleware-level observation.};
 \end{tikzpicture}

@@ -113,13 +113,13 @@ service holds or calls the checking engine and returns its result in the
 common verdict format. Because the DSL record crossing this boundary is
 JSON-serializable, the two halves of the adapter can run in the same process
 or on different hosts without changing their code. The case-study plug-ins
-show simple uses of this extension point---selecting one value, combining
-records from several sources, and emitting a record when a timer
-expires---and the same interfaces could prepare timestamped signals for a
+show simple uses of this extension point: selecting one value, combining
+records from several sources, and emitting a record when a timer expires.
+The same interfaces could prepare timestamped signals for a
 temporal-logic engine or events for a project-specific state machine.
 
 The architectural accommodation in Section~\ref{sec:accommodation} further
-checks the role boundaries. ROSMonitoring's external checker, ROMoSu's broker
+checks the runtime boundaries. ROSMonitoring's external checker, ROMoSu's broker
 services, digital-twin state and TeSSLa checking, and the broader Rabiser et al.\
 responsibilities all have places in the architecture. Components such as a
 dashboard, digital twin, TeSSLa engine, or feedback controller would still
@@ -157,7 +157,7 @@ final status.
 E4 extends this result from one trace to two robot namespaces. The independent
 speed checks show that source name keeps the robot streams separate. The
 separation check shows that one converter can combine observations from both
-robots---a useful form of multi-robot monitoring, because several robot-local
+robots, a useful form of multi-robot monitoring: several robot-local
 streams can feed one property while the collection mechanism remains
 unchanged. The agreement with Gazebo positions gives an additional source of
 evidence for the four separation transitions.

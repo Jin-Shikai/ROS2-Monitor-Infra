@@ -22,7 +22,7 @@ starts either a \texttt{monitor\_node} runtime, which has ROS~2 access, or a
 A \emph{runtime} in this chapter means one executable process built from one
 runtime YAML file. It owns its configured sources, processing and checking
 graph, outputs, and lifecycle. A host can run more than one runtime, although
-the generator normally emits one consolidated configuration for each host role.
+the generator normally emits one consolidated configuration for each runtime.
 
 \section{Technology Choices}
 
@@ -72,7 +72,7 @@ documentation.\\
 Code under \texttt{monitor/} is reused by every case study, while
 \texttt{custom/} contains the property knowledge that changes between
 applications. Table~\ref{tab:impl-modules} maps the main modules of
-\texttt{monitor/} to the pipeline roles of
+\texttt{monitor/} to the pipeline of
 Chapter~\ref{chapter:design}.
 
 \begin{table}[htbp]
@@ -132,19 +132,46 @@ verifier YAML; more hosts produce more matching configurations.
 \centering
 \caption{Artifacts in a concrete monitoring solution.}
 \label{tab:solution-artifacts}
-\begin{tabular}{p{.22\textwidth}p{.29\textwidth}p{.38\textwidth}}
+\begin{tabular}{
+  >{\raggedright\arraybackslash}p{.14\textwidth}
+  >{\raggedright\arraybackslash}p{.35\textwidth}
+  >{\raggedright\arraybackslash}p{.38\textwidth}}
 \toprule
-\textbf{Authored by user} & \textbf{Generated} & \textbf{Reused}\\
+\textbf{Origin} & \textbf{Artifact} & \textbf{Reference or example}\\
 \midrule
-One JSON deployment specification &
-One runtime YAML per generated host role &
-Collectors for topics, services, and actions\\
-Converter and verdict-service classes when built-ins are insufficient &
-Consistent transport inputs/outputs and checking links &
-Common record conversion and JSONL serialization\\
-Property and plug-in settings &
-Runtime output directories and executable commands &
-Transformers, dispatchers, file/MQTT transport, evidence and verdict formats\\
+Authored by user & One JSON deployment specification. &
+Structure in Section~\ref{sec:impl-config-gen}; complete example in
+Appendix~\ref{app:deployment-spec}.\\
+\addlinespace[3pt]
+& Converter and verdict-service classes when built-ins are insufficient. &
+Plug-in interfaces and the provided classes in Section~\ref{sec:plugins}.\\
+\addlinespace[3pt]
+& Property and plug-in settings. &
+For the speed property, the 0.5~m/s bound in
+Listing~\ref{lst:speed-yaml}.\\
+\addlinespace[8pt]
+Generated & One runtime YAML file per runtime. &
+Produced by Algorithm~\ref{alg:config-generation};
+Listing~\ref{lst:speed-yaml} shows a fragment.\\
+\addlinespace[3pt]
+& Consistent transport inputs/outputs and checking links. &
+Paired exporter/source endpoints per link
+(Sections~\ref{sec:impl-transport} and~\ref{sec:impl-config-gen}).\\
+\addlinespace[3pt]
+& Runtime output directories and executable commands. &
+Start \texttt{monitor\_node} or \texttt{node\_runner}
+(Section~\ref{sec:impl-node-runner}).\\
+\addlinespace[8pt]
+Reused & Collectors for topics, services, and actions. &
+Section~\ref{sec:impl-collectors}.\\
+\addlinespace[3pt]
+& Common record conversion and JSONL serialization. &
+Section~\ref{sec:impl-records}; schema and example in
+Appendix~\ref{app:data-record}.\\
+\addlinespace[3pt]
+& Transformers, dispatchers, file/MQTT transport, and the evidence and
+verdict formats. &
+Sections~\ref{sec:impl-transformers} and~\ref{sec:impl-transport}.\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -168,7 +195,7 @@ further checking chains.
   \label{fig:runtime-pipeline}
 \end{figure}
 
-\subsection{Collectors}
+\subsection{Collectors}\label{sec:impl-collectors}
 
 The monitor runtime builds one collector for each configured ROS~2 resource:
 
@@ -194,7 +221,7 @@ All three collectors observe event topics that ROS~2 itself exposes; no
 interceptor is placed between application nodes, and the application code is
 not modified.
 
-\subsection{Common Records and Serialization}
+\subsection{Common Records and Serialization}\label{sec:impl-records}
 
 The \texttt{DataRecord} dataclass implements the schema from
 Section~\ref{sec:common-record}. It assigns a session identifier, a per-source
@@ -208,7 +235,7 @@ messages, arrays, sequences, and primitive values remain valid JSON data. The
 same JSON is used for files and MQTT, so split deployment does not change the
 meaning of the record.
 
-\subsection{Transformers and Dispatchers}
+\subsection{Transformers and Dispatchers}\label{sec:impl-transformers}
 
 Each collector owns an ordered transformer pipeline. The built-in
 \texttt{FieldExtractor} selects nested fields, \texttt{RateThrottler} limits the
@@ -301,7 +328,7 @@ its constructor. Thus ``supporting a DSL'' has a concrete meaning:
   \item define the DSL-record fields expected by the checker;
   \item implement a converter that produces those fields and retains input
   record identifiers;
-  \item implement or wrap a verdict service that evaluates the property; and
+  \item implement or wrap a verdict service that evaluates the property
   \item select both classes and their parameters in the deployment
   specification.
 \end{enumerate}
@@ -344,7 +371,7 @@ or converter output from MQTT or a file and feeds them into the graph.
 
 A single runner process can host converters, verdict services, or both. It can
 therefore act as a complete verifier, one half of a separated checking chain,
-or a relay that filters records and republishes them. The runtime role is
+or a relay that filters records and republishes them. The runtime is
 determined by the YAML file.
 
 The integrated deployment runs the full pipeline in one monitor process. The
@@ -362,16 +389,16 @@ the runtime YAML files from one deployment specification. The JSON deployment
 specification contains:
 
 \begin{description}
-  \item[\texttt{hosts}] named deployment hosts;
-  \item[\texttt{runtimes}] ROS~2 sources, monitor roles, converters, and
-  verdict-service roles placed on each host; and
+  \item[\texttt{hosts}] named deployment machines;
+  \item[\texttt{runtimes}] ROS~2 sources, monitors, converters, and
+  verdict-services placed on each host
   \item[\texttt{links}] source and destination runtimes, payload type
   (\texttt{records} or \texttt{dsl}), and file or MQTT transport settings.
 \end{description}
 
 The specification model is intentionally close to the runtime concepts, as
 shown in Figure~\ref{fig:config-generation-model}. A \texttt{Host} is a
-placement boundary. A \texttt{Runtime} is one executable role placed on a
+placement boundary. A \texttt{Runtime} is one executable runtime placed on a
 host. A \texttt{Source} is a topic, service, or action declared by a
 \texttt{ros2} runtime. A \texttt{Link} connects two runtimes and contains a
 \texttt{Transport}; existing transport kinds are \texttt{mqtt} and
@@ -379,11 +406,10 @@ host. A \texttt{Source} is a topic, service, or action declared by a
 
 \begin{figure}[htbp]
     \centering
-    \includegraphics[width=\textwidth]{diagrams/CodeGen.png}
+    \resizebox{\textwidth}{!}{\input{figures/config_generation_model}}
     \caption{Data model of the deployment specification. Hosts contain
     runtimes, \texttt{ros2} runtimes declare monitorable sources, and links
-    define the transport used between runtimes. The root element, labelled
-    \emph{GenerationRequest} in the diagram, is the deployment specification.}
+    define the transport used between runtimes.}
     \label{fig:config-generation-model}
 \end{figure}
 

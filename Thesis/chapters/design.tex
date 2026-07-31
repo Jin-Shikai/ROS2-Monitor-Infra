@@ -84,9 +84,9 @@ extensions.
 Figure~\ref{fig:configuration-workflow} separates design selection from
 deployment detail. A user first chooses a feature configuration, then
 provides the additional information that the feature model cannot contain:
-hosts, runtime roles, ROS resources and types, links, transport settings, and
+hosts, runtimes, ROS resources and types, links, transport settings, and
 plug-in class paths. The generator converts this deployment specification into
-one runtime YAML file per executable host role.
+one runtime YAML file per executable host runtime.
 
 \begin{figure}[htbp]
   \centering
@@ -102,30 +102,30 @@ The domain analysis and selected feature configuration yield the following
 requirements:
 
 \begin{description}
-  \item[R1 --- Heterogeneous observation.] Topic messages, service request and
+  \item[R1: Heterogeneous observation.] Topic messages, service request and
   response events, and action feedback and status must enter one processing
   model without erasing their differences.
 
-  \item[R2 --- Common observation format.] Every collected observation must be
+  \item[R2: Common observation format.] Every collected observation must be
   converted to a common format that preserves source, phase, time, payload,
   session, and record identity.
 
-  \item[R3 --- Configurable processing and routing.] Field selection, rate
+  \item[R3: Configurable processing and routing.] Field selection, rate
   limiting, change filtering, outputs, and checking chains must be selected
   without changing collector code.
 
-  \item[R4 --- Property-formalism independence.] Users must be able to plug in
+  \item[R4: Property-formalism independence.] Users must be able to plug in
   their own conversion to a checker event format and their own property
   formalism or checking service.
 
-  \item[R5 --- Deployment variation.] The same monitoring responsibilities must
+  \item[R5: Deployment variation.] The same monitoring responsibilities must
   support integrated and split deployment, with explicit transport
   configuration.
 
-  \item[R6 --- Traceable evidence.] A verdict must be able to identify the
+  \item[R6: Traceable evidence.] A verdict must be able to identify the
   observation records that contributed to it.
 
-  \item[R7 --- Extensibility.] It must be possible to add new sources,
+  \item[R7: Extensibility.] It must be possible to add new sources,
   transformers, transports, converters, verdict services, and exporters
   behind stable interfaces.
 \end{description}
@@ -136,7 +136,7 @@ Figure~\ref{fig:pipeline-components} shows the overall organization of the
 monitoring infrastructure: user-provided specification and plug-ins, the
 ROS~2-facing robot edge node, and the runtime verification pipelines. Its
 monitors, filters, and exporters correspond to the collectors, transformers,
-and data exporters of the role-level view below. As an architectural
+and data exporters of the runtime view below. As an architectural
 overview, the figure also contains elements that the prototype does not
 implement, such as the feedback runtime and the observation of parameters,
 lifecycle states, and QoS events.
@@ -153,9 +153,12 @@ lifecycle states, and QoS events.
 \end{figure}
 
 Figure~\ref{fig:reference-architecture} details the data path of this
-architecture. The names in the diagram are the same role names used in the
+architecture. The names in the diagram are the same runtime names used in the
 implementation chapter. Numbering follows one observation from left to right
-and then through checking.
+and then through checking. The transport endpoints that connect this pipeline
+across runtimes (file or MQTT sources and exporters) are omitted from the
+figure for readability;
+Section~\ref{sec:impl-transport} describes them.
 
 \begin{figure}[htbp]
   \centering
@@ -168,7 +171,7 @@ and then through checking.
 
 \begin{enumerate}
   \item A \emph{collector} observes one typed ROS~2 source. A
-  \emph{transport source} performs the corresponding role for records arriving
+  \emph{transport source} performs the corresponding runtime for records arriving
   from a file or MQTT.
 
   \item The collector creates a \emph{common data record}. This is the first

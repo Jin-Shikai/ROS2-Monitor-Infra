@@ -21,11 +21,6 @@
 \draw[flow] (record) -- (transform);
 \draw[flow] (transform) -- (dispatch);
 
-\node[component] (source) at (9.2,1.9) {Transport source\\file or MQTT};
-\node[component] (dexport) at (12.2,1.9) {Data exporter\\file or MQTT};
-\draw[flow] (source) -- (transform);
-\draw[flow] (dispatch) -- (dexport);
-
 \node[plugin] (converter) at (12.2,-2.3)
   {Converter plug-in\\record $\rightarrow$ DSL input};
 \node[plugin] (verdict) at (8.4,-2.3)
