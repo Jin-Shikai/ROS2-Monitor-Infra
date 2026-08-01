@@ -9,6 +9,7 @@ from data_record import DataRecord
 from exporter import Dispatcher, Exporter
 from exporters import resolve_data_record_exporter_class
 from pipeline import GraphRuntime, build_graph
+from plugins import resolve_plugin_class
 from transformer import (
     FieldExtractor,
     OnChangeFilter,
@@ -34,9 +35,12 @@ def build_transformer_pipeline(
         if not spec.type:
             logger.warning(f"Transformer spec missing 'type'; skipping: {spec.raw}")
             continue
-        cls = TRANSFORMER_REGISTRY.get(spec.type)
-        if cls is None:
-            logger.warning(f"Unknown transformer type: {spec.type}; skipping.")
+        try:
+            cls = resolve_plugin_class(
+                spec.type, TRANSFORMER_REGISTRY, Transformer, "transformer"
+            )
+        except Exception as ex:
+            logger.warning(f"Cannot resolve transformer '{spec.type}': {ex}; skipping.")
             continue
         try:
             chain.append(cls(**spec.kwargs))

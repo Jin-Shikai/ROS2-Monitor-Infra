@@ -174,6 +174,27 @@ built from the updated LaTeX sources with `build.ps1`.
   approach, what is hosted by configuration, via plug-in, and at extension
   points, mirroring the tables.
 
+## Post-v3 update 3 (same day)
+
+- **Discussion 7.2/7.3 cleanups** (author request): dropped the
+  "prototype boundary visible" sentence and the "Other variants would change
+  the assumptions" passage; rewrote "Several unselected feature variants map
+  onto the retained variation points..." as "Several features that the
+  prototype does not implement would fit into the architecture without
+  structural change"; fixed the elliptical "and a new checker a converter and
+  verdict-service pair". Related jargon simplified elsewhere: "plug-in story"
+  → "Plug-ins have a ... role", "simplifies the pipeline boundary" → plain
+  wording, "unselected variation points" removed in Design 4.1.2 and
+  Evaluation 6.10.
+- **Transformer plug-ins**: investigation showed the `Transformer` base class
+  existed but `build_transformer_pipeline` accepted only the three built-in
+  names, unlike every other component kind. `monitor/runtime_builder.py` now
+  resolves transformers through the shared plug-in resolver (import paths
+  work; unknown types still warn and skip); all 15 related unit tests pass,
+  and `docs/config_spec.md` was updated. The thesis mentions this once in
+  Section 5.5.3 and once in the appendix plug-in contracts (new
+  `transform()` contract), per the request to avoid repetition.
+
 ## Build note
 
 - The spelling normalization initially renamed an image path

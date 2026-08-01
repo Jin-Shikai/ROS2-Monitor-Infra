@@ -5,10 +5,10 @@
   flow/.style={-{Latex[length=2mm]}, line width=.8pt}
 ]
 \node[host] (ws) {\textbf{Ubuntu workstation}\\Gazebo + two Nav2 stacks\\mission process};
-\node[host, right=13mm of ws] (pi) {\textbf{Raspberry Pi}\\six collectors + MQTT broker\\reference verifier};
-\node[host, right=13mm of pi] (mac) {\textbf{macOS laptop}\\ROS-independent verifier\\three properties};
-\draw[flow] (ws) -- node[above]{DDS topic data} (pi);
-\draw[flow] (pi) -- node[above]{MQTT records} (mac);
+\node[host, right=34mm of ws] (pi) {\textbf{Raspberry Pi}\\six collectors + MQTT broker\\reference verifier};
+\node[host, right=34mm of pi] (mac) {\textbf{macOS laptop}\\ROS-independent verifier\\three properties};
+\draw[flow] (ws) -- node[above=1mm, fill=white, inner sep=1pt]{DDS topic data} (pi);
+\draw[flow] (pi) -- node[above=1mm, fill=white, inner sep=1pt]{MQTT records} (mac);
 \node[below=4mm of pi, align=center, text width=43mm]
   {The Pi reference verifier receives the same MQTT records only to compare
   verdict streams.};

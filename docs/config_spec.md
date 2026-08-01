@@ -38,10 +38,10 @@ type: short_name_or_module.path:ClassName
 ...: plugin constructor kwargs
 ```
 
-The exact `type` format depends on the block: exporters, sources, and
-transport endpoints accept short built-in names or `module.path:ClassName`;
-converters and verdict services require `module.path:ClassName`; transformers
-use the built-in names listed below. Sibling keys become constructor keyword
+The exact `type` format depends on the block: exporters, sources, transport
+endpoints, and transformers accept short built-in names or
+`module.path:ClassName` (a custom transformer must subclass `Transformer`);
+converters and verdict services require `module.path:ClassName`. Sibling keys become constructor keyword
 arguments unless listed as framework-reserved fields in this document.
 Converter and verdict blocks prefer an explicit `params:` mapping for
 constructor kwargs.

@@ -60,7 +60,7 @@ dispatchers, sources, exporters, plug-in loading, runtime construction, and
 configuration generation.\\
 \texttt{custom/} & Example application- and property-specific converter and
 verdict-service plug-ins.\\
-\texttt{demo/} & Deterministic ROS~2 stimulus programs and demonstration
+\texttt{demo/} & Simulated ROS~2 input programs and demonstration
 material.\\
 \texttt{test/} & Unit tests for reusable components and example plug-ins.\\
 \texttt{docs/} & Data-record, configuration, plug-in, and deployment
@@ -240,8 +240,12 @@ meaning of the record.
 Each collector owns an ordered transformer pipeline. The built-in
 \texttt{FieldExtractor} selects nested fields, \texttt{RateThrottler} limits the
 maximum output frequency, and \texttt{OnChangeFilter} suppresses repeated
-values. A transformer can return no record to stop processing. Names of
-successful transformations are appended to record metadata.
+values. A user-defined transformer can join the same pipeline: it subclasses
+the \texttt{Transformer} base class and is selected by import path, like
+converter and verdict-service plug-ins
+(Appendix~\ref{app:plugin-contracts}). A transformer can return no record to
+stop processing. Names of successful transformations are appended to record
+metadata.
 
 A dispatcher fans one record out to any number of exporters and checking
 chains. If one exporter fails, the dispatcher reports the failure and
@@ -420,6 +424,21 @@ links become in-process graph links. Cross-host record links create a matching
 data exporter and transport source; cross-host DSL links create matching output
 and input endpoints. Both sides derive the same MQTT topic or shared file path.
 
+The generated files are ordinary runtime configurations. A monitor
+configuration contains a \texttt{monitor} section with the output directory
+and session prefix, one entry per subscribed source with its ROS~2 name and
+type, and, for each cross-host link, an exporter block attached to the linked
+sources. A verifier configuration contains an \texttt{inputs} section with
+the receiving side of the same link, the configured converter and
+verdict-service classes with their parameters, and a \texttt{links} section
+that wires the checking graph. Consistency between the files comes from the
+link: the generator derives the transport settings once and writes the
+publishing endpoint into one file and the subscribing endpoint into the
+other. For the MQTT link of the appendix example, the monitor side publishes
+under the topic prefix \texttt{monitor/} while the verifier side subscribes
+to the filter \texttt{monitor/\#}. The generator finally prints the start
+command for each generated file.
+
 Algorithm~\ref{alg:config-generation} shows the generation procedure. It
 first builds an index of sources, runtimes, host placement, and cross-host
 links. It then emits at most one YAML file per host: a monitor configuration
@@ -474,8 +493,8 @@ only runs checking components.
 \end{algorithmic}
 \end{algorithm}
 
-Appendix~\ref{app:deployment-spec} gives a complete, small deployment
-specification and the generated-file interpretation.
+Appendix~\ref{app:deployment-spec} gives a complete two-host deployment
+specification together with the two runtime YAML files generated from it.
 
 \section{Operational Support}
 

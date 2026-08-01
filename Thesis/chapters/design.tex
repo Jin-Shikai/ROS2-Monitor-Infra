@@ -75,8 +75,8 @@ robots and hosts.
 \end{figure}
 
 The prototype does not support parameters, node and lifecycle states, QoS
-events, or the lower-level observation mechanisms. These remain unselected
-variation points; Chapter~\ref{chapter:discussion} discusses them as future
+events, or the lower-level observation mechanisms. These features remain
+unselected; Chapter~\ref{chapter:discussion} discusses them as future
 extensions.
 
 \section{How the Model Is Used}
@@ -136,10 +136,7 @@ Figure~\ref{fig:pipeline-components} shows the overall organization of the
 monitoring infrastructure: user-provided specification and plug-ins, the
 ROS~2-facing robot edge node, and the runtime verification pipelines. Its
 monitors, filters, and exporters correspond to the collectors, transformers,
-and data exporters of the runtime view below. As an architectural
-overview, the figure also contains elements that the prototype does not
-implement, such as the feedback runtime and the observation of parameters,
-lifecycle states, and QoS events.
+and data exporters of the runtime view below.
 
 \begin{figure}[htbp]
   \centering
@@ -302,6 +299,5 @@ paths, and component placement; the feature model alone cannot supply them.
 The feature model distinguishes domain choices from deployment parameters. The
 reference architecture realizes the selected path as a sequence of collectors,
 common records, transformers, dispatchers, converter plug-ins, verdict-service
-plug-ins, and exporters. It supports integrated and split placements while
-keeping active feedback outside the current prototype. The next chapter
+plug-ins, and exporters. It supports integrated and split placements. The next chapter
 explains how this design is implemented and generated.

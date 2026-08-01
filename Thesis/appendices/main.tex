@@ -65,7 +65,9 @@ The following is a complete topic-record example:
 This complete example places ROS~2 collection on \texttt{robot} and speed
 checking on \texttt{verifier}. The generator creates
 \texttt{robot.yaml} for \texttt{monitor\_node} and
-\texttt{verifier.yaml} for \texttt{node\_runner}, with matching MQTT endpoints.
+\texttt{verifier.yaml} for \texttt{node\_runner};
+Listings~\ref{lst:gen-robot} and~\ref{lst:gen-verifier} show both files
+exactly as generated from this specification.
 
 \begin{lstlisting}[language={},caption={Two-host deployment specification.}]
 {
@@ -140,7 +142,64 @@ checking on \texttt{verifier}. The generator creates
 }
 \end{lstlisting}
 
-\section{Plug-in Contracts}
+\begin{lstlisting}[language={},caption={Generated \texttt{robot.yaml},
+started with \texttt{monitor\_node}.},label={lst:gen-robot}]
+monitor:
+  output_dir: ./output/robot
+  session_id_prefix: robot
+topics:
+- name: /cmd_vel
+  type: geometry_msgs/msg/Twist
+  exporters:
+  - type: mqtt
+    broker: 192.0.2.10
+    port: 1883
+    topic_prefix: monitor/
+    qos: 1
+\end{lstlisting}
+
+\begin{lstlisting}[language={},caption={Generated \texttt{verifier.yaml},
+started with \texttt{node\_runner}.},label={lst:gen-verifier}]
+monitor:
+  output_dir: ./output/verifier
+inputs:
+- id: robot_records
+  payload: records
+  type: mqtt
+  broker: 192.0.2.10
+  port: 1883
+  topic_filter: monitor/#
+  qos: 1
+converters:
+- id: speed_converter
+  type: custom.speed:CmdVelSpeedConverter
+verdict_services:
+- id: speed_property
+  type: custom.threshold:ThresholdVerdict
+  params:
+    property_id: cmd_speed_limit
+    field: speed
+    op: <=
+    threshold: 0.5
+  exporters:
+  - type: stdout
+  - type: file
+    path: verdicts_{session_id}.jsonl
+links:
+- from: source:/cmd_vel
+  to: converter:speed_converter
+- from: converter:speed_converter
+  to: verdict:speed_property
+\end{lstlisting}
+
+The single MQTT link in the specification produces both endpoints: the
+publishing prefix \texttt{monitor/} in \texttt{robot.yaml} and the
+subscription filter \texttt{monitor/\#} in \texttt{verifier.yaml}. The
+converter and verdict-service settings of the \texttt{verifier} host become
+the \texttt{converters}, \texttt{verdict\_services}, and \texttt{links}
+sections of \texttt{verifier.yaml}.
+
+\section{Plug-in Contracts}\label{app:plugin-contracts}
 
 A converter subclasses \texttt{DataConverter} and implements:
 
@@ -156,6 +215,18 @@ def evaluate(self, dsl_record: Any) -> Verdict | None:
     ...
 \end{lstlisting}
 
+A custom transformer subclasses \texttt{Transformer} and implements:
+
+\begin{lstlisting}[language=Python]
+def transform(self, record: DataRecord) -> DataRecord | None:
+    ...
+\end{lstlisting}
+
+Returning \texttt{None} drops the record. Built-in transformers are selected
+by short name; a custom transformer uses the same
+\texttt{module.path:ClassName} import path as converters and verdict
+services.
+
 The converter must preserve the input record identifier in its DSL record when
 the resulting verdict needs attribution. The verdict service returns the common
 \texttt{Verdict} object; output destinations are configured separately.
@@ -168,6 +239,3 @@ at:
 \begin{center}
 \url{https://github.com/Jin-Shikai/ROS2-Monitor-Infra}
 \end{center}
-
-The repository documentation describes the common record, runtime YAML,
-deployment generation, custom plug-ins, and reproducible execution commands.

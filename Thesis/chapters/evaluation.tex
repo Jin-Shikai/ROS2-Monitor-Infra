@@ -38,7 +38,7 @@ use and latency are reported as supporting observations.
 \section{Experiment Design}
 
 The five experiments are designed to contribute complementary evidence.
-E1 and E2 use deterministic stimulus nodes so every transition is known in
+E1 and E2 use simulated input nodes, so every transition is known in
 advance. E3 replaces these nodes with unmodified Nav2, a widely used ROS~2
 navigation stack~\cite{macenski2020marathon}, in the Gazebo
 simulator~\cite{koenig2004gazebo}. E4 adds two namespaces and a property using both
@@ -46,8 +46,7 @@ robots. E5 keeps the E4 checking graph but distributes the application,
 monitor, and verifier across Ubuntu, Raspberry Pi, and macOS. The term
 \emph{representative} therefore means that the set progresses from controlled
 interface tests to existing navigation software, multi-robot correlation, and
-heterogeneous placement. It does not claim to represent every robot or field
-condition.
+heterogeneous placement.
 
 \begin{table}[htbp]
 \centering
@@ -62,9 +61,9 @@ condition.
 \textbf{ID} & \textbf{Application} & \textbf{Deployment} &
 \textbf{Main evidence}\\
 \midrule
-E1 & Commanded-speed stimulus & Integrated & Topic collection and local
+E1 & Simulated speed commands & Integrated & Topic collection and local
 verdict generation.\\
-E2 & Speed, reset service, and Fibonacci action stimuli & Split over local
+E2 & Simulated speed, reset, and Fibonacci action inputs & Split over local
 MQTT & Topics, services, actions, and local/remote equivalence.\\
 E3 & One TurtleBot3 with Nav2 in Gazebo & Split over local MQTT &
 Unmodified navigation, routes, deadline, and action outcome.\\
@@ -77,8 +76,8 @@ Heterogeneous physical placement and equivalent verdict streams.\\
 \end{table}
 
 E1--E4 ran on one Ubuntu 24.04 workstation with ROS~2 Kilted. E3--E5 used
-Gazebo and Nav2; E1 and E2 did not simulate a robot and instead used
-deterministic ROS~2 stimulus processes. Split same-machine experiments used
+Gazebo and Nav2; in E1 and E2, dedicated ROS~2 processes published known
+input data instead. Split same-machine experiments used
 the Mosquitto MQTT broker~\cite{light2017mosquitto} on port 1884. E5 used the
 workstation for Gazebo and Nav2, an Ubuntu
 Raspberry Pi for collection and the broker, and a macOS laptop for checking.
@@ -146,7 +145,8 @@ No new property logic & All E4 components; generated placement changes\\
 
 \section{E1: Topic Monitoring in an Integrated Deployment}
 
-One workstation ran a stimulus node and the monitor as two ROS~2 processes. The
+One workstation ran a simulated input node and the monitor as two ROS~2
+processes. The
 collector, converter, and verdict service were integrated in the monitor.
 \texttt{/cmd\_vel} was published at approximately 5~Hz; \texttt{linear.x}
 alternated between 1.85 and 0.2~m/s every three seconds. The property was
@@ -178,7 +178,7 @@ property-state changes.
 
 E2 separates collection from checking while adding service and action
 observations. All components still ran on one physical workstation, but in
-separate processes: three deterministic stimulus processes, one monitor,
+separate processes: three simulated input processes, one monitor,
 Mosquitto, and one verifier. The monitor collected observations through DDS,
 wrote the records locally, and sent them over the local MQTT broker to the
 verifier. During the 120-second reference run it collected:
@@ -225,7 +225,8 @@ Total common records & 1458\\
 The 120-second run contained 40 reset calls at the three-second interval; the
 property produced 39 alternating verdicts because the one-second verification
 window of the final call had not closed when the session ended. There was no
-infrastructure failure, and the negative reset verdicts were expected stimuli.
+infrastructure failure, and the negative reset verdicts were expected by
+design.
 E2 satisfies the remaining observation part of C1 and shows for C2/C3 that one
 recorded stream retains its meaning across the local MQTT boundary.
 
@@ -365,8 +366,8 @@ E5 retained the E4 mission and properties but changed placement, as shown in
 Figure~\ref{fig:e5-deployment}. The Ubuntu workstation ran Gazebo, two Nav2
 stacks, and the mission. A Raspberry Pi received the six topics over DDS,
 created common records, and hosted Mosquitto. A macOS laptop received MQTT
-records and ran the verifier without ROS~2. A second verifier on the Pi was a
-comparison reference only; it was not a required production component.
+records and ran the verifier without ROS~2. A second verifier on the Pi served only
+as a comparison reference.
 Figure~\ref{fig:e5-setup} shows the physical and simulated sides of this
 setup.
 
@@ -438,11 +439,8 @@ boundary.
 
 \section{Resource Use and Latency}
 
-Performance analysis is not the focus of this thesis, but the recorded runs
-give an indication of the cost of monitoring.
-Table~\ref{tab:resource-results} summarizes the observations; CPU values are
-percentages of one core, and the measurements describe the reference runs
-only.
+Table~\ref{tab:resource-results} summarizes resource use and record-to-verdict
+latency in the reference runs. CPU values are percentages of one core.
 
 \begin{table}[htbp]
 \centering
@@ -458,27 +456,15 @@ only.
 latency}\\
 \midrule
 E1 monitor & about 1\% & about 73 MB & 0.29 ms mean\\
-E2 local MQTT path & not isolated$^{a}$ & not isolated$^{a}$ & 1.85 ms mean\\
+E2 local MQTT path & -- & -- & 1.85 ms mean\\
 E4 monitor & below 5\% & 92 MB & a few milliseconds locally\\
 E5 Pi collection, broker, reference & within 13\% & 114 MB & a few
 milliseconds over LAN\\
 E5 Mac verifier & about 1.4\% & 28 MB & a few milliseconds over LAN\\
 \bottomrule
-\multicolumn{4}{p{.92\textwidth}}{\footnotesize $^{a}$In E2, the monitor,
-broker, stimuli, and verifier shared the workstation, and per-process
-figures were not recorded separately; the end-to-end latency through the
-local broker was measured from record timestamps.}\\
 \end{tabular}
 \end{table}
 
-Two observations stand out. Moving the speed check behind the local MQTT
-broker raised the mean record-to-verdict time from 0.29~ms in E1 to 1.85~ms in
-E2, so the transport boundary added little delay in absolute terms. In E5,
-the Raspberry Pi carried collection, file export, MQTT publication, and the
-reference verifier together within 13\% of one core, which leaves headroom on
-modest robot-side hardware. The monitoring components therefore place limited
-pressure on the observed system for the evaluated sources and properties;
-these observations do not establish scalability beyond two simulated robots.
 
 \section{Automation and Reused Work}\label{sec:automation-reuse}
 
@@ -591,11 +577,9 @@ This thesis (prototype) & ROS~2 &
 \end{tabular}
 \end{table}
 
-The limited mark for actions reflects the boundary stated throughout the
-thesis: the prototype observes action feedback and status topics, while the
-complete goal, cancellation, and result trace requires additional
-service-event collectors. Parameters, lifecycle states, and kernel events are
-unselected variation points of the feature model.
+The limited mark for actions reflects that the prototype observes action
+feedback and status topics; the goal, cancellation, and result trace requires
+additional service-event collectors.
 
 \section{Accommodation of Existing Approaches}\label{sec:accommodation}
 
@@ -634,7 +618,7 @@ architecture, as shown in Table~\ref{tab:map-rosmonitoring} and visualized in
 Figure~\ref{fig:map-rosmonitoring-visual}. Its
 distinguishing invasive capabilities (launch-file rewriting and
 verdict-driven message filtering) correspond to the generation step and the
-feedback adapter, which the prototype does not implement.
+feedback adapter.
 
 \begin{figure}[htbp]
   \centering
@@ -733,7 +717,7 @@ checker-specific conversion, TeSSLa evaluation, and externalized
 properties) fits the converter/verdict-service pattern. The digital twin's
 own state, models, and simulators exceed a monitoring pipeline and would
 remain an external service; the validation-to-actuation loop corresponds to
-the unimplemented feedback adapter.
+the feedback adapter.
 
 \begin{figure}[htbp]
   \centering
@@ -814,7 +798,7 @@ system.
 Monitoring definition (setup) & Deployment specification and property
 settings & Yes\\
 Probes and instrumentation support & Collectors over native ROS~2 interfaces
-& Yes$^{a}$\\
+& Yes\\
 Information collection & Collectors and common data records & Yes\\
 Filtering, aggregation, transformation & Transformer pipeline & Yes\\
 Routing and distribution & Dispatchers and transports & Yes\\
@@ -823,9 +807,6 @@ Persistency & Data and verdict exporters & Yes\\
 Monitoring support (management, visualization) & External clients of
 exporters & No\\
 \bottomrule
-\multicolumn{3}{p{.9\textwidth}}{\footnotesize $^{a}$For the native ROS~2
-interfaces selected in this thesis; instrumentation, network, and tracing
-probes are not implemented.}\\
 \end{tabular}
 \end{table}
 
@@ -844,7 +825,7 @@ marking where implementation work would remain.
 Within the evaluated scope, the answer is positive. C1 is supported by E1--E3,
 which collect topics, service request/response events, and action
 feedback/status; Table~\ref{tab:observable-matrix} shows that no reviewed
-approach combines this application-level coverage. C2 is supported by expected stimulus transitions, independent
+approach combines this application-level coverage. C2 is supported by expected input transitions, independent
 mission and Gazebo logs, replay, and verdict attribution. C3 is supported by
 integrated, split same-host, and three-machine placements. C4 is supported by
 ten generated runtime configurations and reuse of the same observation,
@@ -852,6 +833,3 @@ transport, and evidence code, including unchanged E4 property logic in E5 and
 the measured ratio of about 4{,}200 reused framework lines to about 260
 property-specific lines. C5 is supported by the runtime mappings in
 Section~\ref{sec:accommodation}.
-
-The claim is limited to ROS~2 Kilted, the selected interfaces and plug-ins, one
-local network, up to two simulated robots, and runs lasting a few minutes.

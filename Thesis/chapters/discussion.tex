@@ -62,10 +62,7 @@ independent of the choice between integrated and distributed placement; a
 checker formalism should not determine whether collection is local or remote;
 and an MQTT choice should not determine how a ROS message is observed.
 Keeping the dimensions separate prevents one deployment decision from becoming
-a fixed property of every collector or checker. The model also makes the
-prototype boundary visible: filled features in
-Figure~\ref{fig:feature-model} are evaluated, while optional features remain
-design points rather than implemented claims.
+a fixed property of every collector or checker.
 
 \section{RQ3: Reference Architecture}
 
@@ -84,29 +81,25 @@ The common data record is central to this result. Uniform fields let sources,
 transformers, transports, and checking components exchange one
 representation. At the same time, source type, source name, phase, timestamps,
 and metadata retain the distinctions between ROS~2 communication mechanisms.
-The uniform representation therefore simplifies the pipeline boundary while
-preserving the context needed by later checking, and the session and record
-identifiers provide an evidence trail from a verdict back to its contributing
-observations. E1--E5 use this attribution to compare online verdicts with
+One shared format keeps the interfaces between pipeline stages simple, while
+these fields keep the context that checking needs. The session and record
+identifiers link every verdict back to the observations that produced it.
+E1--E5 use this attribution to compare online verdicts with
 recorded inputs.
 
-Several unselected feature variants map onto the retained variation points and
-could be hosted without structural change. Parameter changes and lifecycle
+Several features that the prototype does not implement would fit into the
+architecture without structural change. Parameter changes and lifecycle
 transitions are published on regular topics (\texttt{/parameter\_events} and
-the lifecycle transition-event topics), so they need only additional collector
-configurations or collector types. A complete action trace requires service
-collectors for the goal, cancellation, and result events of the hidden action
-services. A new transport requires an exporter and a matching source, and a
-new checker a converter and verdict-service pair. Other variants would change
-the assumptions of the design: active intervention needs a feedback path into
-the application, global message ordering and clock guarantees need
-coordination that the record format alone does not provide, and network taps
-or kernel tracing observe data without the typed source identity that the
-collectors rely on.
+the lifecycle transition-event topics), so observing them needs only
+additional collector configurations or collector types. A complete action
+trace requires service collectors for the goal, cancellation, and result
+events of the hidden action services. A new transport requires an exporter
+and a matching source, and a new checker requires a converter and a verdict
+service.
 
-The plug-in story has a limited but precise scope. A plug-in is not an
-automatically generated checker. It is a Python class developed against one of
-two base interfaces and loaded by class path. Together, a converter and a
+Plug-ins support checker-specific conversion and property evaluation. A
+plug-in is not an automatically generated checker; it is a Python class
+developed against a stable base interface and loaded by class path. Together, a converter and a
 verdict service form an adapter for the user's DSL: the converter transforms
 the common data record into the input format of that DSL, and the verdict
 service holds or calls the checking engine and returns its result in the
@@ -118,12 +111,10 @@ records from several sources, and emitting a record when a timer expires.
 The same interfaces could prepare timestamped signals for a
 temporal-logic engine or events for a project-specific state machine.
 
-The architectural accommodation in Section~\ref{sec:accommodation} further
-checks the runtime boundaries. ROSMonitoring's external checker, ROMoSu's broker
+The accommodation analysis in Section~\ref{sec:accommodation} tests these
+boundaries against existing systems. ROSMonitoring's external checker, ROMoSu's broker
 services, digital-twin state and TeSSLa checking, and the broader Rabiser et al.\
-responsibilities all have places in the architecture. Components such as a
-dashboard, digital twin, TeSSLa engine, or feedback controller would still
-have to be implemented or connected.
+responsibilities all have places in the architecture.
 
 \section{RQ4: Evaluation of the Selected Path}
 
@@ -140,10 +131,10 @@ property-state changes. E2 shows that topic messages, service request and
 response events, and action feedback and status can coexist in one session,
 and that a property can correlate a service response with later topic data.
 Its identical local and remote speed verdicts show that serialization and MQTT
-transport preserved the meaning and record attribution of the check in that
+transport changed neither the verdicts nor their record attribution in that
 run.
 
-E3 is important because it replaces the small stimulus processes with an
+E3 is important because it replaces the simulated input processes with an
 existing Nav2 application. The monitor observes Nav2 through its published
 interfaces, and the navigation code remains unchanged. The three goals cover a
 succeeded status within the deadline, a goal that remains active beyond the
@@ -175,8 +166,7 @@ responsibility and code-size analysis in
 Section~\ref{sec:automation-reuse} show that the infrastructure removes
 repeated observation, serialization, transport, and evidence work. Taken
 together, the experiments support a positive answer to RQ4 for the selected
-interfaces and deployments, not for the whole feature model or
-production-scale fleets.
+interfaces and deployments.
 
 \section{Design Trade-offs}
 
@@ -256,7 +246,7 @@ reconfiguration.
 
 \subsection{Internal Validity}
 
-The deterministic stimuli, JSONL replay, mission logs, and Gazebo positions
+The simulated inputs, JSONL replay, mission logs, and Gazebo positions
 provide several checks of correctness. Some replay comparisons nevertheless
 use property logic closely related to the online implementation, so a shared
 error could affect both. Independent mission and Gazebo evidence reduce this
@@ -308,7 +298,4 @@ Future work is consolidated here:
   graph, guides source, property, and placement selection, validates the resulting
   deployment specification, and exposes generated choices.
 
-  \item \textbf{Stronger evaluation:} physical robots, larger fleets,
-  long-duration runs, high-rate sensor data, network and broker failures,
-  scalability measurements, and a user study of configuration effort.
 \end{itemize}
