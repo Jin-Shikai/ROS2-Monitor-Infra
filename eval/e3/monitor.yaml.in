@@ -1,0 +1,36 @@
+# E3 — collection tier on the Nav2 host (template; run.sh substitutes
+# @RUN_DIR@). Observes the unmodified Nav2 stack: commanded velocity,
+# throttled odometry, and the /navigate_to_pose action. All records go to a
+# local JSONL file (oracle input) and over MQTT to the evaluation tier.
+
+monitor:
+  output_dir: "@RUN_DIR@"
+  session_id_prefix: e3mon
+
+topics:
+  - name: /cmd_vel
+    type: geometry_msgs/msg/TwistStamped
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - twist.twist.linear.x
+      - type: RateThrottler
+        max_rate_hz: 5.0
+
+actions:
+  - name: /navigate_to_pose
+    type: nav2_msgs/action/NavigateToPose
+    phases: [feedback, status]
+
+exporters:
+  - type: file
+  - type: mqtt
+    broker: 127.0.0.1
+    port: 1884
+    topic_prefix: monitor/
+    qos: 1
+    publish_bookends: true

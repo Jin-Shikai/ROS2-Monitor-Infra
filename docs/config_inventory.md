@@ -135,6 +135,10 @@ them. A constructor error causes that chain to be skipped.
 - The generation algorithm's core projection is implemented in
   `monitor/config_gen.py`: it maps a deployment JSON request (hosts / runtimes /
   links) onto the runtime YAML parsed by `MonitorConfig` / `RunnerConfig`.
+  Host-level `output_dir`, `session_id_prefix`, and `exporters` configure the
+  generated runtime envelope; ROS2 sources may carry `transformers`, `qos`,
+  and action `phases`. CLI `--var KEY=VALUE` replaces `@KEY@` request tokens
+  before projection, preserving JSON types for exact-token replacements.
   Dashboard plugin metadata is described by the machine-readable manifests under
   `custom/manifests/`; generated runtime YAML still carries explicit class paths
   and constructor arguments for reproducibility.

@@ -1,0 +1,143 @@
+{
+  "hosts": [
+    {
+      "id": "pi",
+      "output_dir": "@REMOTE_RUN@/pi",
+      "session_id_prefix": "e5pi",
+      "exporters": [{"type": "file"}],
+      "runtimes": [
+        {
+          "id": "ros2_e5",
+          "kind": "ros2",
+          "sources": [
+            {"id": "r1_cmd_vel", "source_kind": "topic", "name": "/robot1/cmd_vel", "interface": "geometry_msgs/msg/TwistStamped"},
+            {"id": "r2_cmd_vel", "source_kind": "topic", "name": "/robot2/cmd_vel", "interface": "geometry_msgs/msg/TwistStamped"},
+            {
+              "id": "r1_amcl_pose", "source_kind": "topic", "name": "/robot1/amcl_pose", "interface": "geometry_msgs/msg/PoseWithCovarianceStamped",
+              "transformers": [{"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y"]}]
+            },
+            {
+              "id": "r2_amcl_pose", "source_kind": "topic", "name": "/robot2/amcl_pose", "interface": "geometry_msgs/msg/PoseWithCovarianceStamped",
+              "transformers": [{"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y"]}]
+            },
+            {
+              "id": "r1_odom", "source_kind": "topic", "name": "/robot1/odom", "interface": "nav_msgs/msg/Odometry",
+              "transformers": [
+                {"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y", "twist.twist.linear.x"]},
+                {"type": "RateThrottler", "max_rate_hz": 5.0}
+              ]
+            },
+            {
+              "id": "r2_odom", "source_kind": "topic", "name": "/robot2/odom", "interface": "nav_msgs/msg/Odometry",
+              "transformers": [
+                {"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y", "twist.twist.linear.x"]},
+                {"type": "RateThrottler", "max_rate_hz": 5.0}
+              ]
+            },
+            {"id": "dds_probe", "source_kind": "topic", "name": "/e5/dds_probe", "interface": "geometry_msgs/msg/PoseStamped"}
+          ]
+        },
+        {"id": "monitor_e5", "kind": "monitor", "subscribe": ["r1_cmd_vel", "r2_cmd_vel", "r1_amcl_pose", "r2_amcl_pose", "r1_odom", "r2_odom", "dds_probe"]}
+      ]
+    },
+    {
+      "id": "mac",
+      "output_dir": "@REMOTE_RUN@/mac",
+      "session_id_prefix": "e5mac",
+      "runtimes": [
+        {
+          "id": "cmd_speed_r1_mac", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter", "input_from": ["r1_cmd_vel"], "output_to": "cmd_speed_r1_mac_record", "speed_path": "twist.linear.x"
+        },
+        {
+          "id": "cmd_speed_r2_mac", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter", "input_from": ["r2_cmd_vel"], "output_to": "cmd_speed_r2_mac_record", "speed_path": "twist.linear.x"
+        },
+        {
+          "id": "separation_mac", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.separation:SeparationDistanceConverter", "input_from": ["r1_amcl_pose", "r2_amcl_pose"], "output_to": "separation_mac_record",
+          "robot_a": "/robot1", "robot_b": "/robot2", "topic_suffix": "/amcl_pose", "property_id": "fleet_separation"
+        },
+        {
+          "id": "speed_r1_mac", "kind": "verdict_service", "class_path": "custom.threshold:ThresholdVerdict", "input_from": ["cmd_speed_r1_mac_record"],
+          "property_id": "speed_robot1", "threshold": "@SPEED_MAX@",
+          "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_r1_{session_id}.jsonl"}]
+        },
+        {
+          "id": "speed_r2_mac", "kind": "verdict_service", "class_path": "custom.threshold:ThresholdVerdict", "input_from": ["cmd_speed_r2_mac_record"],
+          "property_id": "speed_robot2", "threshold": "@SPEED_MAX@",
+          "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_r2_{session_id}.jsonl"}]
+        },
+        {
+          "id": "separation_check_mac", "kind": "verdict_service", "class_path": "custom.separation:SeparationDistanceVerdict", "input_from": ["separation_mac_record"],
+          "property_id": "fleet_separation", "min_distance": "@SEP_MIN@",
+          "output_to": [
+            {"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_separation_{session_id}.jsonl"},
+            {"kind": "stdout"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pi_reference",
+      "output_dir": "@REMOTE_RUN@/pi_reference",
+      "session_id_prefix": "e5ref",
+      "runtimes": [
+        {
+          "id": "cmd_speed_r1_ref", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter", "input_from": ["r1_cmd_vel"], "output_to": "cmd_speed_r1_ref_record", "speed_path": "twist.linear.x"
+        },
+        {
+          "id": "cmd_speed_r2_ref", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter", "input_from": ["r2_cmd_vel"], "output_to": "cmd_speed_r2_ref_record", "speed_path": "twist.linear.x"
+        },
+        {
+          "id": "separation_ref", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.separation:SeparationDistanceConverter", "input_from": ["r1_amcl_pose", "r2_amcl_pose"], "output_to": "separation_ref_record",
+          "robot_a": "/robot1", "robot_b": "/robot2", "topic_suffix": "/amcl_pose", "property_id": "fleet_separation"
+        },
+        {
+          "id": "speed_r1_ref", "kind": "verdict_service", "class_path": "custom.threshold:ThresholdVerdict", "input_from": ["cmd_speed_r1_ref_record"],
+          "property_id": "speed_robot1", "threshold": "@SPEED_MAX@",
+          "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_r1_{session_id}.jsonl"}]
+        },
+        {
+          "id": "speed_r2_ref", "kind": "verdict_service", "class_path": "custom.threshold:ThresholdVerdict", "input_from": ["cmd_speed_r2_ref_record"],
+          "property_id": "speed_robot2", "threshold": "@SPEED_MAX@",
+          "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_r2_{session_id}.jsonl"}]
+        },
+        {
+          "id": "separation_check_ref", "kind": "verdict_service", "class_path": "custom.separation:SeparationDistanceVerdict", "input_from": ["separation_ref_record"],
+          "property_id": "fleet_separation", "min_distance": "@SEP_MIN@",
+          "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_separation_{session_id}.jsonl"}]
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "id": "feed_mac_r1", "from_host": "pi", "to_host": "mac", "from_runtime": "monitor_e5", "to_runtime": "cmd_speed_r1_mac", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "@BROKER@", "port": 1884, "qos": 1, "topic_prefix": "monitor/e5/", "publish_bookends": true}
+    },
+    {
+      "id": "feed_mac_r2", "from_host": "pi", "to_host": "mac", "from_runtime": "monitor_e5", "to_runtime": "cmd_speed_r2_mac", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "@BROKER@", "port": 1884, "qos": 1, "topic_prefix": "monitor/e5/", "publish_bookends": true}
+    },
+    {
+      "id": "feed_mac_sep", "from_host": "pi", "to_host": "mac", "from_runtime": "monitor_e5", "to_runtime": "separation_mac", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "@BROKER@", "port": 1884, "qos": 1, "topic_prefix": "monitor/e5/", "publish_bookends": true}
+    },
+    {
+      "id": "feed_ref_r1", "from_host": "pi", "to_host": "pi_reference", "from_runtime": "monitor_e5", "to_runtime": "cmd_speed_r1_ref", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "@BROKER@", "port": 1884, "qos": 1, "topic_prefix": "monitor/e5/", "publish_bookends": true}
+    },
+    {
+      "id": "feed_ref_r2", "from_host": "pi", "to_host": "pi_reference", "from_runtime": "monitor_e5", "to_runtime": "cmd_speed_r2_ref", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "@BROKER@", "port": 1884, "qos": 1, "topic_prefix": "monitor/e5/", "publish_bookends": true}
+    },
+    {
+      "id": "feed_ref_sep", "from_host": "pi", "to_host": "pi_reference", "from_runtime": "monitor_e5", "to_runtime": "separation_ref", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "@BROKER@", "port": 1884, "qos": 1, "topic_prefix": "monitor/e5/", "publish_bookends": true}
+    }
+  ]
+}

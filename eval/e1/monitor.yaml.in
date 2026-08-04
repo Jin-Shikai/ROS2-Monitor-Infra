@@ -1,0 +1,38 @@
+# E1 — Local correctness baseline (template).
+# `run.sh` substitutes @RUN_DIR@ with the per-run results directory and
+# writes the resolved config there before launching monitor_node.
+#
+# Topology: single host, no MQTT. One monitored topic; converter and verdict
+# run in-process inside monitor_node.
+
+monitor:
+  output_dir: "@RUN_DIR@"
+  session_id_prefix: e1
+
+topics:
+  - name: /cmd_vel
+    type: geometry_msgs/msg/Twist
+
+# Global record exporters: every DataRecord goes to one JSONL file
+# (<session_id>.jsonl in output_dir) — the input for the offline oracle.
+exporters:
+  - type: file
+
+converters:
+  - id: cmd_speed
+    type: custom.speed:CmdVelSpeedConverter
+
+verdict_services:
+  - id: speed_check
+    type: custom.threshold:ThresholdVerdict
+    params:
+      property_id: speed_check
+      threshold: 0.5
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_{session_id}.jsonl"
+      - type: stdout
+
+links:
+  - {from: "source:/cmd_vel", to: "converter:cmd_speed"}
+  - {from: "converter:cmd_speed", to: "verdict:speed_check"}

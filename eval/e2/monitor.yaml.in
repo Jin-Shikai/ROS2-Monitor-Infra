@@ -1,0 +1,55 @@
+# E2 — collection tier (template; run.sh substitutes @RUN_DIR@).
+#
+# Observes all three ROS 2 interaction primitives (topic, service, action)
+# and exports every DataRecord both to a local JSONL file (offline oracle)
+# and over MQTT to the evaluation tier (node_runner).
+#
+# The speed property is ALSO evaluated in-process here: the identical
+# property runs remotely in runner.yaml, and the two verdict streams are
+# compared verdict-by-verdict to demonstrate distribution transparency.
+
+monitor:
+  output_dir: "@RUN_DIR@"
+  session_id_prefix: e2mon
+
+topics:
+  - name: /cmd_vel
+    type: geometry_msgs/msg/Twist
+  - name: /odom
+    type: nav_msgs/msg/Odometry
+
+services:
+  - name: /reset_pose
+    type: std_srvs/srv/Trigger
+
+actions:
+  - name: /fibonacci
+    type: example_interfaces/action/Fibonacci
+    phases: [feedback, status]
+
+exporters:
+  - type: file
+  - type: mqtt
+    broker: 127.0.0.1
+    port: 1884
+    topic_prefix: monitor/
+    qos: 1
+    publish_bookends: true
+
+converters:
+  - id: cmd_speed_local
+    type: custom.speed:CmdVelSpeedConverter
+
+verdict_services:
+  - id: speed_check_local
+    type: custom.threshold:ThresholdVerdict
+    params:
+      property_id: speed_check
+      threshold: 0.5
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_local_{session_id}.jsonl"
+
+links:
+  - {from: "source:/cmd_vel", to: "converter:cmd_speed_local"}
+  - {from: "converter:cmd_speed_local", to: "verdict:speed_check_local"}

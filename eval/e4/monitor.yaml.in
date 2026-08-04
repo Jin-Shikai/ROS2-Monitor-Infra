@@ -1,0 +1,60 @@
+# E4 — collection tier for the two-robot fleet (template; run.sh substitutes
+# @RUN_DIR@). One monitor_node observes both Nav2 namespaces: per-robot
+# commanded velocity, throttled odometry (record-volume comparison with E3),
+# and the AMCL pose streams that feed the fleet-separation property (AMCL
+# poses share the map frame; each robot's /odom frame is anchored at its own
+# spawn point). All records go to a local JSONL file (oracle input) and over
+# MQTT to the evaluation tier.
+
+monitor:
+  output_dir: "@RUN_DIR@"
+  session_id_prefix: e4mon
+
+topics:
+  - name: /robot1/cmd_vel
+    type: geometry_msgs/msg/TwistStamped
+  - name: /robot2/cmd_vel
+    type: geometry_msgs/msg/TwistStamped
+  - name: /robot1/amcl_pose
+    type: geometry_msgs/msg/PoseWithCovarianceStamped
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+  - name: /robot2/amcl_pose
+    type: geometry_msgs/msg/PoseWithCovarianceStamped
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+  - name: /robot1/odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - twist.twist.linear.x
+      - type: RateThrottler
+        max_rate_hz: 5.0
+  - name: /robot2/odom
+    type: nav_msgs/msg/Odometry
+    transformers:
+      - type: FieldExtractor
+        fields:
+          - pose.pose.position.x
+          - pose.pose.position.y
+          - twist.twist.linear.x
+      - type: RateThrottler
+        max_rate_hz: 5.0
+
+exporters:
+  - type: file
+  - type: mqtt
+    broker: 127.0.0.1
+    port: 1884
+    topic_prefix: monitor/
+    qos: 1
+    publish_bookends: true

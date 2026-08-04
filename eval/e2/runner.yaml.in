@@ -1,0 +1,56 @@
+# E2 — evaluation tier (template; run.sh substitutes @RUN_DIR@).
+#
+# rclpy-free node_runner: receives DataRecords over MQTT and evaluates
+#   1. the speed property (identical to the in-process one in monitor.yaml,
+#      for the distribution-transparency comparison), and
+#   2. the reset-pose service-effect property, which correlates
+#      /reset_pose service responses with subsequent /odom records.
+
+monitor:
+  output_dir: "@RUN_DIR@"
+  session_id_prefix: e2run
+
+inputs:
+  - id: robot_feed
+    type: mqtt
+    broker: 127.0.0.1
+    port: 1884
+    topic_filter: "monitor/#"
+    qos: 1
+
+converters:
+  - id: cmd_speed
+    type: custom.speed:CmdVelSpeedConverter
+  - id: reset_effect
+    type: custom.reset_pose_effect:ResetPoseEffectConverter
+    params:
+      service_name: /reset_pose
+      odom_name: /odom
+      deadline_sec: 1.0
+      tolerance_m: 0.05
+      property_id: reset_pose_effect
+
+verdict_services:
+  - id: speed_check
+    type: custom.threshold:ThresholdVerdict
+    params:
+      property_id: speed_check
+      threshold: 0.5
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_remote_{session_id}.jsonl"
+  - id: reset_check
+    type: custom.reset_pose_effect:ResetPoseEffectVerdict
+    params:
+      property_id: reset_pose_effect
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_reset_{session_id}.jsonl"
+      - type: stdout
+
+links:
+  - {from: "source:/cmd_vel", to: "converter:cmd_speed"}
+  - {from: "converter:cmd_speed", to: "verdict:speed_check"}
+  - {from: "source:/odom", to: "converter:reset_effect"}
+  - {from: "source:/reset_pose", to: "converter:reset_effect"}
+  - {from: "converter:reset_effect", to: "verdict:reset_check"}

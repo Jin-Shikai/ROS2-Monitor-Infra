@@ -1,0 +1,95 @@
+{
+  "hosts": [
+    {
+      "id": "monitor",
+      "output_dir": "@RUN_DIR@",
+      "session_id_prefix": "e4mon",
+      "exporters": [{"type": "file"}],
+      "runtimes": [
+        {
+          "id": "ros2_e4",
+          "kind": "ros2",
+          "sources": [
+            {"id": "r1_cmd_vel", "source_kind": "topic", "name": "/robot1/cmd_vel", "interface": "geometry_msgs/msg/TwistStamped"},
+            {"id": "r2_cmd_vel", "source_kind": "topic", "name": "/robot2/cmd_vel", "interface": "geometry_msgs/msg/TwistStamped"},
+            {
+              "id": "r1_amcl_pose", "source_kind": "topic", "name": "/robot1/amcl_pose", "interface": "geometry_msgs/msg/PoseWithCovarianceStamped",
+              "transformers": [{"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y"]}]
+            },
+            {
+              "id": "r2_amcl_pose", "source_kind": "topic", "name": "/robot2/amcl_pose", "interface": "geometry_msgs/msg/PoseWithCovarianceStamped",
+              "transformers": [{"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y"]}]
+            },
+            {
+              "id": "r1_odom", "source_kind": "topic", "name": "/robot1/odom", "interface": "nav_msgs/msg/Odometry",
+              "transformers": [
+                {"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y", "twist.twist.linear.x"]},
+                {"type": "RateThrottler", "max_rate_hz": 5.0}
+              ]
+            },
+            {
+              "id": "r2_odom", "source_kind": "topic", "name": "/robot2/odom", "interface": "nav_msgs/msg/Odometry",
+              "transformers": [
+                {"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y", "twist.twist.linear.x"]},
+                {"type": "RateThrottler", "max_rate_hz": 5.0}
+              ]
+            }
+          ]
+        },
+        {"id": "monitor_e4", "kind": "monitor", "subscribe": ["r1_cmd_vel", "r2_cmd_vel", "r1_amcl_pose", "r2_amcl_pose", "r1_odom", "r2_odom"]}
+      ]
+    },
+    {
+      "id": "runner",
+      "output_dir": "@RUN_DIR@",
+      "session_id_prefix": "e4run",
+      "runtimes": [
+        {
+          "id": "cmd_speed_r1", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter", "input_from": ["r1_cmd_vel"], "output_to": "cmd_speed_r1_record", "speed_path": "twist.linear.x"
+        },
+        {
+          "id": "cmd_speed_r2", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter", "input_from": ["r2_cmd_vel"], "output_to": "cmd_speed_r2_record", "speed_path": "twist.linear.x"
+        },
+        {
+          "id": "separation", "kind": "converter", "converter": "dsl_converter",
+          "class_path": "custom.separation:SeparationDistanceConverter", "input_from": ["r1_amcl_pose", "r2_amcl_pose"], "output_to": "separation_record",
+          "robot_a": "/robot1", "robot_b": "/robot2", "topic_suffix": "/amcl_pose", "property_id": "fleet_separation"
+        },
+        {
+          "id": "speed_r1", "kind": "verdict_service", "class_path": "custom.threshold:ThresholdVerdict", "input_from": ["cmd_speed_r1_record"],
+          "property_id": "speed_robot1", "threshold": "@SPEED_MAX@",
+          "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_r1_{session_id}.jsonl"}]
+        },
+        {
+          "id": "speed_r2", "kind": "verdict_service", "class_path": "custom.threshold:ThresholdVerdict", "input_from": ["cmd_speed_r2_record"],
+          "property_id": "speed_robot2", "threshold": "@SPEED_MAX@",
+          "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_r2_{session_id}.jsonl"}]
+        },
+        {
+          "id": "separation_check", "kind": "verdict_service", "class_path": "custom.separation:SeparationDistanceVerdict", "input_from": ["separation_record"],
+          "property_id": "fleet_separation", "min_distance": "@SEP_MIN@",
+          "output_to": [
+            {"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_separation_{session_id}.jsonl"},
+            {"kind": "stdout"}
+          ]
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "id": "robot_feed", "from_host": "monitor", "to_host": "runner", "from_runtime": "monitor_e4", "to_runtime": "cmd_speed_r1", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1884, "qos": 1, "topic_prefix": "monitor/", "publish_bookends": true}
+    },
+    {
+      "id": "robot_feed_r2_speed", "from_host": "monitor", "to_host": "runner", "from_runtime": "monitor_e4", "to_runtime": "cmd_speed_r2", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1884, "qos": 1, "topic_prefix": "monitor/", "publish_bookends": true}
+    },
+    {
+      "id": "robot_feed_separation", "from_host": "monitor", "to_host": "runner", "from_runtime": "monitor_e4", "to_runtime": "separation", "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1884, "qos": 1, "topic_prefix": "monitor/", "publish_bookends": true}
+    }
+  ]
+}

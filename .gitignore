@@ -20,3 +20,4 @@ CLAUDE*
 output/
 .DS_Store
 generated/
+eval/*/results/

@@ -1,0 +1,131 @@
+{
+  "hosts": [
+    {
+      "id": "monitor",
+      "output_dir": "@RUN_DIR@",
+      "session_id_prefix": "e2mon",
+      "exporters": [{"type": "file"}],
+      "runtimes": [
+        {
+          "id": "ros2_e2",
+          "kind": "ros2",
+          "sources": [
+            {"id": "cmd_vel", "source_kind": "topic", "name": "/cmd_vel", "interface": "geometry_msgs/msg/Twist"},
+            {"id": "odom", "source_kind": "topic", "name": "/odom", "interface": "nav_msgs/msg/Odometry"},
+            {"id": "reset_pose", "source_kind": "service", "name": "/reset_pose", "interface": "std_srvs/srv/Trigger"},
+            {
+              "id": "fibonacci",
+              "source_kind": "action",
+              "name": "/fibonacci",
+              "interface": "example_interfaces/action/Fibonacci",
+              "phases": ["feedback", "status"]
+            }
+          ]
+        },
+        {
+          "id": "monitor_e2",
+          "kind": "monitor",
+          "subscribe": ["cmd_vel", "odom", "reset_pose", "fibonacci"]
+        },
+        {
+          "id": "cmd_speed_local",
+          "kind": "converter",
+          "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter",
+          "input_from": ["cmd_vel"],
+          "output_to": "cmd_speed_local_record"
+        },
+        {
+          "id": "speed_check_local",
+          "kind": "verdict_service",
+          "class_path": "custom.threshold:ThresholdVerdict",
+          "input_from": ["cmd_speed_local_record"],
+          "property_id": "speed_check",
+          "threshold": 0.5,
+          "output_to": [
+            {
+              "kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter",
+              "path": "verdicts_local_{session_id}.jsonl"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "runner",
+      "output_dir": "@RUN_DIR@",
+      "session_id_prefix": "e2run",
+      "runtimes": [
+        {
+          "id": "cmd_speed",
+          "kind": "converter",
+          "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter",
+          "input_from": ["cmd_vel"],
+          "output_to": "cmd_speed_record"
+        },
+        {
+          "id": "reset_effect",
+          "kind": "converter",
+          "converter": "dsl_converter",
+          "class_path": "custom.reset_pose_effect:ResetPoseEffectConverter",
+          "input_from": ["odom", "reset_pose"],
+          "output_to": "reset_effect_record",
+          "service_name": "/reset_pose",
+          "odom_name": "/odom",
+          "deadline_sec": 1.0,
+          "tolerance_m": 0.05,
+          "property_id": "reset_pose_effect"
+        },
+        {
+          "id": "speed_check",
+          "kind": "verdict_service",
+          "class_path": "custom.threshold:ThresholdVerdict",
+          "input_from": ["cmd_speed_record"],
+          "property_id": "speed_check",
+          "threshold": 0.5,
+          "output_to": [
+            {
+              "kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter",
+              "path": "verdicts_remote_{session_id}.jsonl"
+            }
+          ]
+        },
+        {
+          "id": "reset_check",
+          "kind": "verdict_service",
+          "class_path": "custom.reset_pose_effect:ResetPoseEffectVerdict",
+          "input_from": ["reset_effect_record"],
+          "property_id": "reset_pose_effect",
+          "output_to": [
+            {
+              "kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter",
+              "path": "verdicts_reset_{session_id}.jsonl"
+            },
+            {"kind": "stdout"}
+          ]
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "id": "robot_feed",
+      "from_host": "monitor",
+      "to_host": "runner",
+      "from_runtime": "monitor_e2",
+      "to_runtime": "cmd_speed",
+      "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1884, "qos": 1, "topic_prefix": "monitor/", "publish_bookends": true}
+    },
+    {
+      "id": "robot_feed_reset",
+      "from_host": "monitor",
+      "to_host": "runner",
+      "from_runtime": "monitor_e2",
+      "to_runtime": "reset_effect",
+      "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1884, "qos": 1, "topic_prefix": "monitor/", "publish_bookends": true}
+    }
+  ]
+}
