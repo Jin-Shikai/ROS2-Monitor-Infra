@@ -275,27 +275,24 @@ model.
 
 \section{Future Work}
 
-Future work is consolidated here:
+Four directions follow from the limitations above:
 
 \begin{itemize}
   \item \textbf{Broader observation:} complete action traces; parameter and
   lifecycle events; DDS-level events; adapters for \texttt{ros2\_tracing} and
   network observations.
 
+  \item \textbf{Feedback mechanism:} report violations emitted by the verdict
+  service back to the robot application in order to intervene in its
+  behaviour, for example by publishing a stop command, calling a recovery
+  service, or cancelling an active goal. The architecture reserves the
+  feedback adapter for this path.
+
   \item \textbf{Robust distribution:} persistent queues, duplicate
   suppression, replay after disconnection, clock synchronization, explicit
   late-record policies, multiple verifiers, health checks, failover, and
   security.
 
-  \item \textbf{Easier DSL integration:} plug-in templates, a small conformance
-  test harness, documented DSL-record contracts, and evaluated adapters for
-  temporal-logic or state-machine checkers.
-
   \item \textbf{More transports and outputs:} supported plug-ins for sockets,
   HTTP/WebSocket, ROS~2 topics, databases, dashboards, and other brokers.
-
-  \item \textbf{Guided configuration:} a Web interface that discovers the ROS
-  graph, guides source, property, and placement selection, validates the resulting
-  deployment specification, and exposes generated choices.
-
 \end{itemize}
