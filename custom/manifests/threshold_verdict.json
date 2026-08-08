@@ -10,6 +10,13 @@
       "type": "number",
       "required": true,
       "default": 0.3
+    },
+    {
+      "key": "property_id",
+      "label": "Property id (optional; defaults to the converter's property)",
+      "type": "string",
+      "required": false,
+      "default": ""
     }
   ]
 }

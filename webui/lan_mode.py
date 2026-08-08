@@ -2,11 +2,13 @@
 
 Hosts are machines reachable over SSH on the local network. A host is
 created by validating an SSH connection (installing the local public key
-first when a password is required), probing its OS/home/docker binary, and
+first when a password is required), probing its OS/home/python, and
 persisting it in a JSON registry. Deployment pushes a copy of the project
-to `~/ROS2-Monitor-Infra` on the host with rsync and drives a per-host
-Docker Compose file there over SSH.
-"""
+to `~/ROS2-Monitor-Infra` on the host with rsync and runs the generated
+runtimes there natively under live SSH sessions (the machines run the
+monitor stack directly — no Docker involved; this mirrors the thesis E5
+deployment and macOS 15 additionally requires a live SSH session for LAN
+TCP from remotely started processes)."""
 
 from __future__ import annotations
 
@@ -31,9 +33,9 @@ SSH_BATCH_OPTS = [
     "-o", "ConnectTimeout=8",
     "-o", "StrictHostKeyChecking=accept-new",
 ]
-# Non-interactive SSH shells (notably zsh on macOS) miss Docker Desktop's PATH.
+# Non-interactive SSH shells (notably zsh on macOS) miss Homebrew's PATH.
 REMOTE_PATH_EXPORT = (
-    'export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/.docker/bin:'
+    'export PATH="/usr/local/bin:/opt/homebrew/bin:'
     '/usr/bin:/bin:/usr/sbin:/sbin:$PATH"'
 )
 SYNC_EXCLUDES = [
@@ -192,10 +194,12 @@ def _install_key_with_password(address: str, password: str) -> None:
 
 
 def _probe_host(address: str) -> dict[str, Any]:
+    # python3.12 first: on the prepared macOS host the Homebrew 3.12 carries
+    # paho/PyYAML while the system python3 has neither.
     probe = ssh_run(
         address,
         f'{REMOTE_PATH_EXPORT}; uname -s; printf "%s\\n" "$HOME"; '
-        "command -v docker || echo MISSING",
+        "command -v python3.12 || command -v python3 || echo MISSING",
         timeout=20,
     )
     if probe.returncode != 0:
@@ -206,22 +210,8 @@ def _probe_host(address: str) -> dict[str, Any]:
         raise RuntimeError(f"SSH probe returned unexpected output: {probe.stdout!r}")
     os_name = {"linux": "linux", "darwin": "darwin"}.get(lines[0].lower(), lines[0].lower())
     home = lines[1]
-    docker = "" if lines[2] == "MISSING" else lines[2]
-    docker_version = ""
-    if docker:
-        daemon = ssh_run(
-            address,
-            f"{REMOTE_PATH_EXPORT}; docker version --format '{{{{.Server.Version}}}}'",
-            timeout=20,
-        )
-        if daemon.returncode == 0:
-            docker_version = daemon.stdout.strip()
-    return {
-        "os": os_name,
-        "home": home,
-        "docker": docker,
-        "docker_version": docker_version,
-    }
+    python = "" if lines[2] == "MISSING" else lines[2]
+    return {"os": os_name, "home": home, "python": python}
 
 
 def create_host(payload: dict[str, Any]) -> dict[str, Any]:
@@ -261,7 +251,7 @@ def create_host(payload: dict[str, Any]) -> dict[str, Any]:
     host = {
         "id": host_id,
         "address": address,
-        "status": "ready" if probed["docker"] and probed["docker_version"] else "no_docker",
+        "status": "ready" if probed["python"] else "no_python",
         "synced": bool(registry.get(host_id, {}).get("synced")),
         **probed,
     }
@@ -330,55 +320,32 @@ def pull_outputs(host: dict[str, Any], timeout: int = 60) -> None:
     )
 
 
-def _remote_compose_prefix(host: dict[str, Any]) -> str:
-    project = _remote_project(host)
-    return (
-        f"{REMOTE_PATH_EXPORT}; cd {shlex.quote(project)}/generated/showcase && "
-        "mkdir -p ../../output/showcase && "
-    )
-
-
-def remote_compose_up(
-    host: dict[str, Any],
-    compose_filename: str,
-    timeout: int = 900,
-) -> str:
-    command = (
-        _remote_compose_prefix(host)
-        + f"docker compose -f {shlex.quote(compose_filename)} up --build -d --remove-orphans"
-    )
-    completed = ssh_run(host["address"], command, timeout=timeout)
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout).strip()
-        raise RuntimeError(f'Remote start on {host["id"]} failed: {detail}')
-    return completed.stdout.strip()
-
-
-def remote_compose_down(
-    host: dict[str, Any],
-    compose_filename: str,
-    timeout: int = 120,
-) -> str:
-    command = (
-        _remote_compose_prefix(host)
-        + f"docker compose -f {shlex.quote(compose_filename)} down --remove-orphans"
-    )
-    completed = ssh_run(host["address"], command, timeout=timeout)
-    return (completed.stdout or completed.stderr).strip()
-
-
-def remote_logs_process(
-    host: dict[str, Any],
-    compose_filename: str,
+def remote_native_process(
+    host: dict[str, Any], command: str
 ) -> subprocess.Popen[str]:
-    command = (
-        _remote_compose_prefix(host)
-        + f"docker compose -f {shlex.quote(compose_filename)} logs -f --tail 120"
-    )
+    """Run `command` in the remote project root under a live SSH session.
+
+    The runtime stays a child of this session: its output streams back as
+    the session's stdout, macOS 15 Local Network privacy keeps allowing LAN
+    TCP (it silently blocks orphaned detached processes), and `-tt` forces
+    a TTY so the remote process group is hung up if the session dies.
+    """
+    project = _remote_project(host)
+    full = f"{REMOTE_PATH_EXPORT}; cd {shlex.quote(project)} && {{ {command}; }}"
     return subprocess.Popen(
-        ["ssh", *SSH_BATCH_OPTS, host["address"], command],
+        ["ssh", "-tt", *SSH_BATCH_OPTS, host["address"], full],
+        stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+    )
+
+
+def remote_signal(
+    host: dict[str, Any], pattern: str, sig: str = "INT"
+) -> subprocess.CompletedProcess[str]:
+    """Signal remote processes whose command line matches `pattern`."""
+    return ssh_run(
+        host["address"], f"pkill -{sig} -f {shlex.quote(pattern)}", timeout=20
     )

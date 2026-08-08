@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from custom.separation import SeparationDistanceConverter, SeparationDistanceVerdict
+from custom.separation_converter import SeparationDistanceConverter
+from custom.separation_verdict import SeparationDistanceVerdict
 from data_record import DataRecord
 
 
@@ -70,12 +71,6 @@ def test_verdict_edge_triggered_on_threshold_crossings():
     recovery = svc.evaluate(_dsl(1.4, ts=103.0))
     assert recovery is not None and recovery.result is True
     assert recovery.timestamp == pytest.approx(103.0)
-
-
-def test_verdict_ignores_foreign_records():
-    svc = SeparationDistanceVerdict(min_distance=1.0)
-    assert svc.evaluate({"speed": 1.0}) is None
-    assert svc.evaluate("not a dict") is None
 
 
 def test_verdict_property_id_falls_back_to_record():

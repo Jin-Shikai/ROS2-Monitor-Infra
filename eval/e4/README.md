@@ -12,8 +12,8 @@ at random). One monitor_node observes both namespaces; one node_runner
 - P1a/P1b per-robot commanded speed limit on `/robotN/cmd_vel`
   (independent converter chains: namespace isolation is structural),
 - P2 fleet minimum separation from both `/robotN/amcl_pose` streams
-  (`custom.separation` — AMCL poses share the map frame, unlike the
-  spawn-anchored per-robot `/odom` frames).
+  (`custom.separation_converter` + `custom.separation_verdict` — AMCL poses
+  share the map frame, unlike the spawn-anchored per-robot `/odom` frames).
 
 The robots are spawned from `gz_waffle_visible.sdf.xacro` — the stock
 waffle plus a primitive visual crossing the lidar scan plane: two stock
@@ -52,6 +52,9 @@ GUI run for thesis figures (per-robot RViz):
 ```bash
 USE_RVIZ=True eval/e4/run.sh
 ```
+
+Interactive replay through the WebUI (endless patrol loop, runtimes placed
+and started from the topology playground): see [WEBUI.md](WEBUI.md).
 
 Outputs land in `eval/e4/results/run_<timestamp>/`: resolved configs,
 the copied generation request + `config_gen.log`, records + verdict JSONL,

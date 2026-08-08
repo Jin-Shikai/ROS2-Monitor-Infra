@@ -136,13 +136,27 @@ class GraphDiscovery:
         self._node.destroy_node()
 
 
-def discover(*, include_system: bool = False) -> dict[str, Any]:
+def discover(*, include_system: bool = False, settle_sec: float = 3.0) -> dict[str, Any]:
     import rclpy
 
     rclpy.init(args=None)
     node = GraphDiscovery()
     try:
-        return filter_graph(node.snapshot(), include_system=include_system)
+        # A fresh node sees the graph only as DDS discovery converges; an
+        # immediate snapshot can miss whole participants (e.g. one robot's
+        # entire Nav2 stack). Poll until the resource count stops growing.
+        deadline = time.monotonic() + settle_sec
+        last_count = -1
+        while True:
+            graph = filter_graph(node.snapshot(), include_system=include_system)
+            count = sum(
+                len(graph.get(key) or [])
+                for key in ("topics", "services", "actions")
+            )
+            if count == last_count or time.monotonic() >= deadline:
+                return graph
+            last_count = count
+            time.sleep(0.3)
     finally:
         node.destroy_node()
         if rclpy.ok():

@@ -33,7 +33,7 @@
         <div class="section-head">
           <div>
             <h2>Configuration</h2>
-            <p id="selectionHint">Select a block on the playground.</p>
+            <p id="selectionHint"></p>
           </div>
         </div>
         <div id="configForm" class="config-form"></div>
@@ -46,6 +46,7 @@
         <div id="graphSearchRow" class="discovery-search" style="display: none">
           <input id="graphSearch" type="search" placeholder="Search scanned resources" spellcheck="false" autocomplete="off">
           <span id="graphSearchMeta"></span>
+          <button id="graphClose" type="button" title="Close scan results">✕</button>
         </div>
         <div id="graphResults" class="discovery-drawer"></div>
         <div class="playground" id="playground">
@@ -67,7 +68,11 @@
         </div>
         <div class="editor-panel active" id="editor-code">
           <div class="file-row">
-            <input id="filePath" placeholder="Select a block with an editable file" spellcheck="false">
+            <select id="codeView" hidden title="Choose which file of the selected runtime to show">
+              <option value="plugin">Plugin</option>
+              <option value="yaml">YAML</option>
+            </select>
+            <input id="filePath" spellcheck="false">
             <button id="loadFile" type="button">Load</button>
             <button id="saveFile" class="primary" type="button">Save</button>
           </div>
@@ -87,7 +92,6 @@
     <div id="lanHostModal" class="modal-backdrop" style="display: none">
       <div class="modal">
         <h3>Add SSH Host</h3>
-        <p class="notice subtle">The machine must be reachable on the local network and have Docker installed. The project is copied to <code>~/ROS2-Monitor-Infra</code> on it.</p>
         <label>SSH address<input id="lanHostAddress" placeholder="user@hostname.local" spellcheck="false" autocomplete="off"></label>
         <label id="lanPasswordRow" style="display: none">Password<input id="lanHostPassword" type="password" autocomplete="off"></label>
         <div id="lanHostStatus" class="notice subtle"></div>

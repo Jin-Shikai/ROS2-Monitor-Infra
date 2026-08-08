@@ -6,7 +6,6 @@ import yaml
 
 from webui.server import (
     EventHub,
-    RunState,
     ShowcaseState,
     build_generation_request,
     clear_verdicts,
@@ -236,8 +235,11 @@ def test_showcase_plugin_payload_expands_manifest_schema():
     speed = next(item for item in payload["plugins"] if item["id"] == "speed_check")
     assert speed["converter"] == "custom.speed:CmdVelSpeedConverter"
     assert speed["verdict"] == "custom.threshold:ThresholdVerdict"
-    assert speed["converter_params"] == []
-    assert [row["key"] for row in speed["verdict_params"]] == ["threshold"]
+    assert [row["key"] for row in speed["converter_params"]] == ["speed_path"]
+    assert [row["key"] for row in speed["verdict_params"]] == [
+        "threshold",
+        "property_id",
+    ]
 
     fleet = next(
         item for item in payload["plugins"] if item["id"] == "two_robot_relative_speed"
@@ -246,7 +248,10 @@ def test_showcase_plugin_payload_expands_manifest_schema():
     assert fleet["placement"] == {"converter": "converter_host", "verdict": "verdict_host"}
     assert fleet["converter"] == "custom.relative_speed:RelativeSpeedConverter"
     assert fleet["converter_params"] == []
-    assert [row["key"] for row in fleet["verdict_params"]] == ["threshold"]
+    assert [row["key"] for row in fleet["verdict_params"]] == [
+        "threshold",
+        "property_id",
+    ]
 
     reset = next(
         item for item in payload["plugins"] if item["id"] == "service_effect_consistency"
@@ -337,7 +342,6 @@ def test_showcase_generate_configs_writes_yaml(tmp_path, monkeypatch):
     import webui.server as server
 
     monkeypatch.setattr(server, "GENERATED_DIR", tmp_path)
-    monkeypatch.setattr(server, "GENERATED_COMPOSE", tmp_path / "docker-compose.yml")
     result = generate_configs(
         {
             "sources": [{"name": "/cmd_vel", "interface": "geometry_msgs/msg/Twist"}],
@@ -359,24 +363,22 @@ def test_showcase_generate_configs_writes_yaml(tmp_path, monkeypatch):
     assert config_path.exists()
     parsed = yaml.safe_load(config_path.read_text())
     assert parsed["topics"][0]["name"] == "/cmd_vel"
-    assert parsed["monitor"]["output_dir"] == "/output/showcase/robot"
+    assert parsed["monitor"]["output_dir"] == str(
+        server.ROOT / "output" / "showcase" / "robot"
+    )
     assert parsed["converters"][0]["id"] == "showcase_converter"
     assert parsed["verdict_services"][0]["type"] == "custom.threshold:ThresholdVerdict"
     assert parsed["links"][-1]["to"] == "verdict:showcase_verdict"
-    compose = yaml.safe_load(Path(result["compose_path"]).read_text())
-    service = compose["services"]["generated_robot"]
-    assert service["network_mode"] == "host"
-    assert service["ipc"] == "host"
-    assert "../../demo/common:/demo/common:ro" not in service["volumes"]
-    assert "topic_robot.py" not in service["command"][-1]
-    assert "monitor_node.py --config /generated/robot.yaml" in service["command"][-1]
+    # Local mode always runs runtimes natively: no compose file is written.
+    assert result["native"] is True
+    assert result["configs"][0]["entrypoint"] == "monitor_node"
+    assert not (tmp_path / "docker-compose.yml").exists()
 
 
 def test_showcase_generate_configs_writes_service_action_sections(tmp_path, monkeypatch):
     import webui.server as server
 
     monkeypatch.setattr(server, "GENERATED_DIR", tmp_path)
-    monkeypatch.setattr(server, "GENERATED_COMPOSE", tmp_path / "docker-compose.yml")
     result = generate_configs(
         {
             "sources": [
@@ -422,11 +424,10 @@ def test_showcase_generate_configs_writes_service_action_sections(tmp_path, monk
     ]
 
 
-def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeypatch):
+def test_showcase_multi_host_placement_generates_split_native_configs(tmp_path, monkeypatch):
     import webui.server as server
 
     monkeypatch.setattr(server, "GENERATED_DIR", tmp_path)
-    monkeypatch.setattr(server, "GENERATED_COMPOSE", tmp_path / "docker-compose.yml")
     result = generate_configs(
         {
             "hosts": ["robot", "verifier"],
@@ -462,14 +463,10 @@ def test_showcase_multi_host_placement_generates_split_compose(tmp_path, monkeyp
 
     assert {config["host_id"] for config in result["configs"]} == {"robot", "verifier"}
     assert result["request"]["links"][0]["payload"] == "records"
-    compose = yaml.safe_load(Path(result["compose_path"]).read_text())
-    assert set(compose["services"]) == {"mosquitto", "generated_robot", "generated_verifier"}
-    assert "monitor_node.py --config /generated/robot.yaml" in (
-        compose["services"]["generated_robot"]["command"][-1]
-    )
-    assert "node_runner.py --config /generated/verifier.yaml" in (
-        compose["services"]["generated_verifier"]["command"][-1]
-    )
+    assert result["native"] is True
+    assert not (tmp_path / "docker-compose.yml").exists()
+    entrypoints = {config["host_id"]: config["entrypoint"] for config in result["configs"]}
+    assert entrypoints == {"robot": "monitor_node", "verifier": "node_runner"}
     verifier = yaml.safe_load(
         next(c for c in result["configs"] if c["host_id"] == "verifier")["yaml"]
     )
@@ -575,107 +572,80 @@ def test_showcase_requires_at_least_one_source():
         build_generation_request({"sources": []})
 
 
-def test_showcase_robot_start_uses_host_network_and_ipc(monkeypatch):
+def test_showcase_robot_start_spawns_native_process_group(monkeypatch):
     import webui.server as server
 
-    commands = []
-
-    def fake_run_completed(command, timeout=120):
-        commands.append(command)
-        if command[:2] == ["docker", "run"]:
-            return subprocess.CompletedProcess(command, 0, "robot-container-id\n")
-        if command[:2] == ["docker", "inspect"]:
-            return subprocess.CompletedProcess(command, 0, "true\n")
-        return subprocess.CompletedProcess(command, 0, "")
-
-    started_log_streams = []
-
-    monkeypatch.setattr(server, "_run_completed", fake_run_completed)
-    monkeypatch.setattr(
-        server,
-        "_start_robot_log_stream",
-        lambda robot: started_log_streams.append(robot.container_id),
-    )
-    monkeypatch.setattr(server.STATE, "robot", None)
-
-    result = start_robot(
-        {
-            "dockerfile": "Dockerfile",
-            "command": "source /opt/ros/kilted/setup.bash && ros2 topic list",
-        }
-    )
-
-    run_command = next(command for command in commands if command[:2] == ["docker", "run"])
-    assert result["running"] is True
-    assert "--network" in run_command
-    assert run_command[run_command.index("--network") + 1] == "host"
-    assert "--ipc" in run_command
-    assert run_command[run_command.index("--ipc") + 1] == "host"
-    assert "source /opt/ros/kilted/setup.bash && ros2 topic list" in run_command
-    assert started_log_streams == ["robot-container-id"]
-
-
-def test_showcase_start_run_adds_services_when_stack_is_active(tmp_path, monkeypatch):
-    import webui.server as server
+    spawned = []
 
     class FakeProcess:
+        pid = 4242
         stdout = None
-
-        def __init__(self) -> None:
-            self.terminated = False
 
         def poll(self):
             return None
 
-        def terminate(self):
-            self.terminated = True
+    def fake_popen(command, **kwargs):
+        spawned.append((command, kwargs))
+        return FakeProcess()
 
-        def wait(self, timeout=None):
-            return 0
+    monkeypatch.setattr(server.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        server.threading, "Thread",
+        lambda *args, **kwargs: type("T", (), {"start": lambda self: None})(),
+    )
+    monkeypatch.setattr(server.STATE, "robot", None)
 
-        def kill(self):
-            self.terminated = True
+    result = start_robot(
+        {"command": "source /opt/ros/kilted/setup.bash && ros2 topic list"}
+    )
 
-    commands = []
-    previous = FakeProcess()
+    command, kwargs = spawned[0]
+    assert result["running"] is True
+    assert result["pid"] == 4242
+    assert command == [
+        "/bin/bash", "-lc",
+        "source /opt/ros/kilted/setup.bash && ros2 topic list",
+    ]
+    assert kwargs["start_new_session"] is True
+
+    with pytest.raises(RuntimeError, match="already running"):
+        start_robot({"command": "echo again"})
+    monkeypatch.setattr(server.STATE, "robot", None)
+
+
+def test_showcase_start_run_native_starts_selected_services(tmp_path, monkeypatch):
+    import webui.server as server
+
+    class FakeProcess:
+        pid = 999
+        stdout = None
+
+        def poll(self):
+            return None
+
+    generated = {
+        "native": True,
+        "request": {"links": [{"transport": {"kind": "mqtt", "port": 1884}}]},
+        "configs": [
+            {"host_id": "host2", "entrypoint": "monitor_node", "path": "/tmp/host2.yaml"},
+            {"host_id": "host3", "entrypoint": "node_runner", "path": "/tmp/host3.yaml"},
+            {"host_id": "host4", "entrypoint": "node_runner", "path": "/tmp/host4.yaml"},
+        ],
+    }
+
+    spawned = []
+
+    def fake_spawn(name, command, extra_env=None):
+        spawned.append((name, command, extra_env))
+        server.STATE.native_procs[name] = FakeProcess()
 
     monkeypatch.setattr(server, "GENERATED_DIR", tmp_path)
-    monkeypatch.setattr(server, "GENERATED_COMPOSE", tmp_path / "docker-compose.yml")
-    server.GENERATED_COMPOSE.write_text("services: {}\n", encoding="utf-8")
-    monkeypatch.setattr(
-        server,
-        "generate_configs",
-        lambda payload: {"compose_path": str(server.GENERATED_COMPOSE)},
-    )
-    monkeypatch.setattr(
-        server.subprocess,
-        "run",
-        lambda command, **kwargs: commands.append(command)
-        or subprocess.CompletedProcess(command, 0, "started\n"),
-    )
-
-    def fake_log_stream(target_id, command):
-        return RunState(
-            target_id=target_id,
-            command=command,
-            compose_path=server.GENERATED_COMPOSE,
-            started_at=1.0,
-            process=FakeProcess(),
-        )
-
-    monkeypatch.setattr(server, "_start_compose_log_stream", fake_log_stream)
-    monkeypatch.setattr(
-        server.STATE,
-        "run",
-        RunState(
-            target_id="generated_host2",
-            command=["old"],
-            compose_path=server.GENERATED_COMPOSE,
-            started_at=0.0,
-            process=previous,
-        ),
-    )
-    monkeypatch.setattr(server.STATE, "generated", {"compose_path": str(server.GENERATED_COMPOSE)})
+    monkeypatch.setattr(server, "_spawn_native_service", fake_spawn)
+    monkeypatch.setattr(server, "_port_listening", lambda host, port: False)
+    monkeypatch.setattr(server, "generate_configs", lambda payload: generated)
+    monkeypatch.setattr(server.STATE, "native_procs", {"generated_host2": FakeProcess()})
+    monkeypatch.setattr(server.STATE, "native_started_at", 1.0)
+    monkeypatch.setattr(server.STATE, "generated", generated)
 
     result = start_generated_run(
         {
@@ -683,11 +653,16 @@ def test_showcase_start_run_adds_services_when_stack_is_active(tmp_path, monkeyp
         }
     )
 
-    assert commands[-1][-3:] == ["mosquitto", "generated_host3", "generated_host4"]
-    assert "-d" in commands[-1]
-    assert previous.terminated is True
+    names = [name for name, _, _ in spawned]
+    assert names[0] == "mosquitto"
+    assert set(names[1:]) == {"generated_host3", "generated_host4"}
+    assert "generated_host2" not in names
+    envs = {name: extra_env for name, _, extra_env in spawned}
+    assert envs["generated_host3"] == {"CONVERTER_IO_LOG": "DEBUG"}
+    assert envs["generated_host4"] == {"CONVERTER_IO_LOG": "DEBUG"}
     assert result["running"] is True
-    assert result["message"] == "Started mosquitto, generated_host3, generated_host4."
+    assert "generated_host3: started (node_runner)" in result["message"]
+    assert "mosquitto: started on 1884" in result["message"]
 
 
 def test_showcase_clear_verdicts_truncates_showcase_jsonl(tmp_path, monkeypatch):
@@ -722,3 +697,211 @@ def test_showcase_clear_verdicts_truncates_showcase_jsonl(tmp_path, monkeypatch)
     assert generated_verdict_path.read_text(encoding="utf-8") == ""
     assert other_path.read_text(encoding="utf-8") == "keep me\n"
     assert recent_verdicts() == []
+
+
+def _lan_registry_e5():
+    return {
+        "shikai-pi_local": {
+            "id": "shikai-pi_local",
+            "address": "shikai@shikai-pi.local",
+            "os": "linux",
+            "home": "/home/shikai",
+            "python": "/usr/bin/python3",
+            "status": "ready",
+        },
+        "shikais-mbp_local": {
+            "id": "shikais-mbp_local",
+            "address": "alex@Shikais-MBP.local",
+            "os": "darwin",
+            "home": "/Users/alex",
+            "python": "/opt/homebrew/bin/python3.12",
+            "status": "ready",
+        },
+    }
+
+
+def test_showcase_lan_generation_places_runtimes_natively(tmp_path, monkeypatch):
+    import webui.server as server
+
+    monkeypatch.setattr(server, "GENERATED_DIR", tmp_path)
+    monkeypatch.setattr(server.lan_mode, "load_registry", _lan_registry_e5)
+    monkeypatch.setattr(server, "current_mode", lambda: "lan")
+    monkeypatch.setattr(
+        server, "_resolve_lan_address",
+        lambda hostname: "192.168.2.18" if hostname == "shikai-pi.local" else hostname,
+    )
+    result = generate_configs(
+        {
+            "broker": {"host": "shikai-pi_local", "port": 1884},
+            "hosts": ["shikai-pi_local", "shikais-mbp_local"],
+            "sources": [
+                {
+                    "name": "/robot1/amcl_pose",
+                    "interface": "geometry_msgs/msg/PoseWithCovarianceStamped",
+                    "host": "shikai-pi_local",
+                },
+                {
+                    "name": "/robot2/amcl_pose",
+                    "interface": "geometry_msgs/msg/PoseWithCovarianceStamped",
+                    "host": "shikai-pi_local",
+                },
+            ],
+            "monitors": [
+                {
+                    "id": "monitor_e5",
+                    "host": "shikai-pi_local",
+                    "source_keys": ["topic:/robot1/amcl_pose", "topic:/robot2/amcl_pose"],
+                }
+            ],
+            "converters": [
+                {
+                    "id": "separation",
+                    "class_path": "custom.separation_converter:SeparationDistanceConverter",
+                    "host": "shikais-mbp_local",
+                    "verdict_service_ids": ["separation_check"],
+                }
+            ],
+            "verdict_services": [
+                {
+                    "id": "separation_check",
+                    "class_path": "custom.separation_verdict:SeparationDistanceVerdict",
+                    "host": "shikais-mbp_local",
+                }
+            ],
+        }
+    )
+
+    # Links carry the broker host's numeric LAN address, resolved from
+    # its registry id (macOS gates mDNS per binary, so .local names are
+    # not reliable on the checker).
+    assert all(
+        link["transport"]["broker"] == "192.168.2.18"
+        and link["transport"]["port"] == 1884
+        for link in result["request"]["links"]
+    )
+    assert result["native"] is True
+    lan = result["lan"]
+    assert lan["broker_host_id"] == "shikai-pi_local"
+    assert lan["local_services"] == []
+    assert lan["remote"] == {
+        "shikai-pi_local": {"filename": "shikai-pi_local.yaml", "entrypoint": "monitor_node"},
+        "shikais-mbp_local": {"filename": "shikais-mbp_local.yaml", "entrypoint": "node_runner"},
+    }
+    # Remote runtimes write into the remote project copy (cwd-relative).
+    outputs = {
+        config["host_id"]: yaml.safe_load(config["yaml"])["monitor"]["output_dir"]
+        for config in result["configs"]
+    }
+    assert outputs == {
+        "shikai-pi_local": "output/showcase/shikai-pi_local",
+        "shikais-mbp_local": "output/showcase/shikais-mbp_local",
+    }
+
+
+def test_showcase_lan_rejects_monitor_on_macos_host(monkeypatch):
+    import webui.server as server
+
+    monkeypatch.setattr(server.lan_mode, "load_registry", _lan_registry_e5)
+    monkeypatch.setattr(server, "current_mode", lambda: "lan")
+    with pytest.raises(ValueError, match="macOS machine without"):
+        build_generation_request(
+            {
+                "hosts": ["shikais-mbp_local"],
+                "sources": [
+                    {
+                        "name": "/cmd_vel",
+                        "interface": "geometry_msgs/msg/Twist",
+                        "host": "shikais-mbp_local",
+                    }
+                ],
+                "monitors": [
+                    {
+                        "id": "monitor_mac",
+                        "host": "shikais-mbp_local",
+                        "source_keys": ["topic:/cmd_vel"],
+                    }
+                ],
+                "converters": [],
+                "verdict_services": [],
+            }
+        )
+
+
+def test_showcase_lan_start_runs_runtimes_over_ssh(tmp_path, monkeypatch):
+    import webui.server as server
+
+    class FakeProcess:
+        pid = 999
+        stdout = None
+
+        def poll(self):
+            return None
+
+    generated = {
+        "native": True,
+        "request": {
+            "links": [
+                {"transport": {"kind": "mqtt", "broker": "shikai-pi.local", "port": 1884}}
+            ]
+        },
+        "configs": [
+            {"host_id": "shikai-pi_local", "entrypoint": "monitor_node",
+             "filename": "shikai-pi_local.yaml", "path": "/tmp/pi.yaml"},
+            {"host_id": "shikais-mbp_local", "entrypoint": "node_runner",
+             "filename": "shikais-mbp_local.yaml", "path": "/tmp/mac.yaml"},
+        ],
+        "lan": {
+            "mode": "lan",
+            "local_services": [],
+            "remote": {
+                "shikai-pi_local": {"filename": "shikai-pi_local.yaml", "entrypoint": "monitor_node"},
+                "shikais-mbp_local": {"filename": "shikais-mbp_local.yaml", "entrypoint": "node_runner"},
+            },
+            "broker_host_id": "shikai-pi_local",
+        },
+    }
+
+    synced = []
+    remote_commands = []
+
+    def fake_remote_native_process(host, command):
+        remote_commands.append((host["id"], command))
+        return FakeProcess()
+
+    monkeypatch.setattr(server, "GENERATED_DIR", tmp_path)
+    monkeypatch.setattr(server.lan_mode, "load_registry", _lan_registry_e5)
+    monkeypatch.setattr(server.lan_mode, "sync_project", lambda host: synced.append(host["id"]))
+    monkeypatch.setattr(server.lan_mode, "remote_native_process", fake_remote_native_process)
+    monkeypatch.setattr(server, "_port_listening", lambda host, port: False)
+    monkeypatch.setattr(server.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(server, "_read_native_logs", lambda name, proc: None)
+    monkeypatch.setattr(server, "_ensure_lan_pull_thread", lambda: None)
+    monkeypatch.setattr(server, "current_mode", lambda: "lan")
+    monkeypatch.setattr(server.STATE, "lan_deployed", {})
+    monkeypatch.setattr(server.STATE, "lan_log_procs", {})
+    monkeypatch.setattr(server.STATE, "lan_broker", None)
+    monkeypatch.setattr(server.STATE, "native_procs", {})
+    monkeypatch.setattr(server.STATE, "generated", generated)
+
+    result = server._start_lan_run(generated, [], None)
+
+    # Broker first (on the Pi), then the runner (Mac), then the monitor (Pi).
+    assert [host_id for host_id, _ in remote_commands] == [
+        "shikai-pi_local", "shikais-mbp_local", "shikai-pi_local",
+    ]
+    assert remote_commands[0][1] == "exec mosquitto -c generated/showcase/mosquitto_native.conf"
+    mac_command = remote_commands[1][1]
+    assert "monitor/node_runner.py -c generated/showcase/shikais-mbp_local.yaml" in mac_command
+    assert "/opt/homebrew/bin/python3.12" in mac_command
+    assert "CONVERTER_IO_LOG=DEBUG" in mac_command
+    pi_command = remote_commands[2][1]
+    assert "monitor/monitor_node.py -c generated/showcase/shikai-pi_local.yaml" in pi_command
+    assert ". /opt/ros/kilted/setup.bash" in pi_command
+    # The broker conf was written locally so rsync ships it to the Pi.
+    assert (tmp_path / "mosquitto_native.conf").read_text(encoding="utf-8") == (
+        "listener 1884 0.0.0.0\nallow_anonymous true\n"
+    )
+    assert synced == ["shikai-pi_local", "shikais-mbp_local"]
+    assert result["running"] is True
+    assert server.STATE.lan_broker["host_id"] == "shikai-pi_local"
+    assert set(server.STATE.lan_deployed) == {"shikai-pi_local", "shikais-mbp_local"}

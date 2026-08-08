@@ -55,7 +55,7 @@
         },
         {
           "id": "separation_mac", "kind": "converter", "converter": "dsl_converter",
-          "class_path": "custom.separation:SeparationDistanceConverter", "input_from": ["r1_amcl_pose", "r2_amcl_pose"], "output_to": "separation_mac_record",
+          "class_path": "custom.separation_converter:SeparationDistanceConverter", "input_from": ["r1_amcl_pose", "r2_amcl_pose"], "output_to": "separation_mac_record",
           "robot_a": "/robot1", "robot_b": "/robot2", "topic_suffix": "/amcl_pose", "property_id": "fleet_separation"
         },
         {
@@ -69,7 +69,7 @@
           "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_r2_{session_id}.jsonl"}]
         },
         {
-          "id": "separation_check_mac", "kind": "verdict_service", "class_path": "custom.separation:SeparationDistanceVerdict", "input_from": ["separation_mac_record"],
+          "id": "separation_check_mac", "kind": "verdict_service", "class_path": "custom.separation_verdict:SeparationDistanceVerdict", "input_from": ["separation_mac_record"],
           "property_id": "fleet_separation", "min_distance": "@SEP_MIN@",
           "output_to": [
             {"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_separation_{session_id}.jsonl"},
@@ -93,7 +93,7 @@
         },
         {
           "id": "separation_ref", "kind": "converter", "converter": "dsl_converter",
-          "class_path": "custom.separation:SeparationDistanceConverter", "input_from": ["r1_amcl_pose", "r2_amcl_pose"], "output_to": "separation_ref_record",
+          "class_path": "custom.separation_converter:SeparationDistanceConverter", "input_from": ["r1_amcl_pose", "r2_amcl_pose"], "output_to": "separation_ref_record",
           "robot_a": "/robot1", "robot_b": "/robot2", "topic_suffix": "/amcl_pose", "property_id": "fleet_separation"
         },
         {
@@ -107,7 +107,7 @@
           "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_r2_{session_id}.jsonl"}]
         },
         {
-          "id": "separation_check_ref", "kind": "verdict_service", "class_path": "custom.separation:SeparationDistanceVerdict", "input_from": ["separation_ref_record"],
+          "id": "separation_check_ref", "kind": "verdict_service", "class_path": "custom.separation_verdict:SeparationDistanceVerdict", "input_from": ["separation_ref_record"],
           "property_id": "fleet_separation", "min_distance": "@SEP_MIN@",
           "output_to": [{"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_separation_{session_id}.jsonl"}]
         }

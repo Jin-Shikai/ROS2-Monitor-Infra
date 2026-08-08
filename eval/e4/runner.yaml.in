@@ -29,7 +29,7 @@ converters:
     params:
       speed_path: twist.linear.x
   - id: separation
-    type: custom.separation:SeparationDistanceConverter
+    type: custom.separation_converter:SeparationDistanceConverter
     params:
       robot_a: /robot1
       robot_b: /robot2
@@ -54,7 +54,7 @@ verdict_services:
       - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
         path: "verdicts_speed_r2_{session_id}.jsonl"
   - id: separation_check
-    type: custom.separation:SeparationDistanceVerdict
+    type: custom.separation_verdict:SeparationDistanceVerdict
     params:
       property_id: fleet_separation
       min_distance: @SEP_MIN@

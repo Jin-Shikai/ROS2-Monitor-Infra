@@ -12,6 +12,7 @@ Responsibilities:
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from typing import Any
@@ -185,6 +186,17 @@ class MonitorNode(Node):
 
 def main() -> int:
     import argparse
+
+    logging.basicConfig(
+        level=os.environ.get("MONITOR_NODE_LOG", "INFO"),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+    # Per-record converter I/O tracing, independent of the root level (the
+    # WebUI sets CONVERTER_IO_LOG=DEBUG so the dashboard can show each
+    # converter's consumed records and produced results).
+    logging.getLogger("converter_io").setLevel(
+        os.environ.get("CONVERTER_IO_LOG", "INFO")
+    )
 
     parser = argparse.ArgumentParser(description="ROS2 Monitor Node")
     parser.add_argument(

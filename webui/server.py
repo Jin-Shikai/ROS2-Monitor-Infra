@@ -4,7 +4,8 @@ The server wraps the existing runtime:
   * discover the ROS graph;
   * collect user-selected monitor sources and plugin kwargs;
   * generate deployment JSON + runtime YAML via monitor/config_gen.py;
-  * generate and run an all-in-one Docker Compose monitor for that YAML;
+  * run the generated runtimes natively — locally as host processes, and in
+    LAN mode on registered SSH hosts under live SSH sessions;
   * expose logs and verdict JSONL records to the static frontend.
 """
 
@@ -12,7 +13,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import queue
+import shlex
+import signal
+import socket
 import subprocess
 import sys
 import threading
@@ -31,7 +36,6 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 GENERATED_DIR = ROOT / "generated" / "showcase"
-GENERATED_COMPOSE = GENERATED_DIR / "docker-compose.yml"
 PLUGIN_MANIFEST_DIR = ROOT / "custom" / "manifests"
 
 sys.path.insert(0, str(ROOT))
@@ -97,7 +101,7 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
         "placement": {},
         "robot_command": (
             "source /opt/ros/kilted/setup.bash && "
-            "python3 /demo/common/topic_robot.py cmd-velocity-cycle "
+            "python3 demo/common/topic_robot.py cmd-velocity-cycle "
             "--ros-args -r __node:=speed_check_robot"
         ),
         "sources": [
@@ -124,9 +128,9 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
         "placement": {"converter": "converter_host", "verdict": "verdict_host"},
         "robot_command": (
             "source /opt/ros/kilted/setup.bash && "
-            "python3 /demo/common/topic_robot.py speed-limit-cycle "
+            "python3 demo/common/topic_robot.py speed-limit-cycle "
             "--ros-args -r __node:=robot1 -r __ns:=/robot1 & "
-            "python3 /demo/common/topic_robot.py speed-limit-cycle "
+            "python3 demo/common/topic_robot.py speed-limit-cycle "
             "--ros-args -r __node:=robot2 -r __ns:=/robot2"
         ),
         "sources": [
@@ -160,7 +164,7 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
         "placement": {},
         "robot_command": (
             "source /opt/ros/kilted/setup.bash && "
-            "python3 /demo/common/reset_robot.py "
+            "python3 demo/common/reset_robot.py "
             "--ros-args -r __node:=reset_pose_robot"
         ),
         "sources": [
@@ -181,37 +185,31 @@ PLUGIN_PRESETS: list[dict[str, Any]] = [
 
 
 @dataclass
-class RunState:
-    target_id: str
-    command: list[str]
-    compose_path: Path
+class RobotState:
+    """The ROS application, always a native host process group (GUI/DDS)."""
+
+    command: str
     started_at: float
     process: subprocess.Popen[str]
-
-
-@dataclass
-class RobotState:
-    container_id: str
-    container_name: str
-    dockerfile: Path
-    command: str
-    image_tag: str
-    started_at: float
-    log_process: subprocess.Popen[str] | None = None
 
 
 class ShowcaseState:
     def __init__(self) -> None:
         self.lock = threading.Lock()
-        self.run: RunState | None = None
         self.robot: RobotState | None = None
         self.logs: deque[dict[str, Any]] = deque(maxlen=3000)
         self.robot_logs: deque[dict[str, Any]] = deque(maxlen=1000)
         self.generated: dict[str, Any] | None = None
-        # LAN mode bookkeeping: host_id -> compose filename deployed there,
-        # plus the ssh log-streaming process per host.
+        # LAN mode bookkeeping: host_id -> config filename deployed there,
+        # plus the live SSH session running that host's runtime, plus the
+        # remotely started broker (when the links point at a LAN host).
         self.lan_deployed: dict[str, str] = {}
         self.lan_log_procs: dict[str, subprocess.Popen[str]] = {}
+        self.lan_broker: dict[str, Any] | None = None
+        # Native mode bookkeeping: service name -> host process running a
+        # generated runtime (or the mosquitto broker) directly on this machine.
+        self.native_procs: dict[str, subprocess.Popen[str]] = {}
+        self.native_started_at: float | None = None
         # Ids grow monotonically for the server's lifetime, even across run
         # restarts and log clears: SSE clients drop rows with ids they have
         # already seen, so reused ids would make new logs invisible to them.
@@ -220,7 +218,7 @@ class ShowcaseState:
 
     def append_log(self, line: str) -> dict[str, Any]:
         with self.lock:
-            row = {"id": self._next_log_id, "ts": time.time(), "line": line.rstrip("\n")}
+            row = {"id": self._next_log_id, "ts": time.time(), "line": line.rstrip("\r\n")}
             self._next_log_id += 1
             self.logs.append(row)
             return row
@@ -273,30 +271,6 @@ def set_mode(payload: dict[str, Any]) -> dict[str, Any]:
     result = mode_payload()
     EVENTS.publish("mode", result)
     return result
-ROBOT_CONTAINER_NAME = "ros2_monitor_ipc_robot"
-ROBOT_IMAGE_TAG = "ros2-monitor-infra-dashboard-robot"
-DEFAULT_ROBOT_COMMAND = (
-    "source /opt/ros/kilted/setup.bash && "
-    "python3 /demo/common/topic_robot.py cmd-velocity-cycle "
-    "--ros-args -r __node:=showcase_robot"
-)
-
-
-def _resolve_workspace_path(value: str | None, default: str) -> Path:
-    raw = (value or default).strip()
-    path = Path(raw)
-    if not path.is_absolute():
-        path = ROOT / path
-    path = path.resolve()
-    try:
-        path.relative_to(ROOT)
-    except ValueError as ex:
-        raise ValueError("Dockerfile must be inside the project workspace.") from ex
-    if not path.exists() or not path.is_file():
-        raise ValueError(f"Dockerfile not found: {path}")
-    return path
-
-
 def _resolve_editable_path(value: str | None) -> Path:
     raw = str(value or "").strip()
     if not raw:
@@ -410,68 +384,17 @@ def plugin_payload() -> dict[str, Any]:
     return {"plugins": plugins, "manifests": list(manifests.values())}
 
 
-def _run_completed(command: list[str], timeout: int = 120) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=timeout,
-        check=False,
-    )
-
-
-def _robot_container_running(container_id: str | None) -> bool:
-    if not container_id:
-        return False
-    completed = _run_completed(
-        ["docker", "inspect", "-f", "{{.State.Running}}", container_id],
-        timeout=10,
-    )
-    return completed.returncode == 0 and completed.stdout.strip() == "true"
-
-
-def _container_id_by_name(container_name: str) -> str | None:
-    completed = _run_completed(
-        ["docker", "ps", "-aq", "--filter", f"name=^/{container_name}$"], timeout=10
-    )
-    if completed.returncode != 0:
-        return None
-    return completed.stdout.strip() or None
-
-
 def current_robot_payload() -> dict[str, Any]:
     with STATE.lock:
         robot = STATE.robot
-    container_id = robot.container_id if robot else _container_id_by_name(ROBOT_CONTAINER_NAME)
-    if not container_id:
+    if robot is None:
         return {"running": False}
-    running = _robot_container_running(container_id)
     return {
-        "running": running,
-        "container_id": container_id,
-        "container_name": robot.container_name if robot else ROBOT_CONTAINER_NAME,
-        "dockerfile": str(robot.dockerfile) if robot else "",
-        "command": robot.command if robot else "",
-        "image_tag": robot.image_tag if robot else ROBOT_IMAGE_TAG,
-        "started_at": robot.started_at if robot else None,
+        "running": robot.process.poll() is None,
+        "pid": robot.process.pid,
+        "command": robot.command,
+        "started_at": robot.started_at,
     }
-
-
-def _stop_robot_log_stream() -> None:
-    with STATE.lock:
-        robot = STATE.robot
-        process = robot.log_process if robot else None
-        if robot:
-            robot.log_process = None
-    if process is None or process.poll() is not None:
-        return
-    process.terminate()
-    try:
-        process.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        process.kill()
 
 
 def _read_robot_log_stream(process: subprocess.Popen[str]) -> None:
@@ -482,98 +405,87 @@ def _read_robot_log_stream(process: subprocess.Popen[str]) -> None:
     EVENTS.publish("robot_state", current_robot_payload())
 
 
-def _start_robot_log_stream(robot: RobotState) -> None:
-    _stop_robot_log_stream()
-    STATE.clear_robot_logs()
+def _restore_signal_defaults() -> None:
+    """Reset inherited signal dispositions in spawned runtimes.
+
+    A server started as a background job inherits SIGINT=SIG_IGN and passes
+    it on; a child bash could then never trap INT and every UI stop would
+    fall through to SIGTERM/SIGKILL instead of a clean shutdown.
+    """
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
+        signal.signal(sig, signal.SIG_DFL)
+
+
+def start_robot(payload: dict[str, Any]) -> dict[str, Any]:
+    """Run the ROS application as a host process group.
+
+    The application always runs natively on this machine: GUI applications
+    (Gazebo/RViz) need the real display, and under Docker Desktop a container
+    cannot join the host DDS graph anyway.
+    """
+    command_text = str(payload.get("command") or "").strip()
+    if not command_text:
+        raise ValueError("Start command is required.")
+
+    with STATE.lock:
+        robot = STATE.robot
+    if robot is not None and robot.process.poll() is None:
+        raise RuntimeError("Robot application is already running.")
+
     process = subprocess.Popen(
-        ["docker", "logs", "-f", "--tail", "120", robot.container_id],
+        ["/bin/bash", "-lc", command_text],
         cwd=str(ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        start_new_session=True,
+        preexec_fn=_restore_signal_defaults,
     )
+    STATE.clear_robot_logs()
     with STATE.lock:
-        if STATE.robot and STATE.robot.container_id == robot.container_id:
-            STATE.robot.log_process = process
+        STATE.robot = RobotState(
+            command=command_text, started_at=time.time(), process=process
+        )
     threading.Thread(target=_read_robot_log_stream, args=(process,), daemon=True).start()
-
-
-def start_robot(payload: dict[str, Any]) -> dict[str, Any]:
-    with STATE.lock:
-        state_container_id = STATE.robot.container_id if STATE.robot else None
-        existing_container_id = state_container_id or _container_id_by_name(ROBOT_CONTAINER_NAME)
-        if _robot_container_running(existing_container_id):
-            raise RuntimeError("Robot container is already running.")
-
-    dockerfile = _resolve_workspace_path(payload.get("dockerfile"), "Dockerfile")
-    command_text = str(payload.get("command") or DEFAULT_ROBOT_COMMAND).strip()
-    if not command_text:
-        raise ValueError("Start command is required.")
-
-    build = _run_completed(
-        ["docker", "build", "-f", str(dockerfile), "-t", ROBOT_IMAGE_TAG, str(ROOT)]
-    )
-    if build.returncode != 0:
-        raise RuntimeError(build.stdout.strip() or "Docker build failed.")
-
-    _run_completed(["docker", "stop", ROBOT_CONTAINER_NAME], timeout=20)
-    _run_completed(["docker", "rm", ROBOT_CONTAINER_NAME], timeout=20)
-    run_command = [
-        "docker",
-        "run",
-        "--rm",
-        "-d",
-        "--name",
-        ROBOT_CONTAINER_NAME,
-        "--network",
-        "host",
-        "--ipc",
-        "host",
-        "-e",
-        "ROS_DOMAIN_ID=0",
-        "-v",
-        f"{ROOT / 'demo' / 'common'}:/demo/common:ro",
-        ROBOT_IMAGE_TAG,
-        "/bin/bash",
-        "-lc",
-        command_text,
-    ]
-    started = _run_completed(run_command, timeout=60)
-    if started.returncode != 0:
-        raise RuntimeError(started.stdout.strip() or "Docker run failed.")
-
-    robot = RobotState(
-        container_id=started.stdout.strip(),
-        container_name=ROBOT_CONTAINER_NAME,
-        dockerfile=dockerfile,
-        command=command_text,
-        image_tag=ROBOT_IMAGE_TAG,
-        started_at=time.time(),
-    )
-    _stop_robot_log_stream()
-    with STATE.lock:
-        STATE.robot = robot
-    _start_robot_log_stream(robot)
     result = current_robot_payload()
     EVENTS.publish("robot_state", result)
     return result
 
 
 def stop_robot() -> dict[str, Any]:
+    """Signal the whole application process group and escalate if it lingers."""
     with STATE.lock:
         robot = STATE.robot
-    container_id = robot.container_id if robot else _container_id_by_name(ROBOT_CONTAINER_NAME)
-    if not container_id:
-        return {"running": False, "message": "No robot container is active."}
-    _stop_robot_log_stream()
-    completed = _run_completed(["docker", "stop", container_id], timeout=30)
+    if robot is None:
+        return {"running": False, "message": "No robot application is active."}
+    process = robot.process
+    message = "Robot application was not running."
+    if process.poll() is None:
+        group = process.pid
+        for sig, grace in ((signal.SIGINT, 20.0), (signal.SIGTERM, 8.0)):
+            try:
+                os.killpg(group, sig)
+            except ProcessLookupError:
+                break
+            try:
+                process.wait(timeout=grace)
+                break
+            except subprocess.TimeoutExpired:
+                continue
+        if process.poll() is None:
+            try:
+                os.killpg(group, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                pass
+        message = "Stopped robot application."
     with STATE.lock:
         STATE.robot = None
-    result = {
-        "running": False,
-        "message": completed.stdout.strip() or f"Stopped {ROBOT_CONTAINER_NAME}",
-    }
+    result = {"running": False, "message": message}
     EVENTS.publish("robot_state", result)
     return result
 
@@ -727,10 +639,19 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
     lan_registry = lan_mode.load_registry() if mode == "lan" else {}
     broker_raw = dict(payload.get("broker") or {})
     broker_host = str(broker_raw.get("host") or "127.0.0.1").strip() or "127.0.0.1"
-    if mode == "lan" and broker_host in {"127.0.0.1", "localhost"}:
-        # Remote runtimes cannot reach a loopback broker; use this machine's
-        # LAN address instead (mosquitto binds 0.0.0.0 with host networking).
-        broker_host = lan_mode.lan_ip()
+    if mode == "lan":
+        broker_entry = lan_registry.get(broker_host)
+        if broker_entry is not None:
+            # A registered host id names where the broker runs. The links
+            # carry its numeric LAN address when resolvable: macOS gates
+            # mDNS per binary, so a .local name would not resolve for an
+            # unapproved remote python.
+            hostname = str(broker_entry.get("address", "")).split("@", 1)[-1]
+            broker_host = _resolve_lan_address(hostname)
+        elif broker_host in {"127.0.0.1", "localhost"}:
+            # Remote runtimes cannot reach a loopback broker; use this
+            # machine's LAN address instead.
+            broker_host = lan_mode.lan_ip()
     broker_port = int(broker_raw.get("port") or 1883)
     transport = {"kind": "mqtt", "broker": broker_host, "port": broker_port, "qos": 1}
 
@@ -967,17 +888,18 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
                 )
             if entry.get("status") != "ready":
                 raise ValueError(
-                    f"LAN mode: host '{host_id}' has no working Docker "
-                    f"(status: {entry.get('status')})."
+                    f"LAN mode: host '{host_id}' has no usable python3 "
+                    f"(status: {entry.get('status')}); re-add the host."
                 )
             if entry.get("os") == "darwin" and any(
                 runtime.get("kind") in {"ros2", "monitor"} for runtime in runtimes
             ):
                 raise ValueError(
-                    f"LAN mode: host '{host_id}' runs Docker Desktop on macOS, which "
-                    "cannot join the LAN ROS graph (no real host networking). Place "
-                    "ROS sources and monitor runtimes on a Linux host; macOS hosts "
-                    "can run converters and verdict services (MQTT only)."
+                    f"LAN mode: host '{host_id}' is a macOS machine without "
+                    "ROS 2, so it cannot join the LAN ROS graph. Place ROS "
+                    "sources and monitor runtimes on a Linux host; macOS "
+                    "hosts can run converters and verdict services (MQTT "
+                    "only)."
                 )
 
     return {
@@ -990,163 +912,76 @@ def build_generation_request(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _compose_command(config: dict[str, Any]) -> str:
-    config_path = f"/generated/{config['filename']}"
-    if config["entrypoint"] == "monitor_node":
-        return (
-            "set -e; "
-            "source /opt/ros/kilted/setup.bash; "
-            f"python3 /monitor/monitor_node.py --config {config_path}"
-        )
-    return f"set -e; python3 /monitor/node_runner.py --config {config_path}"
+def _resolve_lan_address(hostname: str) -> str:
+    try:
+        return socket.gethostbyname(hostname)
+    except OSError:
+        return hostname
 
 
-def _mosquitto_service(lan_port: int | None = None) -> dict[str, Any]:
-    mosquitto_conf = GENERATED_DIR / "mosquitto.conf"
-    mosquitto_conf.write_text(
-        "listener 1883 0.0.0.0\nallow_anonymous true\n",
-        encoding="utf-8",
-    )
-    service: dict[str, Any] = {
-        "image": "eclipse-mosquitto:2",
-        "volumes": ["./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro"],
-    }
-    if lan_port is None:
-        service["network_mode"] = "host"
-    else:
-        # LAN mode must expose the broker on the real host interface. With
-        # Docker Desktop, host networking stays inside its VM (loopback
-        # forwarding only), while published ports are forwarded on 0.0.0.0,
-        # so remote hosts can reach them.
-        service["ports"] = [f"{lan_port}:1883"]
-    return service
-
-
-def _broker_port_from_links(request_data: dict[str, Any]) -> int:
+def _broker_endpoint(request_data: dict[str, Any]) -> tuple[str, int]:
     for link in list(request_data.get("links") or []):
         transport = dict(link.get("transport") or {})
-        if transport.get("port"):
-            return int(transport["port"])
-    return 1883
+        if transport.get("broker") or transport.get("port"):
+            return (
+                str(transport.get("broker") or "127.0.0.1"),
+                int(transport.get("port") or 1883),
+            )
+    return "127.0.0.1", 1883
 
 
-def _generated_service(
-    config: dict[str, Any],
-    *,
-    host_network: bool = True,
-    depends_on_broker: bool = False,
-) -> dict[str, Any]:
-    service: dict[str, Any] = {
-        "build": {"context": "../..", "dockerfile": "Dockerfile"},
-        "environment": [
-            "ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}",
-            "ROS_DISTRO=kilted",
-            "PYTHONUNBUFFERED=1",
-            f"MONITOR_CONFIG=/generated/{config['filename']}",
-        ],
-        "volumes": [
-            "../../monitor:/monitor",
-            "../../custom:/monitor/custom",
-            ".:/generated:ro",
-            "../../output/showcase:/output/showcase",
-        ],
-        "command": ["/bin/bash", "-lc", _compose_command(config)],
-        "stdin_open": True,
-        "tty": True,
-    }
-    if host_network:
-        service["network_mode"] = "host"
-        service["ipc"] = "host"
-    if depends_on_broker:
-        service["depends_on"] = ["mosquitto"]
-    return service
+def _broker_is_local(broker_host: str) -> bool:
+    return broker_host in {"127.0.0.1", "localhost", lan_mode.lan_ip()}
 
 
-def _write_generated_compose(
-    configs: list[dict[str, Any]], request_data: dict[str, Any]
-) -> None:
-    needs_broker = bool(request_data.get("links"))
-    services: dict[str, Any] = {}
-    if needs_broker:
-        services["mosquitto"] = _mosquitto_service()
-    for config in configs:
-        service_name = f"generated_{safe_slug(config['host_id'])}"
-        services[service_name] = _generated_service(
-            config, depends_on_broker=needs_broker
-        )
-    compose = {"services": services}
-    GENERATED_COMPOSE.write_text(
-        yaml.safe_dump(compose, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
-
-
-def _lan_compose_filename(host_id: str) -> str:
-    return f"docker-compose.{safe_slug(host_id)}.yml"
-
-
-def _write_generated_compose_lan(
+def _lan_placement(
     configs: list[dict[str, Any]], request_data: dict[str, Any]
 ) -> dict[str, Any]:
-    """Write one compose file per placement target.
+    """Decide where every generated runtime (and the broker) runs.
 
-    Services for the `local` pseudo-host (plus the mosquitto broker when any
-    cross-host link exists) go into the usual docker-compose.yml and run on
-    this machine. Every registered SSH host gets its own single-service
-    docker-compose.<host>.yml, which is executed remotely inside that host's
-    project copy. macOS hosts lose host networking/IPC (Docker Desktop cannot
-    provide it); their runtimes only need outbound MQTT, which bridge
-    networking covers.
+    Registered SSH hosts run their runtime natively there over a live SSH
+    session; any other placement target runs natively on this machine. The
+    broker runs on the registered host whose LAN hostname the links point
+    at, otherwise locally.
     """
     registry = lan_mode.load_registry()
-    needs_broker = bool(request_data.get("links"))
-    local_services: dict[str, Any] = {}
-    if needs_broker:
-        local_services["mosquitto"] = _mosquitto_service(
-            lan_port=_broker_port_from_links(request_data)
-        )
-
-    remote_files: dict[str, str] = {}
+    local_services: list[str] = []
+    remote: dict[str, dict[str, str]] = {}
     for config in configs:
         host_id = config["host_id"]
-        service_name = f"generated_{safe_slug(host_id)}"
-        entry = registry.get(host_id)
-        if entry is None:
-            local_services[service_name] = _generated_service(
-                config, depends_on_broker=needs_broker
-            )
-            continue
-        remote_compose = {
-            "services": {
-                service_name: _generated_service(
-                    config, host_network=entry.get("os") != "darwin"
-                )
+        if host_id in registry:
+            remote[host_id] = {
+                "filename": config["filename"],
+                "entrypoint": config["entrypoint"],
             }
-        }
-        filename = _lan_compose_filename(host_id)
-        (GENERATED_DIR / filename).write_text(
-            yaml.safe_dump(remote_compose, sort_keys=False, allow_unicode=True),
-            encoding="utf-8",
-        )
-        remote_files[host_id] = filename
+        else:
+            local_services.append(_native_service_name(host_id))
+    broker_host, _ = _broker_endpoint(request_data)
 
-    if local_services:
-        GENERATED_COMPOSE.write_text(
-            yaml.safe_dump(
-                {"services": local_services}, sort_keys=False, allow_unicode=True
-            ),
-            encoding="utf-8",
-        )
-    elif GENERATED_COMPOSE.exists():
-        GENERATED_COMPOSE.unlink()
+    def is_broker_host(row: dict[str, Any]) -> bool:
+        hostname = str(row.get("address", "")).split("@", 1)[-1]
+        return broker_host in {hostname, _resolve_lan_address(hostname)}
+
+    broker_host_id = next(
+        (hid for hid, row in registry.items() if is_broker_host(row)), None
+    )
+    if request_data.get("links") and broker_host_id is None:
+        local_services.append("mosquitto")
     return {
         "mode": "lan",
         "local_services": sorted(local_services),
-        "remote_files": remote_files,
+        "remote": remote,
+        "broker_host_id": broker_host_id,
     }
 
 
 def generate_configs(payload: dict[str, Any]) -> dict[str, Any]:
+    # Every generated runtime runs natively: as a host process here, or as
+    # a host process on a registered LAN machine over SSH. The ROS
+    # application and DDS need real host networking, and the LAN machines
+    # run the monitor stack directly (thesis E5 deployment).
+    lan = current_mode() == "lan"
+    lan_registry = lan_mode.load_registry() if lan else {}
     request_data = build_generation_request(payload)
     request = GenerationRequest.from_dict(request_data)
     generated = project(request)
@@ -1159,7 +994,13 @@ def generate_configs(payload: dict[str, Any]) -> dict[str, Any]:
     for gen in generated.values():
         config = dict(gen.config)
         monitor = dict(config.get("monitor") or {})
-        monitor["output_dir"] = f"/output/showcase/{gen.host_id}"
+        if lan and gen.host_id in lan_registry:
+            # Remote runtimes start with cwd = remote project root.
+            monitor["output_dir"] = f"output/showcase/{gen.host_id}"
+        else:
+            output_dir = ROOT / "output" / "showcase" / gen.host_id
+            output_dir.mkdir(parents=True, exist_ok=True)
+            monitor["output_dir"] = str(output_dir)
         config["monitor"] = monitor
         path = GENERATED_DIR / gen.filename
         path.write_text(
@@ -1177,17 +1018,13 @@ def generate_configs(payload: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
-    lan_info: dict[str, Any] | None = None
-    if current_mode() == "lan":
-        lan_info = _write_generated_compose_lan(configs, request_data)
-    else:
-        _write_generated_compose(configs, request_data)
+    lan_info = _lan_placement(configs, request_data) if lan else None
     payload_out = {
         "request": request_data,
         "request_path": str(request_path),
-        "compose_path": str(GENERATED_COMPOSE),
         "configs": configs,
         "lan": lan_info,
+        "native": True,
     }
     with STATE.lock:
         STATE.generated = payload_out
@@ -1280,45 +1117,35 @@ def discover_graph() -> dict[str, Any]:
 
 def current_run_payload() -> dict[str, Any]:
     with STATE.lock:
-        run = STATE.run
         generated = STATE.generated
-        if run is None:
-            return {"running": False, "generated": generated is not None}
-        poll = run.process.poll()
-        if poll is not None:
-            return {
-                "running": False,
-                "generated": generated is not None,
-                "target_id": run.target_id,
-                "exit_code": poll,
-                "started_at": run.started_at,
-            }
-        return {
-            "running": True,
-            "generated": generated is not None,
-            "target_id": run.target_id,
-            "started_at": run.started_at,
-            "command": run.command,
-        }
-
-
-def _read_process_logs(process: subprocess.Popen[str]) -> None:
-    assert process.stdout is not None
-    for line in process.stdout:
-        EVENTS.publish("log", STATE.append_log(line))
-    EVENTS.publish("run_state", current_run_payload())
-
-
-def _target_id_for_services(target_services: list[str]) -> str:
-    return "generated_stack" if not target_services else ",".join(sorted(set(target_services)))
-
-
-def _merge_target_ids(current: str, target_services: list[str]) -> str:
-    if current == "generated_stack" or not target_services:
-        return "generated_stack"
-    services = {item for item in current.split(",") if item}
-    services.update(target_services)
-    return ",".join(sorted(services))
+        native_procs = dict(STATE.native_procs)
+        native_started_at = STATE.native_started_at
+        lan_procs = dict(STATE.lan_log_procs)
+        lan_broker = dict(STATE.lan_broker) if STATE.lan_broker else None
+    services = {
+        name: "running" if proc.poll() is None else "exited"
+        for name, proc in sorted(native_procs.items())
+    }
+    for host_id, proc in sorted(lan_procs.items()):
+        services[_native_service_name(host_id)] = (
+            "running" if proc.poll() is None else "exited"
+        )
+    if lan_broker is not None:
+        proc = lan_broker.get("process")
+        services.setdefault(
+            "mosquitto",
+            "running" if proc is None or proc.poll() is None else "exited",
+        )
+    if not services:
+        return {"running": False, "generated": generated is not None}
+    return {
+        "running": any(state == "running" for state in services.values()),
+        "native": True,
+        "generated": generated is not None,
+        "target_id": ",".join(services),
+        "services": services,
+        "started_at": native_started_at,
+    }
 
 
 def _stop_log_process(process: subprocess.Popen[str]) -> None:
@@ -1329,55 +1156,6 @@ def _stop_log_process(process: subprocess.Popen[str]) -> None:
         process.wait(timeout=5)
     except subprocess.TimeoutExpired:
         process.kill()
-
-
-def _start_compose_log_stream(target_id: str, command: list[str]) -> RunState:
-    log_command = ["docker", "compose", "-f", str(GENERATED_COMPOSE), "logs", "-f", "--tail", "120"]
-    process = subprocess.Popen(
-        log_command,
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-    )
-    run = RunState(
-        target_id=target_id,
-        command=command,
-        compose_path=GENERATED_COMPOSE,
-        started_at=time.time(),
-        process=process,
-    )
-    threading.Thread(target=_read_process_logs, args=(process,), daemon=True).start()
-    return run
-
-
-def _run_local_compose_up(target_services: list[str]) -> None:
-    command = [
-        "docker", "compose", "-f", str(GENERATED_COMPOSE),
-        "up", "--build", "-d", "--remove-orphans", *target_services,
-    ]
-    completed = subprocess.run(
-        command,
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=120,
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(completed.stdout.strip() or "Docker Compose start failed.")
-
-    with STATE.lock:
-        previous = STATE.run
-        target_id = _target_id_for_services(target_services)
-        if previous is None or previous.process.poll() is not None:
-            STATE.logs.clear()
-        elif previous.compose_path == GENERATED_COMPOSE:
-            target_id = _merge_target_ids(previous.target_id, target_services)
-            _stop_log_process(previous.process)
-        STATE.run = _start_compose_log_stream(target_id, command)
 
 
 def _lan_log(line: str) -> None:
@@ -1413,61 +1191,144 @@ def _ensure_lan_pull_thread() -> None:
     threading.Thread(target=loop, daemon=True).start()
 
 
-def _start_lan_run(
+def _remote_runtime_command(host: dict[str, Any], info: dict[str, str]) -> str:
+    """Shell command that runs one generated runtime natively on a LAN host.
+
+    Sourcing ROS (when present) must come before extending PYTHONPATH:
+    setup.bash resets it and would drop the project paths otherwise.
+    """
+    script = {
+        "monitor_node": "monitor/monitor_node.py",
+        "node_runner": "monitor/node_runner.py",
+    }[info["entrypoint"]]
+    python = host.get("python") or "python3"
+    return (
+        "mkdir -p output/showcase; "
+        "[ -f /opt/ros/kilted/setup.bash ] && . /opt/ros/kilted/setup.bash; "
+        'export PYTHONPATH="$PWD:$PWD/monitor:$PYTHONPATH"; '
+        "export PYTHONUNBUFFERED=1 CONVERTER_IO_LOG=DEBUG; "
+        f"exec {shlex.quote(python)} {script} -c generated/showcase/{info['filename']}"
+    )
+
+
+def _ensure_lan_broker(
     lan_info: dict[str, Any],
+    request_data: dict[str, Any],
+    synced: set[str],
+) -> list[str]:
+    """Start (or reuse) mosquitto on the registered LAN host the links point
+    at. A locally placed broker is _start_native_run's job instead."""
+    broker_host_id = lan_info.get("broker_host_id")
+    if not broker_host_id or not request_data.get("links"):
+        return []
+    broker_host, broker_port = _broker_endpoint(request_data)
+    with STATE.lock:
+        existing = STATE.lan_broker
+    proc = existing.get("process") if existing else None
+    if proc is not None and proc.poll() is None:
+        message = "mosquitto: already running"
+        _lan_log(message)
+        return [message]
+    if _port_listening(broker_host, broker_port):
+        message = (
+            "mosquitto: reusing the broker already listening on "
+            f"{broker_host}:{broker_port}"
+        )
+        _lan_log(message)
+        return [message]
+    registry = lan_mode.load_registry()
+    host = registry.get(broker_host_id)
+    if host is None:
+        raise RuntimeError(
+            f"Broker host '{broker_host_id}' is no longer registered."
+        )
+    conf_path = GENERATED_DIR / "mosquitto_native.conf"
+    conf_path.write_text(
+        f"listener {broker_port} 0.0.0.0\nallow_anonymous true\n",
+        encoding="utf-8",
+    )
+    _lan_log(f"[lan] {broker_host_id}: syncing project to {host['address']}...")
+    lan_mode.sync_project(host)
+    synced.add(broker_host_id)
+    proc = lan_mode.remote_native_process(
+        host, "exec mosquitto -c generated/showcase/mosquitto_native.conf"
+    )
+    threading.Thread(
+        target=_read_native_logs, args=("mosquitto", proc), daemon=True
+    ).start()
+    with STATE.lock:
+        STATE.lan_broker = {"host_id": broker_host_id, "process": proc}
+    for _ in range(20):
+        if _port_listening(broker_host, broker_port):
+            break
+        time.sleep(0.5)
+    message = f"mosquitto: started on {broker_host}:{broker_port}"
+    _lan_log(message)
+    return [message]
+
+
+def _start_lan_run(
+    generated: dict[str, Any],
     target_services: list[str],
     generated_payload: dict[str, Any] | None,
 ) -> dict[str, Any]:
+    """Native LAN start: broker first, then this machine's runtimes, then
+    remote runtimes over live SSH sessions (runners before monitors so no
+    early records are dropped)."""
+    lan_info = dict(generated.get("lan") or {})
+    request_data = dict(generated.get("request") or {})
     registry = lan_mode.load_registry()
-    local_services = list(lan_info.get("local_services") or [])
-    remote_files = dict(lan_info.get("remote_files") or {})
+    remote = dict(lan_info.get("remote") or {})
     messages: list[str] = []
+    synced: set[str] = set()
 
     if target_services:
         remote_targets = [
-            host_id for host_id in remote_files
-            if f"generated_{safe_slug(host_id)}" in target_services
+            host_id for host_id in remote
+            if _native_service_name(host_id) in target_services
         ]
-        local_targets = [name for name in target_services if name in local_services]
-        if (
-            "mosquitto" in local_services
-            and "mosquitto" not in local_targets
-            and (local_targets or remote_targets)
-        ):
-            local_targets.insert(0, "mosquitto")
     else:
-        remote_targets = list(remote_files)
-        local_targets = []
+        remote_targets = list(remote)
+    remote_targets.sort(
+        key=lambda hid: 0 if remote[hid]["entrypoint"] == "node_runner" else 1
+    )
 
-    if local_services and (not target_services or local_targets):
-        _run_local_compose_up(local_targets)
-        messages.append(
-            f"local: {', '.join(local_targets) if local_targets else 'all services'}"
-        )
+    messages.extend(_ensure_lan_broker(lan_info, request_data, synced))
+
+    local_result = _start_native_run(generated, target_services)
+    local_message = str(local_result.get("message") or "")
+    if local_message and "nothing to start" not in local_message:
+        messages.append(local_message.removeprefix("Native run: "))
 
     for host_id in remote_targets:
         host = registry.get(host_id)
         if host is None:
             raise RuntimeError(f"LAN host '{host_id}' is no longer registered.")
-        filename = remote_files[host_id]
-        _lan_log(f"[lan] {host_id}: syncing project to {host['address']}...")
-        lan_mode.sync_project(host)
-        _lan_log(
-            f"[lan] {host_id}: docker compose up ({filename}); "
-            "the first start builds the image and can take several minutes..."
+        with STATE.lock:
+            existing = STATE.lan_log_procs.get(host_id)
+        if existing is not None and existing.poll() is None:
+            message = f"{host_id}: already running"
+            messages.append(message)
+            _lan_log(message)
+            continue
+        if host_id not in synced:
+            _lan_log(f"[lan] {host_id}: syncing project to {host['address']}...")
+            lan_mode.sync_project(host)
+            synced.add(host_id)
+        info = remote[host_id]
+        proc = lan_mode.remote_native_process(
+            host, _remote_runtime_command(host, info)
         )
-        lan_mode.remote_compose_up(host, filename)
+        name = _native_service_name(host_id)
+        threading.Thread(
+            target=_read_native_logs, args=(name, proc), daemon=True
+        ).start()
         with STATE.lock:
-            old_proc = STATE.lan_log_procs.pop(host_id, None)
-        if old_proc is not None:
-            _stop_log_process(old_proc)
-        proc = lan_mode.remote_logs_process(host, filename)
-        threading.Thread(target=_read_process_logs, args=(proc,), daemon=True).start()
-        with STATE.lock:
-            STATE.lan_deployed[host_id] = filename
+            STATE.lan_deployed[host_id] = info["filename"]
             STATE.lan_log_procs[host_id] = proc
-        _lan_log(f"[lan] {host_id}: started.")
-        messages.append(f"{host_id}: started")
+        message = f"{host_id}: started {info['entrypoint']} on {host['address']}"
+        messages.append(message)
+        _lan_log(f"[lan] {message}")
 
     with STATE.lock:
         has_deployed = bool(STATE.lan_deployed)
@@ -1475,10 +1336,190 @@ def _start_lan_run(
         _ensure_lan_pull_thread()
 
     result = current_run_payload()
-    result["message"] = "Started " + ("; ".join(messages) if messages else "nothing (no matching services).")
+    result["message"] = "Started " + (
+        "; ".join(messages) if messages else "nothing (no matching services)."
+    )
     result["lan"] = {"deployed": dict(STATE.lan_deployed)}
     if generated_payload is not None:
         result["generated_files"] = generated_payload
+    EVENTS.publish("run_state", result)
+    return result
+
+
+def _port_listening(host: str, port: int) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=1.0):
+            return True
+    except OSError:
+        return False
+
+
+def _native_service_name(host_id: str) -> str:
+    return f"generated_{safe_slug(host_id)}"
+
+
+def _read_native_logs(name: str, process: subprocess.Popen[str]) -> None:
+    assert process.stdout is not None
+    for line in process.stdout:
+        EVENTS.publish("log", STATE.append_log(f"{name}  | {line}"))
+    code = process.wait()
+    EVENTS.publish("log", STATE.append_log(f"{name}  | exited with code {code}"))
+    EVENTS.publish("run_state", current_run_payload())
+
+
+def _spawn_native_service(
+    name: str, command: list[str], extra_env: dict[str, str] | None = None
+) -> None:
+    process = subprocess.Popen(
+        command,
+        cwd=str(ROOT),
+        env={**os.environ, **extra_env} if extra_env else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+        start_new_session=True,
+        preexec_fn=_restore_signal_defaults,
+    )
+    with STATE.lock:
+        STATE.native_procs[name] = process
+        if STATE.native_started_at is None:
+            STATE.native_started_at = time.time()
+    threading.Thread(
+        target=_read_native_logs, args=(name, process), daemon=True
+    ).start()
+
+
+def _start_native_run(
+    generated: dict[str, Any], target_services: list[str]
+) -> dict[str, Any]:
+    """Run the generated runtimes as host processes instead of containers.
+
+    Required when the ROS application runs natively on this machine: with
+    Docker Desktop, containers live in a VM and cannot join the host DDS
+    graph. Service names mirror the compose services so the frontend's
+    per-block start/stop keeps working.
+    """
+    request_data = dict(generated.get("request") or {})
+    configs = list(generated.get("configs") or [])
+    # LAN placement: registered hosts run remotely (over SSH); this
+    # function only owns the local remainder and a locally placed broker.
+    remote_hosts = set(((generated.get("lan") or {}).get("remote") or {}))
+    broker_host, broker_port = _broker_endpoint(request_data)
+    targets = set(target_services)
+    messages: list[str] = []
+
+    # Lifecycle events also go to the live log stream: services without an
+    # owned process (e.g. a reused external broker) would otherwise show no
+    # output at all when selected.
+    def note(message: str) -> None:
+        messages.append(message)
+        _lan_log(message)
+
+    with STATE.lock:
+        stale = [
+            name for name, proc in STATE.native_procs.items()
+            if proc.poll() is not None
+        ]
+        for name in stale:
+            STATE.native_procs.pop(name, None)
+        running = set(STATE.native_procs)
+
+    if (
+        bool(request_data.get("links"))
+        and _broker_is_local(broker_host)
+        and (not targets or "mosquitto" in targets)
+    ):
+        if "mosquitto" in running:
+            note("mosquitto: already running")
+        elif _port_listening("127.0.0.1", broker_port):
+            note(
+                "mosquitto: reusing the external broker already listening on "
+                f"127.0.0.1:{broker_port} (its logs are not captured here)"
+            )
+        else:
+            conf_path = GENERATED_DIR / "mosquitto_native.conf"
+            conf_path.write_text(
+                f"listener {broker_port} 0.0.0.0\nallow_anonymous true\n",
+                encoding="utf-8",
+            )
+            _spawn_native_service("mosquitto", ["mosquitto", "-c", str(conf_path)])
+            note(f"mosquitto: started on {broker_port}")
+
+    entrypoint_scripts = {
+        "monitor_node": "monitor/monitor_node.py",
+        "node_runner": "monitor/node_runner.py",
+    }
+    for config in configs:
+        if config["host_id"] in remote_hosts:
+            continue
+        name = _native_service_name(config["host_id"])
+        if targets and name not in targets:
+            continue
+        if name in running:
+            note(f"{name}: already running")
+            continue
+        script = entrypoint_scripts.get(config["entrypoint"])
+        if script is None:
+            raise RuntimeError(f"Unknown entrypoint: {config['entrypoint']}")
+        _spawn_native_service(
+            name,
+            [sys.executable, script, "-c", config["path"]],
+            {"CONVERTER_IO_LOG": "DEBUG"},
+        )
+        note(f"{name}: started ({config['entrypoint']})")
+
+    result = current_run_payload()
+    result["message"] = "Native run: " + "; ".join(messages or ["nothing to start"])
+    EVENTS.publish("run_state", result)
+    return result
+
+
+def _stop_native_run(target_services: list[str]) -> dict[str, Any]:
+    with STATE.lock:
+        procs = dict(STATE.native_procs)
+        generated = STATE.generated
+    entrypoints: dict[str, str] = {}
+    for config in list((generated or {}).get("configs") or []):
+        entrypoints[_native_service_name(config["host_id"])] = config["entrypoint"]
+
+    targets = [
+        name for name in procs
+        if not target_services or name in target_services
+    ]
+    # Ordered shutdown: monitors stop publishing first so runners can drain
+    # in-flight records; the broker goes down last.
+    order = {"monitor_node": 0, "node_runner": 1}
+    targets.sort(key=lambda name: (2 if name == "mosquitto" else order.get(entrypoints.get(name, ""), 1), name))
+
+    messages: list[str] = []
+    for name in targets:
+        process = procs[name]
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGINT)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        with STATE.lock:
+            STATE.native_procs.pop(name, None)
+        messages.append(f"{name}: stopped")
+        _lan_log(f"{name}: stopped")
+    if "mosquitto" in target_services and "mosquitto" not in procs:
+        message = "mosquitto: external broker, not managed by the WebUI; left running"
+        messages.append(message)
+        _lan_log(message)
+    with STATE.lock:
+        if not STATE.native_procs:
+            STATE.native_started_at = None
+    result = current_run_payload()
+    result["message"] = "; ".join(messages) if messages else "No native runtime matched."
     EVENTS.publish("run_state", result)
     return result
 
@@ -1494,18 +1535,12 @@ def start_generated_run(payload: dict[str, Any] | None = None) -> dict[str, Any]
     if generated is None:
         raise RuntimeError("Configure monitor sources before starting the monitor.")
 
-    lan_info = generated.get("lan")
-    if lan_info:
-        return _start_lan_run(lan_info, target_services, generated_payload)
+    if generated.get("lan"):
+        return _start_lan_run(generated, target_services, generated_payload)
 
-    if not GENERATED_COMPOSE.exists():
-        raise RuntimeError("Configure monitor sources before starting the monitor.")
-    _run_local_compose_up(target_services)
-    result = current_run_payload()
-    result["message"] = f"Started {', '.join(target_services) if target_services else 'generated stack'}."
+    result = _start_native_run(generated, target_services)
     if generated_payload is not None:
         result["generated_files"] = generated_payload
-    EVENTS.publish("run_state", result)
     return result
 
 
@@ -1513,33 +1548,50 @@ def _stop_lan_remote(target_services: list[str]) -> list[str]:
     registry = lan_mode.load_registry()
     with STATE.lock:
         deployed = dict(STATE.lan_deployed)
+        generated = STATE.generated
+    remote_info = dict(((generated or {}).get("lan") or {}).get("remote") or {})
     if target_services:
         targets = [
             host_id for host_id in deployed
-            if f"generated_{safe_slug(host_id)}" in target_services
+            if _native_service_name(host_id) in target_services
         ]
     else:
         targets = list(deployed)
+    # Monitors stop first so runners can drain in-flight records.
+    targets.sort(
+        key=lambda hid: 0
+        if remote_info.get(hid, {}).get("entrypoint") == "monitor_node"
+        else 1
+    )
     messages: list[str] = []
     for host_id in targets:
         with STATE.lock:
             proc = STATE.lan_log_procs.pop(host_id, None)
-        if proc is not None:
-            _stop_log_process(proc)
         host = registry.get(host_id)
+        pattern = f"generated/showcase/{deployed[host_id]}"
         if host is not None:
             try:
-                lan_mode.remote_compose_down(host, deployed[host_id])
+                lan_mode.remote_signal(host, pattern, "INT")
+                if proc is not None:
+                    try:
+                        proc.wait(timeout=15)
+                    except subprocess.TimeoutExpired:
+                        lan_mode.remote_signal(host, pattern, "KILL")
                 # Final pull so verdicts emitted just before shutdown survive.
                 lan_mode.pull_outputs(host)
             except Exception as ex:
                 messages.append(f"{host_id}: stop failed ({ex})")
+                if proc is not None:
+                    _stop_log_process(proc)
                 with STATE.lock:
                     STATE.lan_deployed.pop(host_id, None)
                 continue
+        if proc is not None:
+            _stop_log_process(proc)
         with STATE.lock:
             STATE.lan_deployed.pop(host_id, None)
         messages.append(f"{host_id}: stopped")
+        _lan_log(f"[lan] {host_id}: stopped")
     with STATE.lock:
         none_left = not STATE.lan_deployed
     if none_left and _LAN_PULL_STOP is not None:
@@ -1547,62 +1599,53 @@ def _stop_lan_remote(target_services: list[str]) -> list[str]:
     return messages
 
 
+def _stop_lan_broker() -> list[str]:
+    with STATE.lock:
+        broker = STATE.lan_broker
+        STATE.lan_broker = None
+    if not broker:
+        return []
+    host = lan_mode.load_registry().get(str(broker.get("host_id")))
+    if host is not None:
+        try:
+            lan_mode.remote_signal(host, "mosquitto_native.conf", "TERM")
+        except Exception:
+            pass
+    proc = broker.get("process")
+    if proc is not None:
+        try:
+            proc.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            pass
+        _stop_log_process(proc)
+    message = f"mosquitto: stopped on {broker.get('host_id')}"
+    _lan_log(message)
+    return [message]
+
+
 def stop_run(payload: dict[str, Any] | None = None) -> dict[str, Any]:
     payload = payload or {}
     target_services = [str(item) for item in list(payload.get("target_services") or [])]
     with STATE.lock:
         has_lan = bool(STATE.lan_deployed)
-        generated = STATE.generated
-    lan_messages = _stop_lan_remote(target_services) if has_lan else []
-    if generated and generated.get("lan") and target_services:
-        # Keep only services that exist in the local compose file; docker
-        # compose errors on unknown service names.
-        local_names = set(generated["lan"].get("local_services") or [])
-        target_services = [name for name in target_services if name in local_names]
-        if not target_services and lan_messages:
-            result = current_run_payload()
-            result["message"] = "; ".join(lan_messages)
-            EVENTS.publish("run_state", result)
-            return result
-    with STATE.lock:
-        run = STATE.run
-    if run is None:
-        if lan_messages:
-            result = {"running": False, "message": "; ".join(lan_messages)}
-            EVENTS.publish("run_state", result)
-            return result
+        has_native = bool(STATE.native_procs)
+        has_lan_broker = STATE.lan_broker is not None
+    messages: list[str] = []
+    # Remote monitors first, then the local runtimes (their own order ends
+    # with a local broker), then a remotely started broker last of all.
+    if has_lan:
+        messages.extend(_stop_lan_remote(target_services))
+    if has_native:
+        native_result = _stop_native_run(target_services)
+        message = str(native_result.get("message") or "")
+        if message and "No native runtime matched" not in message:
+            messages.append(message)
+    if has_lan_broker and (not target_services or "mosquitto" in target_services):
+        messages.extend(_stop_lan_broker())
+    if not messages:
         return {"running": False, "message": "No monitor run is active."}
-
-    stop_command = ["docker", "compose", "-f", str(run.compose_path), "stop", *target_services]
-    down_command = ["docker", "compose", "-f", str(run.compose_path), "down"]
-    subprocess.run(
-        stop_command if target_services else down_command,
-        cwd=str(ROOT),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-    if target_services:
-        result = current_run_payload()
-        stopped = [f"Stopped {', '.join(target_services)}", *lan_messages]
-        result["message"] = "; ".join(stopped)
-        EVENTS.publish("run_state", result)
-        return result
-
-    if run.process.poll() is None:
-        run.process.terminate()
-    try:
-        run.process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        run.process.kill()
-    with STATE.lock:
-        STATE.run = None
-    result = {
-        "running": False,
-        "message": "; ".join([f"Stopped {run.target_id}", *lan_messages]),
-    }
+    result = current_run_payload()
+    result["message"] = "; ".join(part for part in messages if part)
     EVENTS.publish("run_state", result)
     return result
 

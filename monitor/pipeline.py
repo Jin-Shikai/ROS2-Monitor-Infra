@@ -415,7 +415,7 @@ def build_graph(
         ):
             logger.error(f"Converter '{cid}' has invalid 'inputs'; skipping.")
             continue
-        outer: Exporter = ConverterExporter(converter, downstream)
+        outer: Exporter = ConverterExporter(converter, downstream, label=cid)
         if inputs:
             outer = _SourceFilteredExporter(outer, allowed_sources=set(inputs))
         built[cid] = outer

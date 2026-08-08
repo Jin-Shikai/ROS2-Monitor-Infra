@@ -22,6 +22,10 @@ Nav2 node is active. Readiness here is instead the two conditions the mission
 actually needs: an AMCL pose has been received and NavigateToPose is ready.
 
     python3 eval/e4/mission.py --log mission_log.json [--cancel-after 120]
+
+With --loop the two crossing legs repeat endlessly (the WebUI application
+mode); the mission log is rewritten after every leg and the loop ends on
+SIGINT/SIGTERM, cancelling any in-flight goals.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import signal
 import time
 
 import rclpy
@@ -98,7 +103,7 @@ def run_leg(
     navs: dict[str, BasicNavigator],
     events: list,
     cancel_after: float,
-) -> None:
+) -> dict[str, str]:
     sent = time.time()
     for robot, goal in goals.items():
         events.append(
@@ -108,10 +113,12 @@ def run_leg(
         navs[robot].goToPose(make_pose(navs[robot], *goal))
     pending = dict(navs)
     canceled: set[str] = set()
+    results: dict[str, str] = {}
     while pending:
         for robot, nav in list(pending.items()):
             if nav.isTaskComplete():
                 result = nav.getResult()
+                results[robot] = RESULT_NAMES.get(result, str(result))
                 events.append(
                     {
                         "type": "goal_result",
@@ -119,12 +126,12 @@ def run_leg(
                         "robot": robot,
                         "t": time.time(),
                         "duration_sec": time.time() - sent,
-                        "result": RESULT_NAMES.get(result, str(result)),
+                        "result": results[robot],
                         "canceled_by_mission": robot in canceled,
                     }
                 )
                 print(
-                    f"leg {leg} {robot}: {RESULT_NAMES.get(result)} "
+                    f"leg {leg} {robot}: {results[robot]} "
                     f"in {time.time() - sent:.1f}s",
                     flush=True,
                 )
@@ -133,6 +140,44 @@ def run_leg(
                 nav.cancelTask()
                 canceled.add(robot)
         time.sleep(0.2)
+    return results
+
+
+def recover_robots(
+    navs: dict[str, BasicNavigator],
+    events: list,
+    cancel_after: float,
+) -> None:
+    """Untangle a head-on deadlock by moving one robot at a time.
+
+    After a canceled leg the robots usually stand nose-to-nose in the
+    corridor; re-sending simultaneous goals just reproduces the standoff.
+    Returning them to their distinct start poses sequentially lets the first
+    robot back away while the other keeps still."""
+    starts = {"robot1": ROBOT1_START, "robot2": ROBOT2_START}
+    for robot, pose in starts.items():
+        nav = navs[robot]
+        print(f"recovery: sending {robot} back to its start pose", flush=True)
+        events.append({"type": "recovery_started", "robot": robot, "t": time.time()})
+        nav.goToPose(make_pose(nav, *pose))
+        deadline = time.monotonic() + cancel_after
+        canceled = False
+        while not nav.isTaskComplete():
+            if not canceled and time.monotonic() > deadline:
+                nav.cancelTask()
+                canceled = True
+            time.sleep(0.2)
+        result = RESULT_NAMES.get(nav.getResult(), "UNKNOWN")
+        events.append(
+            {"type": "recovery_result", "robot": robot, "t": time.time(),
+             "result": result}
+        )
+        print(f"recovery {robot}: {result}", flush=True)
+
+
+def write_log(path: str, events: list) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"events": events}, f, indent=2)
 
 
 def main() -> None:
@@ -140,7 +185,19 @@ def main() -> None:
     parser.add_argument("--log", required=True)
     parser.add_argument("--cancel-after", type=float, default=120.0)
     parser.add_argument("--ready-timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="repeat the two crossing legs until interrupted",
+    )
     args = parser.parse_args()
+
+    # A plain SIGTERM (WebUI stop, kill) should take the same clean path as
+    # Ctrl-C: cancel in-flight goals and write the mission log.
+    def raise_interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, raise_interrupt)
 
     rclpy.init()
     navs = {
@@ -162,24 +219,58 @@ def main() -> None:
         events.append({"type": "nav2_active", "robot": robot, "t": time.time()})
     print("both navigators active; starting leg 1", flush=True)
 
-    # Leg 1: cross beyond the opposite starts -> head-on pass in the central room.
-    run_leg(
-        "1", {"robot1": EAST_GOAL, "robot2": WEST_GOAL},
-        navs, events, args.cancel_after)
-    events.append({"type": "leg_done", "leg": "1", "t": time.time()})
-    time.sleep(3.0)
+    lap = 0
+    try:
+        while True:
+            lap += 1
+            # Leg 1: cross beyond the opposite starts -> head-on pass in the
+            # central room.
+            results = run_leg(
+                "1", {"robot1": EAST_GOAL, "robot2": WEST_GOAL},
+                navs, events, args.cancel_after)
+            events.append({"type": "leg_done", "leg": "1", "t": time.time()})
+            write_log(args.log, events)
+            if set(results.values()) != {"SUCCEEDED"}:
+                print("leg 1 did not fully succeed; recovering", flush=True)
+                recover_robots(navs, events, args.cancel_after)
+                write_log(args.log, events)
+                if not args.loop:
+                    break
+                time.sleep(3.0)
+                continue
+            time.sleep(3.0)
 
-    # Leg 2: return to the distinct spawn positions -> second pass.
-    run_leg(
-        "2", {"robot1": ROBOT1_START, "robot2": ROBOT2_START},
-        navs, events, args.cancel_after)
-    events.append({"type": "leg_done", "leg": "2", "t": time.time()})
+            # Leg 2: return to the distinct spawn positions -> second pass.
+            results = run_leg(
+                "2", {"robot1": ROBOT1_START, "robot2": ROBOT2_START},
+                navs, events, args.cancel_after)
+            events.append({"type": "leg_done", "leg": "2", "t": time.time()})
+            write_log(args.log, events)
+            if set(results.values()) != {"SUCCEEDED"}:
+                print("leg 2 did not fully succeed; recovering", flush=True)
+                recover_robots(navs, events, args.cancel_after)
+                write_log(args.log, events)
 
-    with open(args.log, "w", encoding="utf-8") as f:
-        json.dump({"events": events}, f, indent=2)
+            if not args.loop:
+                break
+            print(f"lap {lap} complete; starting the next crossing lap", flush=True)
+            time.sleep(3.0)
+    except KeyboardInterrupt:
+        print("mission interrupted; cancelling in-flight goals", flush=True)
+        events.append({"type": "interrupted", "lap": lap, "t": time.time()})
+        for nav in navs.values():
+            try:
+                nav.cancelTask()
+            except Exception:
+                pass
+
+    write_log(args.log, events)
     print(f"mission log written: {args.log}", flush=True)
 
-    rclpy.shutdown()
+    try:
+        rclpy.shutdown()
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

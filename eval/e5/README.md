@@ -39,6 +39,8 @@ eval/e5/run.sh
 The run is headless by default. `USE_RVIZ=True` is only for an optional
 illustration run and is not part of the evidence-producing control flow.
 
+For an interactive replay placed and started from the WebUI topology
+playground (LAN mode, native SSH execution), see [`WEBUI.md`](WEBUI.md).
 For a no-SSH illustration run in which the three machines are started from
 their own terminals and the PC displays Gazebo plus two RViz windows, follow
 [`MANUAL_GUI.md`](MANUAL_GUI.md). The wrappers in `manual/` enforce a shared,

@@ -3,5 +3,13 @@
   "kind": "converter",
   "name": "Command Speed Converter",
   "class_path": "custom.speed:CmdVelSpeedConverter",
-  "params": []
+  "params": [
+    {
+      "key": "speed_path",
+      "label": "Speed field path (Twist: linear.x, TwistStamped: twist.linear.x)",
+      "type": "string",
+      "required": false,
+      "default": "linear.x"
+    }
+  ]
 }

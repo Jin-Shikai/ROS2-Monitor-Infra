@@ -106,6 +106,12 @@ def main() -> int:
         level=os.environ.get("NODE_RUNNER_LOG", "INFO"),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
+    # Per-record converter I/O tracing, independent of the root level (the
+    # WebUI sets CONVERTER_IO_LOG=DEBUG so the dashboard can show each
+    # converter's consumed records and produced results).
+    logging.getLogger("converter_io").setLevel(
+        os.environ.get("CONVERTER_IO_LOG", "INFO")
+    )
 
     parser = argparse.ArgumentParser(description="Unified monitor node runner")
     parser.add_argument(
