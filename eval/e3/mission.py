@@ -21,6 +21,10 @@ an AMCL pose callback and the NavigateToPose action server, both of which are
 actual prerequisites for this mission.
 
     python3 eval/e3/mission.py --log mission_log.json [--cancel-after 90]
+
+With --loop the A/B/C sequence repeats until SIGINT/SIGTERM: after goal C
+both barriers are removed from Gazebo, the costmaps are cleared, and the
+robot navigates back to the start pose before the next run.
 """
 
 from __future__ import annotations
@@ -28,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import signal
 import subprocess
 import time
 
@@ -55,6 +60,7 @@ GOAL_C = (2.5, 0.0, 0.0)
 # The lower barrier remains in Gazebo when the upper one is added for goal C.
 RIGHT_LOWER_GATE = "0.0,e3_right_lower_gate,1.4,-1.2625,0.5,0.5,1.2,1.0"
 RIGHT_UPPER_GATE = "0.0,e3_right_upper_gate,1.4,1.2625,0.5,0.5,1.2,1.0"
+GATE_NAMES = ("e3_right_lower_gate", "e3_right_upper_gate")
 
 
 def make_pose(nav: BasicNavigator, x: float, y: float, yaw: float) -> PoseStamped:
@@ -76,7 +82,6 @@ def wait_until_ready(nav: BasicNavigator, timeout_sec: float) -> None:
         rclpy.spin_once(nav, timeout_sec=0.2)
         action_ready = nav.nav_to_pose_client.server_is_ready()
         if nav.initial_pose_received and action_ready:
-            print("robot ready: AMCL pose + NavigateToPose action", flush=True)
             return
         if time.monotonic() >= next_pose_publish:
             # Republish the explicitly assigned START pose without resetting
@@ -96,9 +101,26 @@ def spawn_barrier(name: str, obstacle: str, events: list) -> None:
     subprocess.run(
         ["ros2", "run", "my_nav2_worlds", "spawn_dynamic_obstacles",
          "--obstacle", obstacle],
-        check=True,
+        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
     events.append({"type": "obstacles_done", "scenario": name, "t": time.time()})
+
+
+def remove_barriers(events: list) -> None:
+    """Delete both gate models from the running Gazebo world."""
+    for name in GATE_NAMES:
+        subprocess.run(
+            ["gz", "service", "-s", "/world/default/remove",
+             "--reqtype", "gz.msgs.Entity", "--reptype", "gz.msgs.Boolean",
+             "--timeout", "3000", "--req", f'name: "{name}" type: MODEL'],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    events.append({"type": "obstacles_removed", "t": time.time()})
+
+
+def write_log(path: str, events: list) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"events": events}, f, indent=2)
 
 
 def run_goal(
@@ -110,6 +132,7 @@ def run_goal(
 ) -> None:
     sent = time.time()
     events.append({"type": "goal_sent", "goal": name, "t": sent, "pose": goal})
+    print(f"nav to point ({goal[0]:.1f}, {goal[1]:.1f})", flush=True)
     nav.goToPose(make_pose(nav, *goal))
     canceled = False
     while not nav.isTaskComplete():
@@ -128,7 +151,6 @@ def run_goal(
             "canceled_by_mission": canceled,
         }
     )
-    print(f"{name}: {RESULT_NAMES.get(result)} in {time.time() - sent:.1f}s", flush=True)
 
 
 def main() -> None:
@@ -136,7 +158,19 @@ def main() -> None:
     parser.add_argument("--log", required=True)
     parser.add_argument("--cancel-after", type=float, default=90.0)
     parser.add_argument("--ready-timeout", type=float, default=30.0)
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="repeat the A/B/C sequence until interrupted",
+    )
     args = parser.parse_args()
+
+    # A plain SIGTERM (WebUI stop, kill) should take the same clean path as
+    # Ctrl-C: cancel the in-flight goal and write the mission log.
+    def raise_interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, raise_interrupt)
 
     rclpy.init()
     nav = BasicNavigator()
@@ -149,24 +183,43 @@ def main() -> None:
     wait_until_ready(nav, args.ready_timeout)
     events.append({"type": "initial_pose", "t": time.time(), "pose": START})
     events.append({"type": "nav2_active", "t": time.time()})
-    print("nav2 ready; starting mission", flush=True)
 
-    run_goal(nav, "A", GOAL_A, events, args.cancel_after)
+    run = 0
+    try:
+        while True:
+            run += 1
+            run_goal(nav, "A", GOAL_A, events, args.cancel_after)
 
-    # Close the lower of the right partition's two gaps before dispatching B.
-    # The only remaining east-west route crosses the upper gap near y=+1.26.
-    spawn_barrier("right_lower_gate", RIGHT_LOWER_GATE, events)
-    run_goal(nav, "B", GOAL_B, events, args.cancel_after)
+            # Close the lower of the right partition's two gaps before
+            # dispatching B. The only remaining east-west route crosses the
+            # upper gap near y=+1.26.
+            spawn_barrier("right_lower_gate", RIGHT_LOWER_GATE, events)
+            run_goal(nav, "B", GOAL_B, events, args.cancel_after)
 
-    # Keep the lower barrier and close the upper gap too. This disconnects the
-    # east and west halves; C reveals whether Nav2 fails, waits, or is canceled.
-    spawn_barrier("right_upper_gate", RIGHT_UPPER_GATE, events)
-    run_goal(nav, "C", GOAL_C, events, args.cancel_after)
+            # Keep the lower barrier and close the upper gap too. This
+            # disconnects the east and west halves; C reveals whether Nav2
+            # fails, waits, or is canceled.
+            spawn_barrier("right_upper_gate", RIGHT_UPPER_GATE, events)
+            run_goal(nav, "C", GOAL_C, events, args.cancel_after)
 
-    with open(args.log, "w", encoding="utf-8") as f:
-        json.dump({"events": events}, f, indent=2)
-    print(f"mission log written: {args.log}", flush=True)
+            events.append({"type": "run_done", "run": run, "t": time.time()})
+            write_log(args.log, events)
+            if not args.loop:
+                break
 
+            remove_barriers(events)
+            nav.clearAllCostmaps()
+            run_goal(nav, "home", START, events, args.cancel_after)
+            write_log(args.log, events)
+            time.sleep(3.0)
+    except KeyboardInterrupt:
+        events.append({"type": "interrupted", "run": run, "t": time.time()})
+        try:
+            nav.cancelTask()
+        except Exception:
+            pass
+
+    write_log(args.log, events)
     rclpy.shutdown()
 
 

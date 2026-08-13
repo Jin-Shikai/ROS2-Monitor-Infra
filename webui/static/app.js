@@ -22,6 +22,10 @@ let brokerPort = 1883;
 let zoom = 1;
 let marquee = null;
 let runLogRows = [];
+// Verdict lines are sparse while converter I/O DEBUG lines are frequent;
+// without a dedicated buffer they age out of the 1000-row window within
+// seconds and the verdict pane falls back to its waiting placeholder.
+let verdictLogRows = [];
 let robotLogRows = [];
 let runningNodeKeys = new Set();
 let lastGraphData = null;
@@ -2149,6 +2153,11 @@ function appendLogRows(rows) {
   if (!freshRows.length) return;
   runLogRows.push(...freshRows);
   runLogRows = runLogRows.slice(-1000);
+  const verdictRows = freshRows.filter((row) => String(row.line || "").includes("[Verdict]"));
+  if (verdictRows.length) {
+    verdictLogRows.push(...verdictRows);
+    verdictLogRows = verdictLogRows.slice(-300);
+  }
   lastLogId = Number(freshRows[freshRows.length - 1].id);
   scheduleLogRender();
 }
@@ -2177,6 +2186,18 @@ function rowsForServices(services) {
     const line = String(row.line || "");
     return services.some((service) => line.startsWith(service));
   });
+}
+
+function rowsForVerdictPane(services) {
+  // Union of the retained verdict lines and whatever is still in the main
+  // window, deduplicated by row id so recent verdicts are not shown twice.
+  const inWindow = rowsForServices(services);
+  const seen = new Set(inWindow.map((row) => Number(row.id)));
+  const retained = verdictLogRows.filter((row) => {
+    const line = String(row.line || "");
+    return !seen.has(Number(row.id)) && services.some((service) => line.startsWith(service));
+  });
+  return [...retained, ...inWindow].sort((a, b) => Number(a.id) - Number(b.id));
 }
 
 function runtimeLineFilter(key) {
@@ -2246,7 +2267,10 @@ function renderFocusedLogs() {
     const services = servicesForKeys([key]);
     if (services.length) {
       const lineFilter = runtimeLineFilter(key);
-      rows = rowsForServices(services).filter((row) => lineFilter(String(row.line || "")));
+      const pool = key.startsWith("verdict:")
+        ? rowsForVerdictPane(services)
+        : rowsForServices(services);
+      rows = pool.filter((row) => lineFilter(String(row.line || "")));
     } else {
       const terms = logTermsForKey(key);
       rows = runLogRows.filter((row) => {

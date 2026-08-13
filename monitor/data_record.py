@@ -67,7 +67,6 @@ class DataRecord:
     def to_json(self) -> str:
         """Serialize to a single JSON line (for JSONL output)."""
         d = asdict(self)
-        # Drop None values to keep output compact
         # Drop None, empty strings, and empty dicts to keep output compact
         d = {k: v for k, v in d.items()
              if v is not None and v != "" and v != {}}

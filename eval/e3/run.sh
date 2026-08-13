@@ -126,7 +126,7 @@ for attempt in 1 2; do
     MISSION_OK=1
     break
   fi
-  if grep -q "starting mission" "$RUN_DIR/mission.log"; then
+  if grep -q "nav to point" "$RUN_DIR/mission.log"; then
     echo "mission failed after a goal may have been sent; not retrying" >&2
     break
   fi

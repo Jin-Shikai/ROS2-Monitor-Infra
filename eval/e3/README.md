@@ -38,6 +38,10 @@ GUI run for thesis figures (Gazebo client + RViz):
 HEADLESS=False USE_RVIZ=True eval/e3/run.sh
 ```
 
+Interactive run through the WebUI (application-only script
+`eval/e3/run_app.sh`, runtimes placed in the topology playground):
+see [WEBUI.md](WEBUI.md).
+
 Outputs land in `eval/e3/results/run_<timestamp>/`: resolved configs,
 `request.json`, `config_gen.log`, records + verdict JSONL, `mission_log.json`,
 `gt_poses.csv` (Gazebo truth), `metrics_speed.json`, `goals.json`,

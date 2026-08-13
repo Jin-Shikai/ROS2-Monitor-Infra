@@ -1,0 +1,15 @@
+{
+  "id": "nav_goal_verdict",
+  "kind": "verdict",
+  "name": "Nav Goal Deadline Verdict",
+  "class_path": "custom.nav_goal:NavGoalDeadlineVerdict",
+  "params": [
+    {
+      "key": "property_id",
+      "label": "Property id",
+      "type": "string",
+      "required": false,
+      "default": "nav_goal_deadline"
+    }
+  ]
+}
