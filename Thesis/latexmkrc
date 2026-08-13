@@ -1,4 +1,0 @@
-# Use pdfLaTeX on Overleaf so the document uses the same Computer Modern
-# font files as the reference thesis (CMR12, CMSS17, and CMSSI12).
-$pdf_mode = 1;
-$out_dir = 'build';
