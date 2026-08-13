@@ -137,12 +137,6 @@ function ensureHost(value, fallback = "robot") {
   return host;
 }
 
-function hostOptions(selected) {
-  return hosts
-    .map((host) => `<option value="${escapeAttr(host)}" ${host === selected ? "selected" : ""}>${escapeAttr(host)}</option>`)
-    .join("");
-}
-
 function hostField(id, value, rosCapable = false) {
   if (uiMode !== "lan") {
     return `<input id="${id}" value="${escapeAttr(value)}" spellcheck="false">`;
@@ -153,11 +147,6 @@ function hostField(id, value, rosCapable = false) {
     .map((host) => `<option value="${escapeAttr(host)}" ${host === value ? "selected" : ""}>${escapeText(host)}</option>`)
     .join("");
   return `<select id="${id}">${options}</select>`;
-}
-
-function setStatus(text, running = false) {
-  $("scanStatus").textContent = text || (running ? "Running." : "Idle.");
-  renderTopology();
 }
 
 function classPathToFile(classPath) {
@@ -1269,11 +1258,6 @@ function renderTopology() {
 function selectedSource() {
   if (selectedNode?.kind !== "robot") return null;
   return sources.find((source) => sourceId(source) === selectedNode.id) || null;
-}
-
-function selectedMonitorHost() {
-  if (selectedNode?.kind !== "monitor") return "";
-  return monitors.find((monitor) => monitor.id === selectedNode.id)?.host || "";
 }
 
 function selectedMonitor() {

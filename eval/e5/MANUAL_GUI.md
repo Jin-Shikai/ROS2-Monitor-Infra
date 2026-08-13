@@ -192,11 +192,3 @@ If a PC GUI process is interrupted unexpectedly, `pc.sh` runs the targeted E4
 cleanup automatically. The normal manual run leaves each machine's artifacts
 under the same relative `eval/e5/results/<RUN_ID>/` path; it does not retrieve
 or analyze them automatically.
-
-## Thesis screenshot placeholder
-
-The thesis already reserves
-`Thesis/figures/evaluation/e5_headless_sessions.png`. For the optional GUI
-illustration, use that location for a collage containing Gazebo/RViz, the Pi
-monitor log, and a simultaneous Mac separation verdict, or update the figure
-caption and filename together if the existing headless-session figure is kept.

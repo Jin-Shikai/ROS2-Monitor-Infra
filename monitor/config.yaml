@@ -52,22 +52,16 @@ inputs:
 # links wire sources, converters, verdicts, and transport endpoints together.
 converters:
   - id: odom_speed
-    type: custom.rule_based:RuleBasedConverter
+    type: custom.speed:CmdVelSpeedConverter
     params:
-      source_match: "^/odom$"
-      field_map:
-        velocity: twist.twist.linear.x
-      property_id: odom_speed_limit
+      speed_path: twist.twist.linear.x
 
 verdict_services:
   - id: odom_speed_check
     type: custom.threshold:ThresholdVerdict
     params:
       property_id: odom_speed_limit
-      field: velocity
-      op: ">"
       threshold: 0.5
-      sustain_sec: 0.0
     # One or more Exporter[Verdict] instances. Built-in types: file,
     # stdout, mqtt. User-defined exporters use 'module.path:ClassName'.
     exporters:

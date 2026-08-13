@@ -109,11 +109,11 @@ class ConverterExporter(Exporter[DataRecord]):
 def resolve_converter_class(spec: str) -> type[DataConverter]:
     """Resolve a converter class from a 'module.path:ClassName' import string.
 
-    Example: 'custom.rule_based:RuleBasedConverter'
+    Example: 'custom.speed:CmdVelSpeedConverter'
     """
     if ":" not in spec:
         raise ValueError(
             f"Bad converter spec '{spec}'. Expected 'module.path:ClassName' "
-            f"(e.g. 'custom.rule_based:RuleBasedConverter')."
+            f"(e.g. 'custom.speed:CmdVelSpeedConverter')."
         )
     return resolve_plugin_class(spec, {}, DataConverter, "converter")

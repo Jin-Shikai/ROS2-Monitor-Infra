@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from pathlib import Path
 
 from data_record import DataRecord

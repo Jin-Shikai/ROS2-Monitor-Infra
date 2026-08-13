@@ -1,6 +1,7 @@
 # Python-generated files
 __pycache__/
 *.py[oc]
+.pytest_cache/
 build/
 dist/
 wheels/
@@ -21,3 +22,14 @@ output/
 .DS_Store
 generated/
 eval/*/results/
+tmp/
+
+# Personal / thesis material — never publish
+Thesis/
+Defense/
+*.pptx
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out

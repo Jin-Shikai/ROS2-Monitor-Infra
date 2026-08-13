@@ -177,18 +177,6 @@ textarea {
   text-align: center;
 }
 
-.run-state {
-  padding: 2px 8px;
-  border-left: 1px solid var(--line);
-  font-weight: 700;
-  background: #ffffff;
-}
-
-.run-state.running {
-  color: var(--good);
-  background: #edf8f0;
-}
-
 .workbench {
   display: grid;
   grid-template-columns: 320px minmax(480px, 1fr) 430px;
@@ -248,8 +236,7 @@ textarea {
   font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-.config-actions,
-.inline-actions {
+.config-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -716,14 +703,6 @@ textarea {
   font-size: 11px;
 }
 
-.node-pick {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 16px;
-  height: 16px;
-}
-
 .node.robot .node-icon {
   color: #175cd3;
 }
@@ -822,12 +801,6 @@ pre {
 
 .logs {
   min-height: 0;
-}
-
-.generated-code {
-  flex: 1;
-  min-height: 180px;
-  margin-bottom: 10px;
 }
 
 .status-line {

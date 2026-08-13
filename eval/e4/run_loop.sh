@@ -24,11 +24,11 @@ mkdir -p "$RUN_DIR"
 # ROS setup scripts reference unset variables; relax nounset while sourcing.
 set +u
 source /opt/ros/kilted/setup.bash
-source /home/shikai/ros2_ws/install/setup.bash
+source "${NAV2_WS:-$HOME/ros2_ws}/install/setup.bash"
 set -u
 
-WORLD=/home/shikai/ros2_ws/src/my_nav2_worlds/worlds/simple_nav_world.sdf
-MAP=/home/shikai/ros2_ws/src/my_nav2_worlds/maps/simple_nav_world.yaml
+WORLD="${NAV2_WS:-$HOME/ros2_ws}"/src/my_nav2_worlds/worlds/simple_nav_world.sdf
+MAP="${NAV2_WS:-$HOME/ros2_ws}"/src/my_nav2_worlds/maps/simple_nav_world.yaml
 
 # Purge leftovers of earlier simulation sessions. The port-1884 check inside
 # cleanup.sh may fail while a WebUI broker is running; that is fine here.

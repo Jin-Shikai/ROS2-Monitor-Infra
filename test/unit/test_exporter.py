@@ -4,7 +4,6 @@ MQTTExporter tests live in test_exporter_mqtt.py.
 """
 
 import json
-from pathlib import Path
 
 from data_record import DataRecord
 from exporter import Exporter, Dispatcher, FileExporter

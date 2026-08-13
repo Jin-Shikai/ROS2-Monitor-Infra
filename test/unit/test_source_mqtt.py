@@ -9,8 +9,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
-
 import source_mqtt
 from data_record import DataRecord
 from exporter import Exporter

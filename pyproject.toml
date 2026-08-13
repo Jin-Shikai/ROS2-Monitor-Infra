@@ -1,12 +1,11 @@
 [project]
 name = "ROS2-Monitor-Infra"
 version = "0.1.0"
-description = "Add your description here"
+description = "Configurable runtime monitoring and verification infrastructure for ROS 2"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "paho-mqtt>=2.0",
-    "pyright>=1.1.410",
     "pyyaml>=6.0",
 ]
 
@@ -21,5 +20,6 @@ pythonVersion = "3.12"
 
 [dependency-groups]
 dev = [
+    "pyright>=1.1.410",
     "pytest>=9.0.3",
 ]

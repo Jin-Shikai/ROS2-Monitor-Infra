@@ -701,19 +701,19 @@ def test_showcase_clear_verdicts_truncates_showcase_jsonl(tmp_path, monkeypatch)
 
 def _lan_registry_e5():
     return {
-        "shikai-pi_local": {
-            "id": "shikai-pi_local",
-            "address": "shikai@shikai-pi.local",
+        "raspberrypi_local": {
+            "id": "raspberrypi_local",
+            "address": "pi@raspberrypi.local",
             "os": "linux",
-            "home": "/home/shikai",
+            "home": "/home/pi",
             "python": "/usr/bin/python3",
             "status": "ready",
         },
-        "shikais-mbp_local": {
-            "id": "shikais-mbp_local",
-            "address": "alex@Shikais-MBP.local",
+        "macbook_local": {
+            "id": "macbook_local",
+            "address": "user@macbook.local",
             "os": "darwin",
-            "home": "/Users/alex",
+            "home": "/Users/user",
             "python": "/opt/homebrew/bin/python3.12",
             "status": "ready",
         },
@@ -728,28 +728,28 @@ def test_showcase_lan_generation_places_runtimes_natively(tmp_path, monkeypatch)
     monkeypatch.setattr(server, "current_mode", lambda: "lan")
     monkeypatch.setattr(
         server, "_resolve_lan_address",
-        lambda hostname: "192.168.2.18" if hostname == "shikai-pi.local" else hostname,
+        lambda hostname: "192.168.2.18" if hostname == "raspberrypi.local" else hostname,
     )
     result = generate_configs(
         {
-            "broker": {"host": "shikai-pi_local", "port": 1884},
-            "hosts": ["shikai-pi_local", "shikais-mbp_local"],
+            "broker": {"host": "raspberrypi_local", "port": 1884},
+            "hosts": ["raspberrypi_local", "macbook_local"],
             "sources": [
                 {
                     "name": "/robot1/amcl_pose",
                     "interface": "geometry_msgs/msg/PoseWithCovarianceStamped",
-                    "host": "shikai-pi_local",
+                    "host": "raspberrypi_local",
                 },
                 {
                     "name": "/robot2/amcl_pose",
                     "interface": "geometry_msgs/msg/PoseWithCovarianceStamped",
-                    "host": "shikai-pi_local",
+                    "host": "raspberrypi_local",
                 },
             ],
             "monitors": [
                 {
                     "id": "monitor_e5",
-                    "host": "shikai-pi_local",
+                    "host": "raspberrypi_local",
                     "source_keys": ["topic:/robot1/amcl_pose", "topic:/robot2/amcl_pose"],
                 }
             ],
@@ -757,7 +757,7 @@ def test_showcase_lan_generation_places_runtimes_natively(tmp_path, monkeypatch)
                 {
                     "id": "separation",
                     "class_path": "custom.separation_converter:SeparationDistanceConverter",
-                    "host": "shikais-mbp_local",
+                    "host": "macbook_local",
                     "verdict_service_ids": ["separation_check"],
                 }
             ],
@@ -765,7 +765,7 @@ def test_showcase_lan_generation_places_runtimes_natively(tmp_path, monkeypatch)
                 {
                     "id": "separation_check",
                     "class_path": "custom.separation_verdict:SeparationDistanceVerdict",
-                    "host": "shikais-mbp_local",
+                    "host": "macbook_local",
                 }
             ],
         }
@@ -781,11 +781,11 @@ def test_showcase_lan_generation_places_runtimes_natively(tmp_path, monkeypatch)
     )
     assert result["native"] is True
     lan = result["lan"]
-    assert lan["broker_host_id"] == "shikai-pi_local"
+    assert lan["broker_host_id"] == "raspberrypi_local"
     assert lan["local_services"] == []
     assert lan["remote"] == {
-        "shikai-pi_local": {"filename": "shikai-pi_local.yaml", "entrypoint": "monitor_node"},
-        "shikais-mbp_local": {"filename": "shikais-mbp_local.yaml", "entrypoint": "node_runner"},
+        "raspberrypi_local": {"filename": "raspberrypi_local.yaml", "entrypoint": "monitor_node"},
+        "macbook_local": {"filename": "macbook_local.yaml", "entrypoint": "node_runner"},
     }
     # Remote runtimes write into the remote project copy (cwd-relative).
     outputs = {
@@ -793,8 +793,8 @@ def test_showcase_lan_generation_places_runtimes_natively(tmp_path, monkeypatch)
         for config in result["configs"]
     }
     assert outputs == {
-        "shikai-pi_local": "output/showcase/shikai-pi_local",
-        "shikais-mbp_local": "output/showcase/shikais-mbp_local",
+        "raspberrypi_local": "output/showcase/raspberrypi_local",
+        "macbook_local": "output/showcase/macbook_local",
     }
 
 
@@ -806,18 +806,18 @@ def test_showcase_lan_rejects_monitor_on_macos_host(monkeypatch):
     with pytest.raises(ValueError, match="macOS machine without"):
         build_generation_request(
             {
-                "hosts": ["shikais-mbp_local"],
+                "hosts": ["macbook_local"],
                 "sources": [
                     {
                         "name": "/cmd_vel",
                         "interface": "geometry_msgs/msg/Twist",
-                        "host": "shikais-mbp_local",
+                        "host": "macbook_local",
                     }
                 ],
                 "monitors": [
                     {
                         "id": "monitor_mac",
-                        "host": "shikais-mbp_local",
+                        "host": "macbook_local",
                         "source_keys": ["topic:/cmd_vel"],
                     }
                 ],
@@ -841,23 +841,23 @@ def test_showcase_lan_start_runs_runtimes_over_ssh(tmp_path, monkeypatch):
         "native": True,
         "request": {
             "links": [
-                {"transport": {"kind": "mqtt", "broker": "shikai-pi.local", "port": 1884}}
+                {"transport": {"kind": "mqtt", "broker": "raspberrypi.local", "port": 1884}}
             ]
         },
         "configs": [
-            {"host_id": "shikai-pi_local", "entrypoint": "monitor_node",
-             "filename": "shikai-pi_local.yaml", "path": "/tmp/pi.yaml"},
-            {"host_id": "shikais-mbp_local", "entrypoint": "node_runner",
-             "filename": "shikais-mbp_local.yaml", "path": "/tmp/mac.yaml"},
+            {"host_id": "raspberrypi_local", "entrypoint": "monitor_node",
+             "filename": "raspberrypi_local.yaml", "path": "/tmp/pi.yaml"},
+            {"host_id": "macbook_local", "entrypoint": "node_runner",
+             "filename": "macbook_local.yaml", "path": "/tmp/mac.yaml"},
         ],
         "lan": {
             "mode": "lan",
             "local_services": [],
             "remote": {
-                "shikai-pi_local": {"filename": "shikai-pi_local.yaml", "entrypoint": "monitor_node"},
-                "shikais-mbp_local": {"filename": "shikais-mbp_local.yaml", "entrypoint": "node_runner"},
+                "raspberrypi_local": {"filename": "raspberrypi_local.yaml", "entrypoint": "monitor_node"},
+                "macbook_local": {"filename": "macbook_local.yaml", "entrypoint": "node_runner"},
             },
-            "broker_host_id": "shikai-pi_local",
+            "broker_host_id": "raspberrypi_local",
         },
     }
 
@@ -887,21 +887,21 @@ def test_showcase_lan_start_runs_runtimes_over_ssh(tmp_path, monkeypatch):
 
     # Broker first (on the Pi), then the runner (Mac), then the monitor (Pi).
     assert [host_id for host_id, _ in remote_commands] == [
-        "shikai-pi_local", "shikais-mbp_local", "shikai-pi_local",
+        "raspberrypi_local", "macbook_local", "raspberrypi_local",
     ]
     assert remote_commands[0][1] == "exec mosquitto -c generated/showcase/mosquitto_native.conf"
     mac_command = remote_commands[1][1]
-    assert "monitor/node_runner.py -c generated/showcase/shikais-mbp_local.yaml" in mac_command
+    assert "monitor/node_runner.py -c generated/showcase/macbook_local.yaml" in mac_command
     assert "/opt/homebrew/bin/python3.12" in mac_command
     assert "CONVERTER_IO_LOG=DEBUG" in mac_command
     pi_command = remote_commands[2][1]
-    assert "monitor/monitor_node.py -c generated/showcase/shikai-pi_local.yaml" in pi_command
+    assert "monitor/monitor_node.py -c generated/showcase/raspberrypi_local.yaml" in pi_command
     assert ". /opt/ros/kilted/setup.bash" in pi_command
     # The broker conf was written locally so rsync ships it to the Pi.
     assert (tmp_path / "mosquitto_native.conf").read_text(encoding="utf-8") == (
         "listener 1884 0.0.0.0\nallow_anonymous true\n"
     )
-    assert synced == ["shikai-pi_local", "shikais-mbp_local"]
+    assert synced == ["raspberrypi_local", "macbook_local"]
     assert result["running"] is True
-    assert server.STATE.lan_broker["host_id"] == "shikai-pi_local"
-    assert set(server.STATE.lan_deployed) == {"shikai-pi_local", "shikais-mbp_local"}
+    assert server.STATE.lan_broker["host_id"] == "raspberrypi_local"
+    assert set(server.STATE.lan_deployed) == {"raspberrypi_local", "macbook_local"}

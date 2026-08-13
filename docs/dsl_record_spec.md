@@ -82,7 +82,7 @@ A DSL record has two groups of keys:
 | | |
 |---|---|
 | **Type** | `array[string]` |
-| **Source** | Converters that fold **multiple** inputs into one DSL record (e.g. `custom.fleet_distance`) list all contributing `record_id`s here. |
+| **Source** | Converters that fold **multiple** inputs into one DSL record (e.g. `custom.separation_converter`) list all contributing `record_id`s here. |
 | **Read by framework** | Yes, preferred over `_record_id`. `_attach_correlation` copies it into `Verdict.input_record_ids`. |
 | **Purpose** | Multi-input provenance (e.g. a cross-robot predicate over two traces). |
 
@@ -128,11 +128,10 @@ named for what the verdict service reads.
 | Converter | Domain keys produced |
 |---|---|
 | `custom.speed:CmdVelSpeedConverter` | `speed` |
-| `custom.odom_speed_converter:OdomSpeedConverter` | `speed` |
-| `custom.nav2_case1...:CmdVelSpeedConverter` | `speed` |
-| `custom.fleet_distance:FleetDistanceConverter` | `distance` |
 | `custom.relative_speed:RelativeSpeedConverter` | `relative_speed` |
-| `custom.stale_watchdog:StaleWatchdogConverter` | `silent_sec` (self-scheduled) |
+| `custom.separation_converter:SeparationDistanceConverter` | `separation_m`, `positions` |
+| `custom.nav_goal:NavGoalDeadlineConverter` | `goal_within_deadline`, `elapsed_sec`, `deadline_sec`, `terminal_status` |
+| `custom.reset_pose_effect:ResetPoseEffectConverter` | `reset_effect_ok`, `elapsed_sec`, `distance_to_origin`, `deadline_sec` |
 
 ---
 

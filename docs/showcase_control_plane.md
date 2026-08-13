@@ -1,8 +1,7 @@
 # ROS2-Monitor-Infra-Dashboard
 
-This is the first incremental step toward a demonstrable ROS2-Monitor-Infra
-project UI. It wraps the existing runtime instead of replacing it. The intended
-flow is:
+The dashboard is a web UI that wraps the existing runtime instead of
+replacing it. The intended flow is:
 
 ```text
 Start robot container -> scan graph -> select monitored sources
@@ -42,15 +41,11 @@ docker run --rm -it --network host --ipc=host \
   /bin/bash -lc "source /opt/ros/kilted/setup.bash && python3 /demo/common/topic_robot.py cmd-velocity-cycle --ros-args -r __node:=showcase_robot"
 ```
 
-To inspect different ROS resource kinds, replace the dashboard **Start command**
-with one of these independent demos:
+To inspect service monitoring, replace the dashboard **Start command** with the
+reset-service demo:
 
 ```bash
-source /opt/ros/kilted/setup.bash && python3 /demo/common/service_simulator.py --ros-args -r __node:=showcase_service_robot
-```
-
-```bash
-source /opt/ros/kilted/setup.bash && python3 /demo/common/action_simulator.py --ros-args -r __node:=showcase_action_robot
+source /opt/ros/kilted/setup.bash && python3 /demo/common/reset_robot.py --ros-args -r __node:=showcase_reset_robot
 ```
 
 ## What Works Now
@@ -93,9 +88,9 @@ placement:
 | Converter and verdict on separate hosts | The converter host publishes DSL records through a dsl output endpoint; the verdict host consumes them through a dsl input endpoint. |
 | Multiple robots feeding one converter | One records input per distinct transport namespace; same-broker feeds are merged automatically. |
 
-Chapter 4's monitoring organisations map onto these placements; decentralised
-and choreographed organisations additionally need coordination semantics that
-the Dashboard does not model yet.
+The standard runtime-verification monitoring organisations map onto these
+placements; decentralised and choreographed organisations additionally need
+coordination semantics that the Dashboard does not model yet.
 
 ## Local Mode and LAN Mode
 

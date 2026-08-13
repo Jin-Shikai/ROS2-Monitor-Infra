@@ -29,8 +29,8 @@ Open <http://127.0.0.1:8765> and switch the mode toggle to **LAN Mode**.
 Switching to LAN Mode places a `local` host box (the workstation). Then
 **Add SSH Host** twice — each registration adds its host box:
 
-- `shikai@shikai-pi.local` → host box `shikai-pi_local`
-- `alex@Shikais-MBP.local` → host box `shikais-mbp_local`
+- `pi@raspberrypi.local` → host box `raspberrypi_local`
+- `user@macbook.local` → host box `macbook_local`
 
 If key authentication is not set up yet, the dialog asks once for the
 password and installs the local public key. Each host shows `ssh ✓` when
@@ -51,18 +51,18 @@ placement changes.
 
 ## 4. Declare sources and build the runtimes
 
-1. **Scan graph**. Select the `shikai-pi_local` host box and declare:
+1. **Scan graph**. Select the `raspberrypi_local` host box and declare:
    - `/robot1/amcl_pose` (`geometry_msgs/msg/PoseWithCovarianceStamped`)
    - `/robot2/amcl_pose` (`geometry_msgs/msg/PoseWithCovarianceStamped`)
-2. **+ Monitor** → id `monitor_e5`, host `shikai-pi_local`. Connect both
+2. **+ Monitor** → id `monitor_e5`, host `raspberrypi_local`. Connect both
    sources → monitor.
 3. **+ Converter** → `separation`, manifest *Separation Distance
-   Converter*, host `shikais-mbp_local`. Connect both `amcl_pose`
+   Converter*, host `macbook_local`. Connect both `amcl_pose`
    sources → `separation`.
 4. **+ Verdict** → `separation_check`, *Separation Distance Verdict*,
-   minimum separation `1.0`, host `shikais-mbp_local`. Connect
+   minimum separation `1.0`, host `macbook_local`. Connect
    `separation` → `separation_check`.
-5. Select the broker block and set **Broker host** to `shikai-pi_local`
+5. Select the broker block and set **Broker host** to `raspberrypi_local`
    and **port** to `1884` (the links then carry the Pi's numeric LAN
    address, e.g. `192.168.2.18:1884` — macOS resolves `.local` names
    only for approved binaries. The Pi's system mosquitto holds 1883, so
@@ -84,7 +84,7 @@ as in local mode). `fleet_separation` flips to `false` at each corridor
 crossing and back to `true` after the robots pass.
 
 Verdict files are written on the Mac and rsync-pulled back every 2 s to
-`output/showcase/shikais-mbp_local/verdicts_*.jsonl` (the full content
+`output/showcase/macbook_local/verdicts_*.jsonl` (the full content
 lands at stop, when the runner flushes its exporters).
 
 ## 6. Stop

@@ -13,8 +13,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass, field, asdict
-from datetime import datetime, timezone
-from typing import Any
+from datetime import datetime
 
 
 def generate_session_id() -> str:

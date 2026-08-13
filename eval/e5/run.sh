@@ -14,8 +14,8 @@ SEP_MIN="${SEP_MIN:-1.0}"
 SPEED_MAX="${SPEED_MAX:-0.3}"
 CANCEL_AFTER="${CANCEL_AFTER:-120}"
 USE_RVIZ="${USE_RVIZ:-False}"
-PI_HOST="${PI_HOST:-shikai@shikai-pi.local}"
-MAC_HOST="${MAC_HOST:-alex@Shikais-MBP.local}"
+PI_HOST="${PI_HOST:-pi@raspberrypi.local}"
+MAC_HOST="${MAC_HOST:-user@macbook.local}"
 BROKER="${BROKER:-192.168.2.18}"
 REMOTE_ROOT="${REMOTE_ROOT:-ROS2-Monitor-Infra}"
 MAC_PYTHON="${MAC_PYTHON:-/opt/homebrew/bin/python3.12}"
@@ -27,13 +27,13 @@ mkdir -p "$RUN_DIR/pc" "$RUN_DIR/pi" "$RUN_DIR/mac" \
 
 set +u
 source /opt/ros/kilted/setup.bash
-source /home/shikai/ros2_ws/install/setup.bash
+source "${NAV2_WS:-$HOME/ros2_ws}/install/setup.bash"
 set -u
 export PYTHONPATH="$PWD:$PWD/monitor:${PYTHONPATH:-}"
 export PYTHONUNBUFFERED=1
 
-WORLD=/home/shikai/ros2_ws/src/my_nav2_worlds/worlds/simple_nav_world.sdf
-MAP=/home/shikai/ros2_ws/src/my_nav2_worlds/maps/simple_nav_world.yaml
+WORLD="${NAV2_WS:-$HOME/ros2_ws}"/src/my_nav2_worlds/worlds/simple_nav_world.sdf
+MAP="${NAV2_WS:-$HOME/ros2_ws}"/src/my_nav2_worlds/maps/simple_nav_world.yaml
 SSH_OPTIONS=(-o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=15 -o ServerAliveCountMax=4)
 
 {

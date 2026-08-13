@@ -3,8 +3,6 @@
 import json
 import re
 
-import pytest
-
 from data_record import DataRecord, generate_session_id
 
 

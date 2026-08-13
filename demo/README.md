@@ -1,7 +1,6 @@
 # Demo Fixtures
 
-The demo tree now contains only the ROS2 fixtures used by the dashboard
-presets:
+The demo tree contains the ROS2 fixtures used by the dashboard presets:
 
 | File | Purpose |
 |---|---|

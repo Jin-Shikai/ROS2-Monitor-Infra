@@ -21,7 +21,7 @@ EOF
 source_ros() {
   set +u
   source /opt/ros/kilted/setup.bash
-  source /home/shikai/ros2_ws/install/setup.bash
+  source "${NAV2_WS:-$HOME/ros2_ws}/install/setup.bash"
   set -u
   export PYTHONPATH="$PWD:$PWD/monitor:${PYTHONPATH:-}"
   export PYTHONUNBUFFERED=1
@@ -42,8 +42,8 @@ case "$ACTION" in
     e5_prepare_config python3
     mkdir -p "$REMOTE_RUN/pc"
 
-    WORLD=/home/shikai/ros2_ws/src/my_nav2_worlds/worlds/simple_nav_world.sdf
-    MAP=/home/shikai/ros2_ws/src/my_nav2_worlds/maps/simple_nav_world.yaml
+    WORLD="${NAV2_WS:-$HOME/ros2_ws}"/src/my_nav2_worlds/worlds/simple_nav_world.sdf
+    MAP="${NAV2_WS:-$HOME/ros2_ws}"/src/my_nav2_worlds/maps/simple_nav_world.yaml
     SIM_DIR="$(ros2 pkg prefix nav2_minimal_tb3_sim)/share/nav2_minimal_tb3_sim"
     export GZ_SIM_RESOURCE_PATH="$SIM_DIR/models:$(dirname "$SIM_DIR"):${GZ_SIM_RESOURCE_PATH:-}"
 

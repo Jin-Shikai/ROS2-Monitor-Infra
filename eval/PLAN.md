@@ -1,11 +1,10 @@
 # Evaluation Master Plan
 
-> Living document. Before each experiment starts, its *Plan* subsection is
+> Before each experiment starts, its *Plan* subsection is
 > updated with objectives, methodology, configuration, and expected results.
 > After the experiment completes, its *Results* subsection is filled with the
 > actual implementation details, observations, collected metrics, and
-> conclusions. Each completed experiment feeds one subsection of the thesis
-> Evaluation chapter (`Thesis/chapters/evaluation.tex`).
+> conclusions.
 
 ## 1. Goals and constraints
 
@@ -401,7 +400,7 @@ collection.
     `/robotN/odom` position streams — NEW `SeparationDistanceConverter`
     (pairs latest positions across namespaces) + `SeparationDistanceVerdict`
     (edge-triggered on the threshold, violation when below), in
-    `custom/separation.py` with unit tests.
+    `custom/separation_converter.py` / `custom/separation_verdict.py` with unit tests.
 - **Observed channels:** `/robotN/cmd_vel` (TwistStamped, full),
   `/robotN/odom` (FieldExtractor to pose x/y + linear.x, RateThrottler
   5 Hz). No action monitoring in E4 (covered by E3; NavigateToPose feedback
@@ -445,7 +444,7 @@ collection.
 ### Results
 
 **Implementation notes (deviations from plan).**
-- New plugin `custom/separation.py` (`SeparationDistanceConverter` +
+- New plugins `custom/separation_converter.py` / `custom/separation_verdict.py` (`SeparationDistanceConverter` +
   `SeparationDistanceVerdict`, manifests, 7 unit tests — suite now 168):
   pairs the latest map-frame position of each robot and emits the pairwise
   distance; the verdict is edge-triggered on the `min_distance` threshold.
@@ -680,15 +679,3 @@ the planned monitor-on-PC fallback was not used. These results establish the
 claimed heterogeneous LAN deployment; they do not generalize to WAN links,
 larger fleets, or long-duration fault tolerance.
 
----
-
-## 9. Thesis mapping
-
-| Experiment | Evaluation chapter subsection |
-|---|---|
-| Methodology (this section 3) | Experimental setup and metrics |
-| E1 | Correctness and intrinsic overhead baseline |
-| E2 | Distributed evaluation over MQTT |
-| E3 | Case study: supervising Nav2 |
-| E4 | Fleet-level runtime verification |
-| E5 | Distributed deployment on heterogeneous hardware |

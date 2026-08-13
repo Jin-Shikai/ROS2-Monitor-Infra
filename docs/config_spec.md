@@ -5,9 +5,7 @@
 > Default example: `monitor/config.yaml`
 
 This is the normative field reference for every ROS2-Monitor-Infra runtime
-YAML file. The inventory of concrete configuration files shipped by the
-project, including demo and external-tool configuration, is in
-[config_inventory.md](config_inventory.md).
+YAML file.
 
 Value descriptions distinguish between:
 
@@ -273,17 +271,15 @@ Example:
 ```yaml
 converters:
   - id: cmd_vel_speed_converter
-    type: custom.cmd_vel_speed:Demo1VelocityConverter
+    type: custom.speed:CmdVelSpeedConverter
     params:
       speed_path: linear.x
 
 verdict_services:
   - id: cmd_vel_speed_verdict
-    type: custom.cmd_vel_speed:Demo1SpeedingCheck
+    type: custom.threshold:ThresholdVerdict
     params:
-      check: speed
-      op: ">"
-      value: 0.5
+      threshold: 0.5
     exporters:
       - type: stdout
       - type: file
@@ -354,7 +350,9 @@ inputs:
     topic_filter: monitor/#
 converters:
   - id: odom_speed
-    type: custom.odom_speed_converter:OdomSpeedConverter
+    type: custom.speed:CmdVelSpeedConverter
+    params:
+      speed_path: twist.twist.linear.x
 outputs:
   - id: dsl_out
     payload: dsl
@@ -373,7 +371,9 @@ inputs:
     topic: dsl/odom_speed
 verdict_services:
   - id: odom_speed_check
-    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    type: custom.threshold:ThresholdVerdict
+    params:
+      threshold: 0.3
     exporters:
       - type: stdout
 links:
@@ -454,11 +454,15 @@ topics:
 
 converters:
   - id: odom_speed
-    type: custom.odom_speed_converter:OdomSpeedConverter
+    type: custom.speed:CmdVelSpeedConverter
+    params:
+      speed_path: twist.twist.linear.x
 
 verdict_services:
   - id: odom_speed_check
-    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    type: custom.threshold:ThresholdVerdict
+    params:
+      threshold: 0.3
     exporters:
       - type: stdout
 
@@ -498,11 +502,15 @@ inputs:
 
 converters:
   - id: odom_speed
-    type: custom.odom_speed_converter:OdomSpeedConverter
+    type: custom.speed:CmdVelSpeedConverter
+    params:
+      speed_path: twist.twist.linear.x
 
 verdict_services:
   - id: odom_speed_check
-    type: custom.odom_speed_verdict:OdomSpeedVerdict
+    type: custom.threshold:ThresholdVerdict
+    params:
+      threshold: 0.3
     exporters:
       - type: file
         path: verdicts_{session_id}.jsonl

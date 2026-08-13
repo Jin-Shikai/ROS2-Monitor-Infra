@@ -29,8 +29,8 @@ eval/e5/run.sh
 Defaults can be overridden without editing the experiment:
 
 ```bash
-PI_HOST=shikai@shikai-pi.local \
-MAC_HOST=alex@Shikais-MBP.local \
+PI_HOST=pi@raspberrypi.local \
+MAC_HOST=user@macbook.local \
 BROKER=192.168.2.18 \
 SEP_MIN=1.0 SPEED_MAX=0.3 CANCEL_AFTER=120 \
 eval/e5/run.sh

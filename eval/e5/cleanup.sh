@@ -3,8 +3,8 @@
 # E5 configs, the dedicated broker and the shared E4 simulation processes.
 set -u
 
-PI_HOST="${PI_HOST:-shikai@shikai-pi.local}"
-MAC_HOST="${MAC_HOST:-alex@Shikais-MBP.local}"
+PI_HOST="${PI_HOST:-pi@raspberrypi.local}"
+MAC_HOST="${MAC_HOST:-user@macbook.local}"
 
 eval/e4/cleanup.sh --quiet 2>/dev/null || true
 

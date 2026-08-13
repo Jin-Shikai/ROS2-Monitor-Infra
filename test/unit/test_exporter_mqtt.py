@@ -10,8 +10,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
-import pytest
-
 import exporter_mqtt
 from data_record import DataRecord
 from exporter_mqtt import MQTTExporter

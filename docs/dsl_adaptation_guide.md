@@ -48,7 +48,7 @@ Return `None` for irrelevant or incomplete records. Include `_timestamp`,
 
 For multi-source properties, one converter may retain the latest state from
 multiple source names and emit only after all required inputs exist. See
-`custom/fleet_distance.py` and `custom/relative_speed.py`.
+`custom/separation_converter.py` and `custom/relative_speed.py`.
 
 A converter may also emit on its own schedule — timeouts, windows, watchdogs —
 by overriding the optional lifecycle:
@@ -60,9 +60,9 @@ def stop(self) -> None: ...
 
 `start` is called once after wiring; keep `emit` and call it from a timer or
 thread with the same values `convert()` may return (`emit` is thread-safe).
-`stop` is called once on shutdown — cancel timers there. See
-`custom/stale_watchdog.py` for a complete example that fires when a source
-falls silent.
+`stop` is called once on shutdown — cancel timers there. Typical uses are
+watchdogs that fire when a source falls silent, or periodic window
+aggregations.
 
 ### 2. Implement the verdict service
 
@@ -140,7 +140,7 @@ configuration.
   verdict host a dsl `inputs:` entry naming the same topic or file.
 - Offline: recorder writes DataRecords to file; verifier uses a `file` input.
 - Choreographed: local verdicts use an MQTT verdict exporter; an aggregator
-  uses `custom.verdict_mqtt_source:VerdictMQTTSource`.
+  consumes them through a custom source that parses verdict JSON payloads.
 
 The DSL adapter itself should remain unchanged when only deployment changes.
 
