@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ROS2 Monitor Workbench</title>
+    <link rel="stylesheet" href="/styles.css?v=topology-workbench-3">
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="toolbar" aria-label="Workbench actions">
+        <label class="preset-picker">
+          <span>Topology</span>
+          <select id="template" title="Preset"></select>
+        </label>
+        <button id="modeToggle" type="button" title="Switch between Local Mode (all containers on this machine) and LAN Mode (SSH hosts)"><span class="cmd-icon">◈</span><span>Local Mode</span></button>
+        <button id="addHost" type="button"><span class="cmd-icon">H</span><span>New Host</span></button>
+        <button id="addMonitor" type="button"><span class="cmd-icon">+M</span><span>+ Monitor</span></button>
+        <button id="addConverter" type="button"><span class="cmd-icon">+C</span><span>+ Converter</span></button>
+        <button id="addVerdict" type="button"><span class="cmd-icon">+V</span><span>+ Verdict</span></button>
+        <button id="connectSelection" type="button"><span class="cmd-icon">→</span><span>Connect</span></button>
+        <button id="disconnectSelection" type="button"><span class="cmd-icon">⊘</span><span>Disconnect</span></button>
+        <button id="clearSelection" type="button"><span class="cmd-icon">⌫</span><span>Delete</span></button>
+        <button id="scanGraph" type="button"><span class="cmd-icon">⌕</span><span>Scan graph</span></button>
+        <button id="startRun" class="primary" type="button"><span class="cmd-icon">▶</span><span>Start</span></button>
+        <button id="stopRun" type="button"><span class="cmd-icon">■</span><span>Stop</span></button>
+        <button id="restartSelected" type="button"><span class="cmd-icon">↻</span><span>Restart</span></button>
+      </div>
+    </header>
+
+    <main class="workbench">
+      <aside class="sidebar" id="configPane">
+        <div class="section-head">
+          <div>
+            <h2>Configuration</h2>
+            <p id="selectionHint"></p>
+          </div>
+        </div>
+        <div id="configForm" class="config-form"></div>
+      </aside>
+
+      <section class="playground-shell">
+        <div id="graphSummary" class="notice subtle">No topology yet.</div>
+        <div id="scanStatus" class="notice subtle">Add blocks or scan a running ROS graph.</div>
+        <div id="topologyWarnings" class="notice warnings" style="display: none"></div>
+        <div id="graphSearchRow" class="discovery-search" style="display: none">
+          <input id="graphSearch" type="search" placeholder="Search scanned resources" spellcheck="false" autocomplete="off">
+          <span id="graphSearchMeta"></span>
+          <button id="graphClose" type="button" title="Close scan results">✕</button>
+        </div>
+        <div id="graphResults" class="discovery-drawer"></div>
+        <div class="playground" id="playground">
+          <div class="zoom-controls" aria-label="Zoom controls">
+            <button id="zoomOut" type="button">−</button>
+            <span id="zoomLevel">100%</span>
+            <button id="zoomIn" type="button">+</button>
+          </div>
+          <div id="selectionBox" class="selection-box"></div>
+          <svg id="edgeLayer" aria-hidden="true"></svg>
+          <div id="nodeLayer"></div>
+        </div>
+      </section>
+
+      <aside class="editor-pane">
+        <div class="editor-tabs">
+          <button class="editor-tab active" data-editor-tab="code" type="button">Code</button>
+          <button class="editor-tab" data-editor-tab="logs" type="button">Live log</button>
+        </div>
+        <div class="editor-panel active" id="editor-code">
+          <div class="file-row">
+            <select id="codeView" hidden title="Choose which file of the selected runtime to show">
+              <option value="plugin">Plugin</option>
+              <option value="yaml">YAML</option>
+            </select>
+            <input id="filePath" spellcheck="false">
+            <button id="loadFile" type="button">Load</button>
+            <button id="saveFile" class="primary" type="button">Save</button>
+          </div>
+          <textarea id="codeEditor" class="code-editor" spellcheck="false"></textarea>
+          <div id="fileStatus" class="status-line">No file loaded.</div>
+        </div>
+        <div class="editor-panel" id="editor-logs">
+          <div class="section-head compact">
+            <h2>Live Output</h2>
+            <span id="logStatus"></span>
+          </div>
+          <pre id="logs" class="logs">Logs will appear after a robot or generated monitor starts.</pre>
+        </div>
+      </aside>
+    </main>
+
+    <div id="lanHostModal" class="modal-backdrop" style="display: none">
+      <div class="modal">
+        <h3>Add SSH Host</h3>
+        <label>SSH address<input id="lanHostAddress" placeholder="user@hostname.local" spellcheck="false" autocomplete="off"></label>
+        <label id="lanPasswordRow" style="display: none">Password<input id="lanHostPassword" type="password" autocomplete="off"></label>
+        <div id="lanHostStatus" class="notice subtle"></div>
+        <div class="config-actions">
+          <button id="lanHostCancel" type="button">Cancel</button>
+          <button id="lanHostConnect" class="primary" type="button">Connect</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/app.js?v=topology-workbench-3"></script>
+  </body>
+</html>

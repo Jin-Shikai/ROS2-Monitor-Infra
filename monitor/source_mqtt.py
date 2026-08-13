@@ -1,0 +1,132 @@
+"""MQTTSource — subscribe to an MQTT broker and push DataRecords downstream.
+
+This is the verdict-side inbound adapter; mirror image of MQTTExporter on
+the monitor side. Each MQTT message payload is parsed with
+`DataRecord.from_json()` and handed to the downstream `Exporter[DataRecord]`
+(typically a `Dispatcher[DataRecord]`).
+
+Falls back to a no-op when paho-mqtt is missing, so the module can still be
+imported in test environments without the dependency installed.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, cast
+
+from data_record import DataRecord
+from exporter import Exporter
+from source import Source
+
+logger = logging.getLogger(__name__)
+
+try:
+    import paho.mqtt.client as mqtt
+    _HAS_PAHO = True
+except ImportError:
+    mqtt = None  # type: ignore[assignment]
+    _HAS_PAHO = False
+
+
+class MQTTSource(Source[DataRecord]):
+    def __init__(
+        self,
+        broker: str = "localhost",
+        port: int = 1883,
+        topic_filter: str = "monitor/#",
+        qos: int = 1,
+        keepalive: int = 60,
+        client_id: str = "",
+        client: Any | None = None,
+    ):
+        self.broker = broker
+        self.port = int(port)
+        self.topic_filter = topic_filter
+        self.qos = int(qos)
+        self.keepalive = int(keepalive)
+        self._exporter: Exporter[DataRecord] | None = None
+        self._received = 0
+        self._received_data = 0
+        self._received_bookends = 0
+
+        if client is not None:
+            self._client = client
+            self._owns_client = False
+            return
+
+        if not _HAS_PAHO:
+            logger.warning(
+                "paho-mqtt not installed; MQTTSource falling back to no-op."
+            )
+            self._client = None
+            self._owns_client = False
+            return
+
+        mqtt_module = cast(Any, mqtt)
+        self._client = mqtt_module.Client(
+            callback_api_version=mqtt_module.CallbackAPIVersion.VERSION2,
+            client_id=client_id,
+        )
+        self._owns_client = True
+
+    def _on_connect(self, client, userdata, flags, reason_code, properties):
+        # paho v2 passes a ReasonCode object; v1 passed an int. Both compare
+        # equal to 0 on success, so avoid int() casting (ReasonCode rejects it).
+        if reason_code == 0:
+            logger.info(
+                "MQTTSource connected to %s:%d, subscribing %s",
+                self.broker, self.port, self.topic_filter,
+            )
+            client.subscribe(self.topic_filter, qos=self.qos)
+        else:
+            logger.warning("MQTTSource connect failed: rc=%s", reason_code)
+
+    def _on_message(self, client, userdata, message):
+        if self._exporter is None:
+            return
+        try:
+            payload = message.payload.decode("utf-8")
+            record = DataRecord.from_json(payload)
+        except Exception as ex:
+            logger.warning(
+                "MQTTSource cannot parse message on %s: %s",
+                getattr(message, "topic", "?"), ex,
+            )
+            return
+        try:
+            self._exporter.export(record)
+            self._received += 1
+            if record._type == "data":
+                self._received_data += 1
+            else:
+                self._received_bookends += 1
+        except Exception as ex:
+            logger.error("MQTTSource downstream export error: %s", ex)
+
+    def start(self, exporter: Exporter[DataRecord]) -> None:
+        self._exporter = exporter
+        if self._client is None:
+            return
+        self._client.on_connect = self._on_connect
+        self._client.on_message = self._on_message
+        if self._owns_client:
+            try:
+                self._client.connect_async(self.broker, self.port, self.keepalive)
+                self._client.loop_start()
+            except Exception as ex:
+                logger.error("MQTTSource failed to start network loop: %s", ex)
+
+    def stop(self) -> None:
+        if self._client is None or not self._owns_client:
+            return
+        try:
+            self._client.loop_stop()
+            self._client.disconnect()
+            logger.info(
+                "MQTTSource stopped: received=%d data=%d bookends=%d",
+                self._received,
+                self._received_data,
+                self._received_bookends,
+            )
+        except Exception as ex:
+            logger.warning("MQTTSource stop error: %s", ex)

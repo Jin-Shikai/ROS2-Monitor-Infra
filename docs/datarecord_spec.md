@@ -10,7 +10,7 @@ A **DataRecord** is the universal data unit in the monitoring pipeline. Every
 captured ROS2 message — whether from a topic subscription, a service
 introspection event, or an action feedback — is wrapped into a DataRecord
 before entering the TransformerPipeline, and remains a DataRecord when
-dispatched to Exporters.
+exported to Exporters.
 
 Records are serialized as **JSONL** (one JSON object per line). Empty fields
 (`null`, `""`, `{}`) are stripped from the serialized output to keep lines
@@ -44,6 +44,22 @@ compact.
 | **Required** | Always |
 | **Format** | `YYYYMMDD_HHMMSS_<8 hex chars>` (e.g. `"20260415_211500_a1b2c3d4"`) |
 | **Purpose** | Uniquely identifies a monitoring session. Present on every record so that records from different sessions can be reliably distinguished even when written to the same file or MQTT topic. |
+
+---
+
+### `record_id`
+
+| | |
+|---|---|
+| **Type** | `string` |
+| **Required** | Only when `_type == "data"` |
+| **Format** | `<session_id>:<source_type>:<source_name>:<phase-or->:<seq>` |
+| **Example** | `"20260415_211500_a1b2c3d4:topic:/cmd_vel:-:7"` |
+| **Purpose** | Stable identifier for one captured data record within a monitoring session. Verdict-producing converters should propagate this into DSL records as `_record_id` so Evidence services can link verdicts back to the exact input record(s). |
+
+For topic records, the phase segment is `-`. For service and action records,
+the phase segment is the DataRecord `phase` value, such as `request`,
+`response`, `feedback`, or `status`.
 
 ---
 
@@ -258,6 +274,7 @@ The following table shows which fields are present in each combination of
 |---|---|---|---|---|---|---|
 | `_type` | yes | yes | yes | yes | yes | yes |
 | `session_id` | yes | yes | yes | yes | yes | yes |
+| `record_id` | — | — | yes | yes | yes | — |
 | `source_type` | — | — | yes | yes | yes | — |
 | `source_name` | — | — | yes | yes | yes | — |
 | `source_node` | — | — | if known | if known | if known | — |

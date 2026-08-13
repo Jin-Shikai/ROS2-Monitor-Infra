@@ -30,21 +30,60 @@ exporters:
     broker: localhost
     port: 1883
     topic_prefix: monitor/
+    qos: 1
+    max_queued_messages: 1000
+    publish_bookends: true
 
-# DSL evaluation chains. Each entry wires a DataConverter to a VerdictService.
-# Use a builtin name (e.g. RuleBasedConverter / ThresholdVerdict) or a Python
-# import path of the form 'module.path:ClassName' for user-defined classes.
+# Inbound endpoints (consumed by monitor/node_runner.py only; monitor_node
+# collects from ROS instead). Each entry is a transport: payload `records`
+# feeds the shared record stream, payload `dsl` is routed to verdict services
+# by `input:<id> -> verdict:<id>` links. Built-ins: mqtt, file. User-defined
+# sources use 'module.path:ClassName'.
+inputs:
+  - id: robot_feed
+    type: mqtt
+    broker: localhost
+    port: 1883
+    topic_filter: monitor/#
+    qos: 1
+
+# Evaluation graph, shared by monitor_node and node_runner.
+# Converters and verdict services are user classes ('module.path:ClassName');
+# links wire sources, converters, verdicts, and transport endpoints together.
 converters:
-  - type: custom.rule_based_converter:RuleBasedConverter
-    source_match: "^/odom$"
-    field_map:
-      velocity: twist.twist.linear.x
-    property_id: odom_speed_limit
-    verdict:
-      type: custom.threshold_verdict:ThresholdVerdict
+  - id: odom_speed
+    type: custom.rule_based:RuleBasedConverter
+    params:
+      source_match: "^/odom$"
+      field_map:
+        velocity: twist.twist.linear.x
+      property_id: odom_speed_limit
+
+verdict_services:
+  - id: odom_speed_check
+    type: custom.threshold:ThresholdVerdict
+    params:
       property_id: odom_speed_limit
       field: velocity
       op: ">"
       threshold: 0.5
       sustain_sec: 0.0
-      output: verdicts_{session_id}.jsonl
+    # One or more Exporter[Verdict] instances. Built-in types: file,
+    # stdout, mqtt. User-defined exporters use 'module.path:ClassName'.
+    exporters:
+      - type: file
+        path: verdicts_{session_id}.jsonl
+
+# Outbound endpoints: publish converter output on a transport instead of (or
+# in addition to) a local verdict. Payload `dsl` carries converter dicts,
+# payload `records` carries DataRecords (filter relays).
+# outputs:
+#   - id: dsl_out
+#     payload: dsl
+#     type: mqtt
+#     topic: dsl/odom_speed
+
+links:
+  - {from: "source:/odom", to: "converter:odom_speed"}
+  - {from: "converter:odom_speed", to: "verdict:odom_speed_check"}
+  # - {from: "converter:odom_speed", to: "output:dsl_out"}

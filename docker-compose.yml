@@ -9,6 +9,7 @@ services:
       - MONITOR_OUTPUT_DIR=/output
     volumes:
       - ./monitor:/monitor      # Mount code so changes don't require rebuild
+      - ./custom:/monitor/custom
       - ./output:/output        # Data output directory
     stdin_open: true
     tty: true

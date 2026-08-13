@@ -1,0 +1,7 @@
+{
+  "id": "separation_converter",
+  "kind": "converter",
+  "name": "Separation Distance Converter",
+  "class_path": "custom.separation_converter:SeparationDistanceConverter",
+  "params": []
+}

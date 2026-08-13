@@ -1,0 +1,7 @@
+{
+  "id": "reset_pose_effect_verdict",
+  "kind": "verdict",
+  "name": "Reset Pose Effect Verdict",
+  "class_path": "custom.reset_pose_effect:ResetPoseEffectVerdict",
+  "params": []
+}

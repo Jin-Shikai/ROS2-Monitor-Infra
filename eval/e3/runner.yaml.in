@@ -1,0 +1,53 @@
+# E3 — evaluation tier (template; run.sh substitutes @RUN_DIR@ and
+# @DEADLINE@). rclpy-free node_runner evaluating two properties on the
+# record stream received over MQTT:
+#   P1 commanded speed limit (TwistStamped -> twist.linear.x)
+#   P2 navigation-goal deadline on the /navigate_to_pose action
+
+monitor:
+  output_dir: "@RUN_DIR@"
+  session_id_prefix: e3run
+
+inputs:
+  - id: robot_feed
+    type: mqtt
+    broker: 127.0.0.1
+    port: 1884
+    topic_filter: "monitor/#"
+    qos: 1
+
+converters:
+  - id: cmd_speed
+    type: custom.speed:CmdVelSpeedConverter
+    params:
+      speed_path: twist.linear.x
+  - id: nav_goal
+    type: custom.nav_goal:NavGoalDeadlineConverter
+    params:
+      action_name: /navigate_to_pose
+      deadline_sec: @DEADLINE@
+      property_id: nav_goal_deadline
+
+verdict_services:
+  - id: speed_check
+    type: custom.threshold:ThresholdVerdict
+    params:
+      property_id: speed_check
+      threshold: 0.2
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_speed_{session_id}.jsonl"
+  - id: nav_deadline_check
+    type: custom.nav_goal:NavGoalDeadlineVerdict
+    params:
+      property_id: nav_goal_deadline
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_nav_{session_id}.jsonl"
+      - type: stdout
+
+links:
+  - {from: "source:/cmd_vel", to: "converter:cmd_speed"}
+  - {from: "converter:cmd_speed", to: "verdict:speed_check"}
+  - {from: "source:/navigate_to_pose", to: "converter:nav_goal"}
+  - {from: "converter:nav_goal", to: "verdict:nav_deadline_check"}

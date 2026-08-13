@@ -13,6 +13,11 @@ wheels/
 .vscode/
 .python-version
 demo*
+!demo/
+!demo/**
 CLAUDE*
 
 output/
+.DS_Store
+generated/
+eval/*/results/

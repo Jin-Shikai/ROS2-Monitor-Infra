@@ -7,8 +7,8 @@ import json
 
 import pytest
 
+from exporter import Exporter
 from verdict import (
-    FileVerdictSink,
     Verdict,
     VerdictExporter,
     VerdictService,
@@ -16,24 +16,34 @@ from verdict import (
 )
 
 
+class _ListExporter(Exporter[Verdict]):
+    """Test helper: collect emitted Verdicts into an in-memory list."""
+
+    def __init__(self):
+        self.items: list[Verdict] = []
+
+    def export(self, record: Verdict) -> None:
+        self.items.append(record)
+
+
 class _AlwaysFires(VerdictService):
     def __init__(self, property_id="p"):
         self.property_id = property_id
-    def evaluate(self, record):
+    def evaluate(self, dsl_record):
         return Verdict(
             timestamp=0.0, property_id=self.property_id,
-            result=True, details={"echoed": record},
+            result=True, details={"echoed": dsl_record},
         )
 
 
 class _NeverFires(VerdictService):
-    def evaluate(self, record):
+    def evaluate(self, dsl_record):
         return None
 
 
 def test_verdict_service_is_abstract():
     with pytest.raises(TypeError):
-        VerdictService()
+        VerdictService()  # pyright: ignore[reportAbstractUsage]
 
 
 def test_verdict_to_json_round_trip():
@@ -44,53 +54,38 @@ def test_verdict_to_json_round_trip():
     }
 
 
-def test_verdict_exporter_invokes_sink_on_emit():
-    captured = []
-    exp = VerdictExporter(_AlwaysFires(), sink=captured.append)
+def test_verdict_exporter_forwards_to_downstream_on_emit():
+    exporter = _ListExporter()
+    exp = VerdictExporter(_AlwaysFires(), exporter=exporter)
     exp.export({"any": "record"})
-    assert len(captured) == 1
-    assert captured[0].property_id == "p"
+    assert len(exporter.items) == 1
+    assert exporter.items[0].property_id == "p"
 
 
 def test_verdict_exporter_silent_when_service_returns_none():
-    captured = []
-    exp = VerdictExporter(_NeverFires(), sink=captured.append)
+    exporter = _ListExporter()
+    exp = VerdictExporter(_NeverFires(), exporter=exporter)
     exp.export({"any": "record"})
-    assert captured == []
+    assert exporter.items == []
 
 
-def test_verdict_exporter_default_sink_prints(capsys):
+def test_verdict_exporter_default_prints_to_stdout(capsys):
     exp = VerdictExporter(_AlwaysFires())
     exp.export({"x": 1})
     out = capsys.readouterr().out
     assert "[Verdict]" in out
 
 
-def test_file_verdict_sink_appends_jsonl(tmp_path):
-    path = tmp_path / "out.jsonl"
-    sink = FileVerdictSink(str(path))
-    try:
-        sink(Verdict(1.0, "p", False, {"v": 0.7}))
-        sink(Verdict(2.0, "p", True, {}))
-    finally:
-        sink.close()
-    lines = path.read_text().strip().splitlines()
-    assert len(lines) == 2
-    assert json.loads(lines[0])["property_id"] == "p"
-
-
-def test_file_verdict_sink_creates_parent_dir(tmp_path):
-    path = tmp_path / "nested" / "deep" / "v.jsonl"
-    sink = FileVerdictSink(str(path))
-    sink(Verdict(1.0, "p", True, {}))
-    sink.close()
-    assert path.exists()
-
-
-def test_file_verdict_sink_close_idempotent(tmp_path):
-    sink = FileVerdictSink(str(tmp_path / "v.jsonl"))
-    sink.close()
-    sink.close()
+def test_verdict_exporter_attaches_correlation_from_dsl_record():
+    exporter = _ListExporter()
+    exp = VerdictExporter(_AlwaysFires(), exporter=exporter)
+    exp.export({
+        "_session_id": "monitor-s",
+        "_record_id": "monitor-s:topic:/odom:-:1",
+    })
+    verdict = exporter.items[0]
+    assert verdict.monitor_session_id == "monitor-s"
+    assert verdict.input_record_ids == ["monitor-s:topic:/odom:-:1"]
 
 
 def test_resolve_requires_module_path():
@@ -100,7 +95,7 @@ def test_resolve_requires_module_path():
 
 def test_resolve_module_path_works():
     cls = resolve_verdict_class(
-        "custom.threshold_verdict:ThresholdVerdict"
+        "custom.threshold:ThresholdVerdict"
     )
     assert issubclass(cls, VerdictService)
 

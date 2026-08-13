@@ -1,0 +1,73 @@
+# E4 — evaluation tier (template; run.sh substitutes @RUN_DIR@, @SEP_MIN@
+# and @SPEED_MAX@). rclpy-free node_runner evaluating three properties on
+# the record stream received over MQTT:
+#   P1a commanded speed limit for robot1 (its own converter chain)
+#   P1b commanded speed limit for robot2 (independent chain: namespace
+#       isolation is structural — robot1 records cannot reach robot2's
+#       verdict service)
+#   P2  fleet minimum separation from both robots' AMCL map-frame poses
+
+monitor:
+  output_dir: "@RUN_DIR@"
+  session_id_prefix: e4run
+
+inputs:
+  - id: robot_feed
+    type: mqtt
+    broker: 127.0.0.1
+    port: 1884
+    topic_filter: "monitor/#"
+    qos: 1
+
+converters:
+  - id: cmd_speed_r1
+    type: custom.speed:CmdVelSpeedConverter
+    params:
+      speed_path: twist.linear.x
+  - id: cmd_speed_r2
+    type: custom.speed:CmdVelSpeedConverter
+    params:
+      speed_path: twist.linear.x
+  - id: separation
+    type: custom.separation_converter:SeparationDistanceConverter
+    params:
+      robot_a: /robot1
+      robot_b: /robot2
+      topic_suffix: /amcl_pose
+      property_id: fleet_separation
+
+verdict_services:
+  - id: speed_r1
+    type: custom.threshold:ThresholdVerdict
+    params:
+      property_id: speed_robot1
+      threshold: @SPEED_MAX@
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_speed_r1_{session_id}.jsonl"
+  - id: speed_r2
+    type: custom.threshold:ThresholdVerdict
+    params:
+      property_id: speed_robot2
+      threshold: @SPEED_MAX@
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_speed_r2_{session_id}.jsonl"
+  - id: separation_check
+    type: custom.separation_verdict:SeparationDistanceVerdict
+    params:
+      property_id: fleet_separation
+      min_distance: @SEP_MIN@
+    exporters:
+      - type: eval.common.eval_exporters:TimestampedVerdictFileExporter
+        path: "verdicts_separation_{session_id}.jsonl"
+      - type: stdout
+
+links:
+  - {from: "source:/robot1/cmd_vel", to: "converter:cmd_speed_r1"}
+  - {from: "converter:cmd_speed_r1", to: "verdict:speed_r1"}
+  - {from: "source:/robot2/cmd_vel", to: "converter:cmd_speed_r2"}
+  - {from: "converter:cmd_speed_r2", to: "verdict:speed_r2"}
+  - {from: "source:/robot1/amcl_pose", to: "converter:separation"}
+  - {from: "source:/robot2/amcl_pose", to: "converter:separation"}
+  - {from: "converter:separation", to: "verdict:separation_check"}

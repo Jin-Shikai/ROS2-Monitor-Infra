@@ -6,22 +6,30 @@ engines (LTL/STL/CTL/...) live outside the framework — see `custom/` for an
 example implementation.
 
 VerdictExporter wraps a VerdictService as an Exporter so it can be registered
-on the downstream Dispatcher carrying DSL-ready records:
+on the downstream Dispatcher carrying DSL-ready records. Verdicts emitted by
+the service are forwarded to a downstream `Exporter[Verdict]` — typically a
+`Dispatcher[Verdict]` whose member Exporters (file / stdout / mqtt /
+user-defined) are configured per YAML.
 
   Dispatcher[Any] -> VerdictExporter -> VerdictService.evaluate() -> Verdict
+                                                                       |
+                                                                       v
+                                                              Dispatcher[Verdict]
+                                                                  |--> VerdictFileExporter
+                                                                  |--> VerdictMQTTExporter
+                                                                  `--> ... (user-pluggable)
 """
 
 from __future__ import annotations
 
-import importlib
 import json
 import threading
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from exporter import Exporter
+from exporter import Exporter, StdoutExporter
+from plugins import resolve_plugin_class
 
 
 @dataclass
@@ -32,9 +40,16 @@ class Verdict:
     property_id: str
     result: bool                     # True = property holds; False = violation
     details: dict = field(default_factory=dict)
+    monitor_session_id: str = ""
+    verifier_session_id: str = ""
+    input_record_ids: list[str] = field(default_factory=list)
 
     def to_json(self) -> str:
-        return json.dumps(asdict(self), default=str, ensure_ascii=False)
+        d = asdict(self)
+        for key in ("monitor_session_id", "verifier_session_id", "input_record_ids"):
+            if d.get(key) in ("", []):
+                d.pop(key, None)
+        return json.dumps(d, default=str, ensure_ascii=False)
 
 
 class VerdictService(ABC):
@@ -53,63 +68,53 @@ class VerdictService(ABC):
 class VerdictExporter(Exporter[Any]):
     """Adapter: presents a VerdictService as an Exporter on a Dispatcher[Any].
 
-    When a Verdict is emitted, it is forwarded to `sink` (default: print to
-    stdout). A typical sink writes verdicts to a JSONL file (see
-    FileVerdictSink below).
+    When a Verdict is emitted, it is forwarded to the downstream
+    `Exporter[Verdict]` (default: a `StdoutExporter[Verdict]`). In
+    production wiring this is typically a `Dispatcher[Verdict]`, fanning
+    out to any number of `Exporter[Verdict]` instances (file, mqtt,
+    stdout, user-defined).
     """
 
     def __init__(
         self,
         service: VerdictService,
-        sink: Callable[[Verdict], None] | None = None,
+        exporter: Exporter[Verdict] | None = None,
     ):
         self.service = service
-        self.sink = sink or _default_sink
-
-    def export(self, record: Any) -> None:
-        verdict = self.service.evaluate(record)
-        if verdict is not None:
-            self.sink(verdict)
-
-
-def _default_sink(verdict: Verdict) -> None:
-    print(f"[Verdict] {verdict.to_json()}", flush=True)
-
-
-class FileVerdictSink:
-    """Sink that appends each Verdict as a JSON line to a file."""
-
-    def __init__(self, path: str):
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._f = self.path.open("a", encoding="utf-8")
+        self.exporter = exporter or StdoutExporter[Verdict](label="Verdict")
+        # A stateful service may be fed by several converter chains (and their
+        # timer threads); serialize evaluate() calls.
         self._lock = threading.Lock()
 
-    def __call__(self, verdict: Verdict) -> None:
+    def export(self, record: Any) -> None:
         with self._lock:
-            if not self._f.closed:
-                self._f.write(verdict.to_json() + "\n")
-                self._f.flush()
+            verdict = self.service.evaluate(record)
+            if verdict is not None:
+                _attach_correlation(verdict, record)
+                self.exporter.export(verdict)
 
-    def close(self) -> None:
-        with self._lock:
-            if not self._f.closed:
-                self._f.close()
+
+def _attach_correlation(verdict: Verdict, record: Any) -> None:
+    if not isinstance(record, dict):
+        return
+    if not verdict.monitor_session_id and record.get("_session_id"):
+        verdict.monitor_session_id = str(record["_session_id"])
+    if verdict.input_record_ids:
+        return
+    if isinstance(record.get("_input_record_ids"), list):
+        verdict.input_record_ids = list(record["_input_record_ids"])
+    elif record.get("_record_id"):
+        verdict.input_record_ids = [str(record["_record_id"])]
 
 
 def resolve_verdict_class(spec: str) -> type[VerdictService]:
     """Resolve a VerdictService class from a 'module.path:ClassName' import string.
 
-    Example: 'custom.threshold_verdict:ThresholdVerdict'
+    Example: 'custom.threshold:ThresholdVerdict'
     """
     if ":" not in spec:
         raise ValueError(
             f"Bad verdict spec '{spec}'. Expected 'module.path:ClassName' "
-            f"(e.g. 'custom.threshold_verdict:ThresholdVerdict')."
+            f"(e.g. 'custom.threshold:ThresholdVerdict')."
         )
-    module_path, _, class_name = spec.partition(":")
-    module = importlib.import_module(module_path)
-    cls = getattr(module, class_name)
-    if not (isinstance(cls, type) and issubclass(cls, VerdictService)):
-        raise TypeError(f"{spec} is not a VerdictService subclass")
-    return cls
+    return resolve_plugin_class(spec, {}, VerdictService, "verdict service")

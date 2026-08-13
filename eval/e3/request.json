@@ -1,0 +1,106 @@
+{
+  "hosts": [
+    {
+      "id": "monitor",
+      "output_dir": "@RUN_DIR@",
+      "session_id_prefix": "e3mon",
+      "exporters": [{"type": "file"}],
+      "runtimes": [
+        {
+          "id": "ros2_e3",
+          "kind": "ros2",
+          "sources": [
+            {"id": "cmd_vel", "source_kind": "topic", "name": "/cmd_vel", "interface": "geometry_msgs/msg/TwistStamped"},
+            {
+              "id": "odom",
+              "source_kind": "topic",
+              "name": "/odom",
+              "interface": "nav_msgs/msg/Odometry",
+              "transformers": [
+                {"type": "FieldExtractor", "fields": ["pose.pose.position.x", "pose.pose.position.y", "twist.twist.linear.x"]},
+                {"type": "RateThrottler", "max_rate_hz": 5.0}
+              ]
+            },
+            {
+              "id": "navigate_to_pose",
+              "source_kind": "action",
+              "name": "/navigate_to_pose",
+              "interface": "nav2_msgs/action/NavigateToPose",
+              "phases": ["feedback", "status"]
+            }
+          ]
+        },
+        {"id": "monitor_e3", "kind": "monitor", "subscribe": ["cmd_vel", "odom", "navigate_to_pose"]}
+      ]
+    },
+    {
+      "id": "runner",
+      "output_dir": "@RUN_DIR@",
+      "session_id_prefix": "e3run",
+      "runtimes": [
+        {
+          "id": "cmd_speed",
+          "kind": "converter",
+          "converter": "dsl_converter",
+          "class_path": "custom.speed:CmdVelSpeedConverter",
+          "input_from": ["cmd_vel"],
+          "output_to": "cmd_speed_record",
+          "speed_path": "twist.linear.x"
+        },
+        {
+          "id": "nav_goal",
+          "kind": "converter",
+          "converter": "dsl_converter",
+          "class_path": "custom.nav_goal:NavGoalDeadlineConverter",
+          "input_from": ["navigate_to_pose"],
+          "output_to": "nav_goal_record",
+          "action_name": "/navigate_to_pose",
+          "deadline_sec": "@DEADLINE@",
+          "property_id": "nav_goal_deadline"
+        },
+        {
+          "id": "speed_check",
+          "kind": "verdict_service",
+          "class_path": "custom.threshold:ThresholdVerdict",
+          "input_from": ["cmd_speed_record"],
+          "property_id": "speed_check",
+          "threshold": 0.2,
+          "output_to": [
+            {"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_speed_{session_id}.jsonl"}
+          ]
+        },
+        {
+          "id": "nav_deadline_check",
+          "kind": "verdict_service",
+          "class_path": "custom.nav_goal:NavGoalDeadlineVerdict",
+          "input_from": ["nav_goal_record"],
+          "property_id": "nav_goal_deadline",
+          "output_to": [
+            {"kind": "eval.common.eval_exporters:TimestampedVerdictFileExporter", "path": "verdicts_nav_{session_id}.jsonl"},
+            {"kind": "stdout"}
+          ]
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "id": "robot_feed",
+      "from_host": "monitor",
+      "to_host": "runner",
+      "from_runtime": "monitor_e3",
+      "to_runtime": "cmd_speed",
+      "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1884, "qos": 1, "topic_prefix": "monitor/", "publish_bookends": true}
+    },
+    {
+      "id": "robot_feed_nav",
+      "from_host": "monitor",
+      "to_host": "runner",
+      "from_runtime": "monitor_e3",
+      "to_runtime": "nav_goal",
+      "payload": "records",
+      "transport": {"kind": "mqtt", "broker": "127.0.0.1", "port": 1884, "qos": 1, "topic_prefix": "monitor/", "publish_bookends": true}
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "id": "relative_speed_converter",
+  "kind": "converter",
+  "name": "Relative Speed Converter",
+  "class_path": "custom.relative_speed:RelativeSpeedConverter",
+  "params": []
+}

@@ -3,7 +3,7 @@ DataRecord: the core data unit flowing through the monitoring pipeline.
 
 Every message captured by a Collector is wrapped into a DataRecord before
 entering the TransformerPipeline.  After transformation the same DataRecord
-(possibly with trimmed/flattened `data`) is handed to the ExportDispatcher.
+(possibly with trimmed/flattened `data`) is handed to the Dispatcher.
 
 """
 
@@ -33,6 +33,7 @@ class DataRecord:
 
     # --- Session ---
     session_id: str = ""
+    record_id: str = ""          # stable within a session; data records only
 
     # --- Source identity ---
     source_type: str = ""         # "topic" | "service" | "action"
@@ -66,7 +67,6 @@ class DataRecord:
     def to_json(self) -> str:
         """Serialize to a single JSON line (for JSONL output)."""
         d = asdict(self)
-        # Drop None values to keep output compact
         # Drop None, empty strings, and empty dicts to keep output compact
         d = {k: v for k, v in d.items()
              if v is not None and v != "" and v != {}}
@@ -115,6 +115,7 @@ class DataRecord:
         return cls(
             _type="data",
             session_id=session_id,
+            record_id=_make_record_id(session_id, "topic", topic_name, seq),
             source_type="topic",
             source_name=topic_name,
             source_node=source_node,
@@ -163,6 +164,7 @@ class DataRecord:
         return cls(
             _type="data",
             session_id=session_id,
+            record_id=_make_record_id(session_id, "service", service_name, seq, phase),
             source_type="service",
             source_name=service_name,
             source_node=source_node,
@@ -194,6 +196,7 @@ class DataRecord:
         return cls(
             _type="data",
             session_id=session_id,
+            record_id=_make_record_id(session_id, "action", action_name, seq, "feedback"),
             source_type="action",
             source_name=action_name,
             source_node=source_node,
@@ -218,6 +221,7 @@ class DataRecord:
         return cls(
             _type="data",
             session_id=session_id,
+            record_id=_make_record_id(session_id, "action", action_name, seq, "status"),
             source_type="action",
             source_name=action_name,
             source_node=source_node,
@@ -240,3 +244,14 @@ def _extract_ros_timestamp(data: dict) -> dict | None:
     if stamp.get("sec", 0) == 0 and stamp.get("nanosec", 0) == 0:
         return None  # default-constructed, not meaningful
     return stamp
+
+
+def _make_record_id(
+    session_id: str,
+    source_type: str,
+    source_name: str,
+    seq: int,
+    phase: str | None = None,
+) -> str:
+    phase_part = phase or "-"
+    return f"{session_id}:{source_type}:{source_name}:{phase_part}:{seq}"

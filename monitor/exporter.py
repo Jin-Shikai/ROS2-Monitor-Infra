@@ -86,33 +86,53 @@ def _default_serialize(record: Any) -> str:
     return json.dumps(record, default=str, ensure_ascii=False)
 
 
-class Dispatcher(Generic[T]):
-    """Owns an exporter list plus a plugin registry (name -> class).
+class StdoutExporter(Exporter[T], Generic[T]):
+    """Print each record to stdout, prefixed by `label`.
 
-    Records go in via dispatch(); each registered Exporter gets its own
-    try/except so a single bad exporter cannot take down the rest.
+    Generic over T: uses the same duck-typed serializer as FileExporter,
+    so DataRecords, Verdicts, and plain dicts all work.
+    """
+
+    def __init__(
+        self,
+        label: str = "Record",
+        serialize: Callable[[T], str] | None = None,
+    ):
+        self.label = label
+        self._serialize = serialize or _default_serialize
+
+    def export(self, record: T) -> None:
+        print(f"[{self.label}] {self._serialize(record)}", flush=True)
+
+
+class Dispatcher(Exporter[T], Generic[T]):
+    """Fan-out Exporter.
+
+    Dispatcher IS-A Exporter[T] — `export(record)` forwards to every
+    registered exporter, with per-exporter try/except so one bad exporter
+    cannot take down the rest. This lets a `VerdictExporter` or a `Source`
+    accept a Dispatcher anywhere an `Exporter[T]` is expected.
     """
 
     def __init__(self, label: str = "Dispatcher"):
         self._label = label
         self._exporters: list[Exporter[T]] = []
-        self._registry: dict[str, type[Exporter[T]]] = {}
-
-    def register(self, name: str, exporter_cls: type[Exporter[T]]) -> None:
-        self._registry[name] = exporter_cls
-
-    def has(self, name: str) -> bool:
-        return name in self._registry
-
-    def build(self, name: str, **kwargs) -> Exporter[T]:
-        if name not in self._registry:
-            raise KeyError(f"Unknown exporter: {name}")
-        return self._registry[name](**kwargs)
 
     def add(self, exporter: Exporter[T]) -> None:
         self._exporters.append(exporter)
 
-    def dispatch(self, record: T) -> None:
+    @property
+    def size(self) -> int:
+        return len(self._exporters)
+
+    @property
+    def exporters(self) -> tuple[Exporter[T], ...]:
+        return tuple(self._exporters)
+
+    def is_empty(self) -> bool:
+        return not self._exporters
+
+    def export(self, record: T) -> None:
         for e in self._exporters:
             try:
                 e.export(record)
@@ -135,7 +155,3 @@ class Dispatcher(Generic[T]):
                 e.close()
             except Exception:
                 pass
-
-
-# Backward-compat alias for callers that still use the old name.
-ExportDispatcher = Dispatcher

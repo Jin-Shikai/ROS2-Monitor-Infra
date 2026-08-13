@@ -1,6 +1,6 @@
 """Unit tests for monitor/converter.py — framework abstractions only.
 
-For tests of the RuleBasedConverter demo, see test_custom_rule_based_converter.py.
+For tests of the command-speed demo converter, see test_custom_speed_converter.py.
 """
 
 import pytest
@@ -39,15 +39,15 @@ def _data_record(rtype="data"):
 
 def test_data_converter_is_abstract():
     with pytest.raises(TypeError):
-        DataConverter()
+        DataConverter()  # pyright: ignore[reportAbstractUsage]
 
 
 def test_converter_exporter_dispatches_result():
     class Capture(Exporter):
         def __init__(self):
             self.items = []
-        def export(self, item):
-            self.items.append(item)
+        def export(self, record):
+            self.items.append(record)
 
     downstream = Dispatcher()
     cap = Capture()
@@ -61,8 +61,8 @@ def test_converter_exporter_drops_when_convert_returns_none():
     class Capture(Exporter):
         def __init__(self):
             self.items = []
-        def export(self, item):
-            self.items.append(item)
+        def export(self, record):
+            self.items.append(record)
 
     downstream = Dispatcher()
     cap = Capture()
@@ -76,8 +76,8 @@ def test_converter_exporter_skips_session_bookends():
     class Capture(Exporter):
         def __init__(self):
             self.items = []
-        def export(self, item):
-            self.items.append(item)
+        def export(self, record):
+            self.items.append(record)
 
     downstream = Dispatcher()
     cap = Capture()
@@ -92,7 +92,7 @@ def test_converter_exporter_skips_session_bookends():
 def test_converter_exporter_close_propagates():
     closed = []
     class Closeable(Exporter):
-        def export(self, r): pass
+        def export(self, record): pass
         def close(self): closed.append(True)
     downstream = Dispatcher()
     downstream.add(Closeable())
@@ -101,14 +101,67 @@ def test_converter_exporter_close_propagates():
     assert closed == [True]
 
 
+def test_converter_lifecycle_start_emit_stop():
+    class Capture(Exporter):
+        def __init__(self):
+            self.items = []
+        def export(self, record):
+            self.items.append(record)
+
+    class SelfScheduled(DataConverter):
+        def __init__(self):
+            self.stopped = False
+            self._emit = None
+        def convert(self, record):
+            return None
+        def start(self, emit):
+            self._emit = emit
+        def stop(self):
+            self.stopped = True
+
+    downstream = Dispatcher()
+    cap = Capture()
+    downstream.add(cap)
+    conv = SelfScheduled()
+    ce = ConverterExporter(conv, downstream)
+
+    assert conv._emit is not None
+    conv._emit({"tick": 1})
+    conv._emit(None)  # None emissions are dropped
+    assert cap.items == [{"tick": 1}]
+
+    ce.close()
+    assert conv.stopped
+
+
+def test_converter_exporter_passes_non_datarecord_payloads():
+    """Chained converters may receive whatever the upstream emitted."""
+    class Capture(Exporter):
+        def __init__(self):
+            self.items = []
+        def export(self, record):
+            self.items.append(record)
+
+    class DictConverter(DataConverter):
+        def convert(self, record):
+            return {"seen": record}
+
+    downstream = Dispatcher()
+    cap = Capture()
+    downstream.add(cap)
+    ce = ConverterExporter(DictConverter(), downstream)
+    ce.export({"upstream": True})
+    assert cap.items == [{"seen": {"upstream": True}}]
+
+
 def test_resolve_requires_module_path():
     with pytest.raises(ValueError):
-        resolve_converter_class("RuleBasedConverter")
+        resolve_converter_class("CmdVelSpeedConverter")
 
 
 def test_resolve_module_path_works():
     cls = resolve_converter_class(
-        "custom.rule_based_converter:RuleBasedConverter"
+        "custom.speed:CmdVelSpeedConverter"
     )
     assert issubclass(cls, DataConverter)
 

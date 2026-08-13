@@ -1,13 +1,13 @@
-"""Unit tests for monitor/exporter.py and monitor/exporter_mqtt.py."""
+"""Unit tests for monitor/exporter.py.
+
+MQTTExporter tests live in test_exporter_mqtt.py.
+"""
 
 import json
 from pathlib import Path
 
-import pytest
-
 from data_record import DataRecord
-from exporter import Exporter, ExportDispatcher, FileExporter
-from exporter_mqtt import MQTTExporter
+from exporter import Exporter, Dispatcher, FileExporter
 
 
 def _rec(seq=1):
@@ -61,13 +61,10 @@ def test_file_exporter_flush_every_batches_flushes(tmp_path):
     assert len((tmp_path / "s.jsonl").read_text().strip().splitlines()) == 5
 
 
-def test_dispatcher_registry_and_build():
-    d = ExportDispatcher()
-    d.register("file", FileExporter)
-    assert d.has("file")
-    assert not d.has("nope")
-    with pytest.raises(KeyError):
-        d.build("nope")
+def test_dispatcher_empty_state():
+    d = Dispatcher()
+    assert d.is_empty()
+    assert d.size == 0
 
 
 def test_dispatcher_fans_out_to_all(tmp_path):
@@ -77,12 +74,15 @@ def test_dispatcher_fans_out_to_all(tmp_path):
         def export(self, record):
             self.records.append(record)
 
-    d = ExportDispatcher()
+    d = Dispatcher()
     a, b = Recorder(), Recorder()
     d.add(a)
     d.add(b)
+    assert d.size == 2
+    assert d.exporters == (a, b)
+    assert not d.is_empty()
     r = _rec(1)
-    d.dispatch(r)
+    d.export(r)
     assert a.records == [r]
     assert b.records == [r]
 
@@ -98,11 +98,11 @@ def test_dispatcher_isolates_exporter_exceptions(capsys):
         def export(self, record):
             self.count += 1
 
-    d = ExportDispatcher()
+    d = Dispatcher()
     d.add(Boom())
     good = Recorder()
     d.add(good)
-    d.dispatch(_rec())
+    d.export(_rec())
     assert good.count == 1
     assert "broken" in capsys.readouterr().out
 
@@ -113,17 +113,7 @@ def test_dispatcher_flush_and_close_all_tolerate_errors():
         def flush(self): raise RuntimeError()
         def close(self): raise RuntimeError()
 
-    d = ExportDispatcher()
+    d = Dispatcher()
     d.add(Boom())
     d.flush_all()  # must not raise
     d.close_all()  # must not raise
-
-
-def test_mqtt_exporter_stub_is_noop(caplog):
-    # Stub should accept any record without raising and without publishing.
-    exp = MQTTExporter(broker="localhost", port=1883, topic_prefix="monitor/")
-    assert exp.broker == "localhost"
-    assert exp.port == 1883
-    assert exp.topic_prefix == "monitor/"
-    # export returns None, does nothing
-    assert exp.export(_rec()) is None

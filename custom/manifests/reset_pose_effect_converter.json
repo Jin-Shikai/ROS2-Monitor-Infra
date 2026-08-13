@@ -1,0 +1,10 @@
+{
+  "id": "reset_pose_effect_converter",
+  "kind": "converter",
+  "name": "Reset Pose Effect Converter",
+  "class_path": "custom.reset_pose_effect:ResetPoseEffectConverter",
+  "params": [
+    {"key": "deadline_sec", "label": "Deadline seconds", "type": "number", "default": 1.0},
+    {"key": "tolerance_m", "label": "Tolerance meters", "type": "number", "default": 0.05}
+  ]
+}
