@@ -47,7 +47,3 @@ Run the tests:
 pytest
 ```
 
-## Documentation
-
-Start at [docs/README.md](docs/README.md) for the configuration reference,
-record format specs, and the configuration generation algorithm.
