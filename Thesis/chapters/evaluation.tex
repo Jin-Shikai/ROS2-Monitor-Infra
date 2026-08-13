@@ -170,7 +170,7 @@ Missed or additional verdicts & 0\\
 \end{tabular}
 \end{table}
 
-E1 therefore establishes the complete integrated topic path for C1 and C2: the
+E1 establishes the complete integrated topic path for C1 and C2: the
 collector, converter, and verdict service preserve the expected sequence of
 property-state changes.
 
@@ -191,16 +191,15 @@ verifier. During the 120-second reference run it collected:
   seconds.
 \end{itemize}
 
-Odd reset calls moved the pose near the origin; even calls deliberately
+Odd reset calls moved the pose near the origin; even calls
 reported success without moving it. The reset-effect property required distance
 to the origin to become at most 0.05~m within one second of a successful
 response. This explains why a service response and a later topic record appear
 in one verdict.
 
-The speed property ran once inside the monitor and once in the verifier. This
-duplication was intentional: it tested whether serialization and MQTT transport
-preserved the result and record attribution, not whether two different
-properties were needed.
+The speed property ran once inside the monitor and once in the verifier.
+Comparing the two verdict streams tested whether serialization and MQTT
+transport preserved the result and record attribution.
 
 \begin{table}[htbp]
 \centering
@@ -213,7 +212,7 @@ properties were needed.
 \midrule
 Local / remote speed verdicts & 40 / 40 identical\\
 Remote speed verdicts compared with recorded input & 40 / 40 correct\\
-Reset-effect verdicts & 39, alternating as designed\\
+Reset-effect verdicts & 39, alternating\\
 Reset attribution & service response and odometry in every verdict\\
 Fibonacci action evidence & 23 goals, 115 feedback records, 23 succeeded
 statuses\\
@@ -224,9 +223,8 @@ Total common records & 1458\\
 
 The 120-second run contained 40 reset calls at the three-second interval; the
 property produced 39 alternating verdicts because the one-second verification
-window of the final call had not closed when the session ended. There was no
-infrastructure failure, and the negative reset verdicts were expected by
-design.
+window of the final call had not closed when the session ended. The negative
+verdicts correspond to the even reset calls that left the pose unchanged.
 E2 satisfies the remaining observation part of C1 and shows for C2/C3 that one
 recorded stream retains its meaning across the local MQTT boundary.
 
@@ -241,7 +239,7 @@ checked a 0.2~m/s speed property and:
   \text{goal status = succeeded} \ \land\  \text{duration} \leq 35\ \text{s}.
 \]
 
-The mission deliberately produced three outcomes, shown in
+The mission produced three outcomes as expected, shown in
 Figures~\ref{fig:e3-goals} and~\ref{fig:e3-goalc}. Goal A used an open lower
 route. Before B, an obstacle closed that route, forcing the upper route.
 Before C, both openings were closed.
@@ -293,11 +291,11 @@ C & Aborted in 33.10 s & Stayed left & Negative: aborted\\
 
 The online B verdict was emitted when the 35-second deadline passed while the
 action was still active. The C verdict followed the observed aborted status.
-These are expected negative application outcomes, not monitor failures. Mission
+Both negative verdicts follow from the scripted route closures. Mission
 and Gazebo logs independently confirmed all three. The run contained 15,833
 records: 2422 velocity, 12,720 action, and 691 rate-limited odometry records.
 All 12 speed transitions and all three navigation verdicts matched the recorded
-inputs and outcomes. E3 therefore supports C2 on an existing application whose
+inputs and outcomes. E3 supports C2 on an existing application whose
 navigation code was unchanged.
 
 \section{E4: Two Nav2 Robots}
@@ -318,7 +316,7 @@ least 1.0~m. Each new pose was paired with the latest pose of the other robot.
   \label{fig:e4-deployment}
 \end{figure}
 
-The robots crossed and returned, deliberately creating two violation periods;
+The robots crossed and returned, creating two violation periods;
 Figure~\ref{fig:e4-mission} shows the mission. All four navigation goals
 succeeded. From 3463 records, the robot speed properties produced 12 and 20
 correct transitions. The separation property produced exactly two negative and
@@ -506,8 +504,8 @@ The code sizes in the public repository quantify this boundary. The reusable
 and was reused unchanged by every experiment. All property-specific plug-in
 code across the case studies amounts to about 260 lines in four modules
 (\texttt{CmdVelSpeedConverter}, \texttt{ThresholdVerdict}, the reset-effect
-pair, and \texttt{RelativeSpeedConverter}). Each experiment therefore
-implemented at most roughly one hundred lines of new property code while
+pair, and \texttt{RelativeSpeedConverter}). Each experiment implemented
+at most roughly one hundred lines of new property code while
 reusing the collection, serialization, routing, transport, and evidence
 implementation. The ten generated runtime YAML files and the unchanged
 E4-to-E5 property code are further concrete outcomes of this separation: the

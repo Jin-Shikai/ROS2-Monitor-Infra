@@ -26,7 +26,7 @@ that separate collection from checking either fix the property logic inside
 generated components or tie the split to one external checker protocol;
 whether checking runs with the collector or in a separate runtime is not
 itself a configuration choice in the reviewed work. The resulting gap is
-therefore not ``monitoring in general'', but the reusable application-level
+not ``monitoring in general'', but the reusable application-level
 path from heterogeneous ROS~2 observations to replaceable property checkers.
 
 The prototype addresses that focused gap. E2 collected topic messages, service
@@ -56,8 +56,8 @@ are:
   \item configured, generated, and plug-in-based implementation.
 \end{itemize}
 
-The feature model separates these dimensions, and this separation is its main
-value. The choice between application-level and lower-level observation is
+The feature model separates these dimensions. 
+The choice between application-level and lower-level observation is
 independent of the choice between integrated and distributed placement; a
 checker formalism should not determine whether collection is local or remote;
 and an MQTT choice should not determine how a ROS message is observed.
@@ -77,7 +77,7 @@ A converter plug-in adapts records to one DSL-record shape; a verdict-service
 plug-in evaluates the corresponding property. Verdict exporters retain the
 result and contributing record identifiers.
 
-The common data record is central to this result. Uniform fields let sources,
+Uniform fields let sources,
 transformers, transports, and checking components exchange one
 representation. At the same time, source type, source name, phase, timestamps,
 and metadata retain the distinctions between ROS~2 communication mechanisms.
@@ -134,7 +134,7 @@ Its identical local and remote speed verdicts show that serialization and MQTT
 transport changed neither the verdicts nor their record attribution in that
 run.
 
-E3 is important because it replaces the simulated input processes with an
+E3 replaces the simulated input processes with an
 existing Nav2 application. The monitor observes Nav2 through its published
 interfaces, and the navigation code remains unchanged. The three goals cover a
 succeeded status within the deadline, a goal that remains active beyond the
@@ -148,7 +148,7 @@ final status.
 E4 extends this result from one trace to two robot namespaces. The independent
 speed checks show that source name keeps the robot streams separate. The
 separation check shows that one converter can combine observations from both
-robots, a useful form of multi-robot monitoring: several robot-local
+robots, a form of multi-robot monitoring: several robot-local
 streams can feed one property while the collection mechanism remains
 unchanged. The agreement with Gazebo positions gives an additional source of
 evidence for the four separation transitions.
@@ -283,7 +283,7 @@ Four directions follow from the limitations above:
   network observations.
 
   \item \textbf{Feedback mechanism:} report violations emitted by the verdict
-  service back to the robot application in order to intervene in its
+  service back to the robot application to intervene in its
   behaviour, for example by publishing a stop command, calling a recovery
   service, or cancelling an active goal. The architecture reserves the
   feedback adapter for this path.

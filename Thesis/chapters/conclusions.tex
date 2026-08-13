@@ -50,18 +50,13 @@ moved to the E5 placement.
 
 \section{Main Contribution}
 
-The main contribution is a clear architectural and implementation boundary
+The main contribution is an architectural and implementation boundary
 between heterogeneous ROS~2 observations and checker-specific property logic.
 The common record preserves observation context, while configuration and
 plug-in interfaces allow sources, processing, checking, outputs, and placement
 to vary. Configuration generation reduces low-level routine boilerplate without
-hiding application and property decisions.
-
-The result is intentionally a foundation rather than a universal verifier.
-Active feedback, complete action traces, lower-level observation, globally
-ordered distributed checking, and production-scale fault tolerance remain
-outside the prototype. The evaluation establishes feasibility and functional
-correctness for the reported configurations.
+hiding application and property decisions. The evaluation establishes feasibility 
+and functional correctness for the reported configurations.
 
 \section{Availability}
 
